@@ -10,11 +10,38 @@ import SynthFX from "./synth/SynthFX";
 import SynthMIXER from "./synth/SynthMIXER";
 import SynthEQView from "./synth/SynthEQView";
 import Acid303 from "./synth/Acid303";
+import { KarplusStrong } from "./synth/KarplusStrong";
+import WaterDroplets from "./effects/WaterDroplets";
 
 export default function RightPane({ view }: { view: ViewName }) {
   const s = useBrowser();
   const { focus, level, items, selected, selectedSoundId } = s as any;
   const focused = focus === 'right';
+  const [dropletTriggerCount, setDropletTriggerCount] = React.useState(0);
+
+  // Check if we're in the Acid303 tab
+  const isAcid303Tab = view === 'Sounds' && 
+                      level === 'synth' && 
+                      s.synthPages[s.synthPageIndex] === 'ACID303';
+
+  // Listen for note events to trigger droplets
+  React.useEffect(() => {
+    if (!isAcid303Tab) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only trigger for preview keys when in synth level
+      if (s.level === 'synth' && (e.key === 'q' || e.key === 'a')) {
+        const count = 2 + Math.floor(Math.random() * 3);
+        setDropletTriggerCount(prev => prev + count);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isAcid303Tab, s.level]);
 
   return (
     <div style={{
@@ -30,7 +57,14 @@ export default function RightPane({ view }: { view: ViewName }) {
       padding: 8,
       boxShadow: focused ? '0 0 25px rgba(var(--accent-rgb), 0.4)' : '0 0 10px rgba(0,0,0,0.3)',
       position: 'relative',
+      overflow: 'hidden', // Ensure droplets don't overflow
     }}>
+      {/* Water droplets effect - only visible in Acid303 tab */}
+      <WaterDroplets 
+        isActive={isAcid303Tab} 
+        triggerCount={dropletTriggerCount}
+      />
+      
       {view === 'Sounds' && (
         level === 'synth'
           ? (
@@ -83,6 +117,7 @@ function extractName(label: string): string {
 function renderSynthPage(label: string): React.ReactNode {
   switch (label) {
     case 'ACID303': return <Acid303 />;
+    case 'KARPLUS': return <KarplusStrong />;
     case 'OSC': return <SynthOSC />;
     case 'ENV': return <SynthENV />;
     case 'FILTER': return <SynthFILTER />;

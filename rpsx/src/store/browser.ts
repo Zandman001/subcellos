@@ -28,7 +28,7 @@ export interface BrowserState {
   fxSelect: 0 | 1 | 2 | 3; // 0..3 for fx1..fx4
   eqGroup: 0 | 1; // 0=bands 1..4, 1=bands 5..8
   modulePickerOpen: boolean;
-  modulePickerIndex: number; // 0: Synth, 1: Sampler, 2: Drum
+  modulePickerIndex: number; // 0: Synth, 1: Acid, 2: KarplusStrong, 3: Sampler, 4: Drum
   confirmOpen?: boolean;
   confirmKind?: 'project'|'pattern'|'module';
   confirmLabel?: string;
@@ -78,7 +78,7 @@ export interface BrowserState {
   pendingSaves?: Record<string, any>;
   scheduleSavePreset?: (preset: any) => void;
   // per-sound module kind hint (UI-only). 'acid' constrains pages to 4.
-  moduleKindById?: Record<string, 'acid' | 'analog'>;
+  moduleKindById?: Record<string, 'acid' | 'analog' | 'karplus'>;
 }
 
 // Simple no-deps store with subscribe/get/set
@@ -250,7 +250,7 @@ state.loadLevel = async () => {
       // Ensure engine module_kind matches pages (prevents Analog sounding like Acid and vice versa)
       try {
         const part = state.selectedSoundPart ?? 0;
-        const kind = isAcidCurrent() ? 1 : 0;
+        const kind = getCurrentModuleKind();
         await rpc.startAudio();
         await rpc.setParam(`part/${part}/module_kind`, { I32: kind } as any);
       } catch {}
@@ -335,7 +335,7 @@ state.moveUp = () => {
     return;
   }
   if (state.level === "pattern" && state.modulePickerOpen) {
-    const next = Math.max(0, Math.min(3, state.modulePickerIndex - 1));
+    const next = Math.max(0, Math.min(4, state.modulePickerIndex - 1));
     set({ modulePickerIndex: next });
     return;
   }
@@ -361,7 +361,7 @@ state.moveDown = () => {
     return;
   }
   if (state.level === "pattern" && state.modulePickerOpen) {
-    const next = Math.max(0, Math.min(3, state.modulePickerIndex + 1));
+    const next = Math.max(0, Math.min(4, state.modulePickerIndex + 1));
     set({ modulePickerIndex: next });
     return;
   }
@@ -403,8 +403,8 @@ state.add = async () => {
       return;
     }
     // Confirm create
-    const types = ["synth", "acid", "sampler", "drum"] as const;
-    const t = types[Math.max(0, Math.min(3, state.modulePickerIndex))];
+    const types = ["synth", "acid", "karplus", "sampler", "drum"] as const;
+    const t = types[Math.max(0, Math.min(4, state.modulePickerIndex))];
     const pn = state.projectName!;
     try {
       const created = await fsClient.createSound(pn, t);
@@ -412,6 +412,10 @@ state.add = async () => {
       if (t === 'acid') {
         const map = state.moduleKindById || {};
         map[created.id] = 'acid';
+        set({ moduleKindById: { ...map } });
+      } else if (t === 'karplus') {
+        const map = state.moduleKindById || {};
+        map[created.id] = 'karplus';
         set({ moduleKindById: { ...map } });
       }
       set({ modulePickerOpen: false });
@@ -422,7 +426,7 @@ state.add = async () => {
       if (idx >= 0) {
         set({ selected: idx, selectedSoundId: created.id, selectedSoundPart: (created as any).part_index ?? 0 });
         // Default preset for synth: Osc B level = 0; if Acid, also set module_kind
-        if (t === "synth" || t === "acid") {
+        if (t === "synth" || t === "acid" || t === "karplus") {
           const part = (created as any).part_index ?? 0;
           // Build and save default preset immediately, then replay
           const ui = defaultSynthUI();
@@ -433,6 +437,8 @@ state.add = async () => {
           try { await applyPreset(preset); } catch(e){ console.error('apply default preset failed', e); }
           if (t === 'acid') {
             try { await rpc.setParam(`part/${part}/module_kind`, { I32: 1 } as any); } catch(e) { console.error('set module_kind failed', e); }
+          } else if (t === 'karplus') {
+            try { await rpc.setParam(`part/${part}/module_kind`, { I32: 2 } as any); } catch(e) { console.error('set module_kind failed', e); }
           }
         }
       }
@@ -568,20 +574,31 @@ function normalizeSoundType(t: Sound["type"] | undefined): "synth" | "sampler" |
   return undefined;
 }
 
-function isAcidCurrent(): boolean {
+function getCurrentModuleKind(): number {
   const id = state.selectedSoundId;
-  if (!id) return false;
+  if (!id) return 0;
   const map = state.moduleKindById || {};
-  if (map[id] === 'acid') return true;
+  if (map[id] === 'acid') return 1;
+  if (map[id] === 'karplus') return 2;
   const label = state.selectedSoundName || '';
   const l = label.toLowerCase();
-  return l.startsWith('acid 303');
+  if (l.startsWith('acid 303')) return 1;
+  if (l.startsWith('karplus string')) return 2;
+  return 0;
+}
+
+function isAcidCurrent(): boolean {
+  return getCurrentModuleKind() === 1;
 }
 
 function computeSynthPagesForCurrent(): readonly string[] {
-  if (isAcidCurrent()) {
+  const moduleKind = getCurrentModuleKind();
+  if (moduleKind === 1) { // Acid
     return ["ACID303", "FX", "MIXER", "EQ"] as const;
+  } else if (moduleKind === 2) { // KarplusStrong
+    return ["KARPLUS", "FX", "MIXER", "EQ"] as const;
   }
+  // Analog synth (default)
   return ["OSC","ENV","FILTER","LFO","MOD","FX","MIXER","EQ"] as const;
 }
 // Preview note actions
@@ -683,6 +700,22 @@ export type SynthUI = {
   mixer: MixerUI;
   mod: ModUI;
   eq: EqUI;
+  acid?: {
+    wave: number;
+    cutoff: number;
+    reso: number;
+    envmod: number;
+    decay: number;
+    accent: number;
+    slide: number;
+    drive: number;
+  };
+  karplus: {
+    decay: number;
+    damp: number;
+    excite: number;
+    tune: number;
+  };
 };
 
 function defaultSynthUI(): SynthUI {
@@ -706,6 +739,24 @@ function defaultSynthUI(): SynthUI {
       envRow: 0,
     },
     eq: { gains: Array.from({ length: 8 }).map(() => 0.5) },
+    // Add default acid parameters to ensure they persist
+    acid: {
+      wave: 0.0,
+      cutoff: 0.55,
+      reso: 0.5,
+      envmod: 0.6,
+      decay: 0.7,
+      accent: 0.7,
+      slide: 0.4,
+      drive: 0.3,
+    },
+    // Add default KarplusStrong parameters
+    karplus: {
+      decay: 0.8,
+      damp: 0.5,
+      excite: 0.1,
+      tune: 0.0,
+    },
   };
 }
 
@@ -780,7 +831,7 @@ function uiToSchema(ui: SynthUI) {
     name,
     part_index: part,
     params: {
-      module_kind: isAcidCurrent() ? 1 : 0,
+      module_kind: getCurrentModuleKind(),
       oscA: { shape: Math.round(ui.oscA.shape*7), detune_cents: detuneCents(ui.oscA.detune), fm_to_B: ui.oscA.fm, level: ui.oscA.level },
       oscB: { shape: Math.round(ui.oscB.shape*7), detune_cents: detuneCents(ui.oscB.detune), fm_to_A: ui.oscB.fm, level: ui.oscB.level },
       amp_env: { attack: mapTime(ui.ampEnv.a), decay: mapTime(ui.ampEnv.d), sustain: ui.ampEnv.s, release: mapTime(ui.ampEnv.r) },
@@ -815,6 +866,13 @@ function uiToSchema(ui: SynthUI) {
         accent: (ui as any).acid.accent ?? 0.7,
         slide: (ui as any).acid.slide ?? 0.4,
         drive: (ui as any).acid.drive ?? 0.3,
+      } : undefined,
+      // Persist KarplusStrong macros (normalized 0..1)
+      karplus: (ui as any).karplus ? {
+        decay: (ui as any).karplus.decay ?? 0.8,
+        damp: (ui as any).karplus.damp ?? 0.5,
+        excite: (ui as any).karplus.excite ?? 0.7,
+        tune: (ui as any).karplus.tune ?? 0.0,
       } : undefined,
     }
   };
@@ -902,6 +960,13 @@ async function applyPreset(preset: any) {
       accent: p.acid?.accent ?? 0.7,
       slide: p.acid?.slide ?? 0.4,
       drive: p.acid?.drive ?? 0.3,
+    },
+    // KarplusStrong UI mirror (normalized)
+    karplus: {
+      decay: p.karplus?.decay ?? 0.8,
+      damp: p.karplus?.damp ?? 0.5,
+      excite: p.karplus?.excite ?? 0.7,
+      tune: p.karplus?.tune ?? 0.0,
     },
   }));
   // Replay to engine
@@ -992,6 +1057,13 @@ async function applyPreset(preset: any) {
     send(`acid/accent`, { F32: p.acid.accent ?? 0.7 });
     send(`acid/slide`, { F32: p.acid.slide ?? 0.4 });
     send(`acid/drive`, { F32: p.acid.drive ?? 0.3 });
+  }
+  // KarplusStrong macros
+  if (p.karplus) {
+    send(`ks/decay`, { F32: p.karplus.decay ?? 0.8 });
+    send(`ks/damp`, { F32: p.karplus.damp ?? 0.5 });
+    send(`ks/excite`, { F32: p.karplus.excite ?? 0.7 });
+    send(`ks/tune`, { F32: p.karplus.tune ?? 0.0 });
   }
   // Throttle slightly to avoid spamming
   for (const c of calls) { try { await c; } catch(e) { console.error('apply preset set_param failed', e); } }

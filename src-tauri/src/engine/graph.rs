@@ -3,6 +3,7 @@ use std::f32::consts::PI;
 use crate::engine::params::{ParamStore, hash_path};
 use crate::engine::dsp::{delay::SimpleDelay, mod_delay::ModDelay, phaser::Phaser, reverb::OnePoleLP, bitcrusher::Bitcrusher};
 use crate::engine::modules::acid303::{Acid303, AcidParamKeys};
+use crate::engine::modules::karplus_strong::{KarplusStrong, KSParamKeys};
 use freeverb::Freeverb;
 
 #[inline]
@@ -334,6 +335,9 @@ pub struct Part {
   // Mono Acid engine
   acid: Acid303,
   acid_keys: AcidParamKeys,
+  // Mono Karplus-Strong engine
+  karplus: KarplusStrong,
+  karplus_keys: KSParamKeys,
   // Modulated delay lines for chorus/flanger
   delay1: ModDelay,
   delay2: ModDelay,
@@ -406,6 +410,11 @@ struct ParamPaths {
   acid_drive: u64,
   acid_step_accent: u64,
   acid_step_slide: u64,
+  // Karplus-Strong params
+  ks_decay: u64,
+  ks_damp: u64,
+  ks_excite: u64,
+  ks_tune: u64,
 }
 
 impl ParamPaths {
@@ -446,6 +455,11 @@ impl ParamPaths {
       acid_drive: p("acid/drive"),
       acid_step_accent: p("acid/step/accent"),
       acid_step_slide: p("acid/step/slide"),
+      // Karplus-Strong params
+      ks_decay: p("ks/decay"),
+      ks_damp: p("ks/damp"),
+      ks_excite: p("ks/excite"),
+      ks_tune: p("ks/tune"),
     }
   }
 }
@@ -469,6 +483,14 @@ impl Part {
         drive: hash_path(&format!("part/{}/acid/drive", idx)),
         step_accent: hash_path(&format!("part/{}/acid/step/accent", idx)),
         step_slide: hash_path(&format!("part/{}/acid/step/slide", idx)),
+      },
+      karplus: KarplusStrong::new(sr),
+      karplus_keys: KSParamKeys {
+        module_kind: hash_path(&format!("part/{}/module_kind", idx)),
+        decay: hash_path(&format!("part/{}/ks/decay", idx)),
+        damp: hash_path(&format!("part/{}/ks/damp", idx)),
+        excite: hash_path(&format!("part/{}/ks/excite", idx)),
+        tune: hash_path(&format!("part/{}/ks/tune", idx)),
       },
       delay1: ModDelay::new(1500.0, sr), delay2: ModDelay::new(1500.0, sr),
       sdelay1: SimpleDelay::new(1200.0, sr), sdelay2: SimpleDelay::new(1200.0, sr),
@@ -503,15 +525,19 @@ impl Part {
     self.voices[i].note_on(note, vel);
     // Also feed mono Acid engine (render path will choose active module)
     self.acid.note_on(note, vel);
+    // Also feed mono Karplus-Strong engine
+    self.karplus.note_on(note, vel);
   }
   pub fn note_off(&mut self, note: u8) {
     // Stop all voices with this note to guarantee preview stops fully
     for v in &mut self.voices { if v.note == note && v.is_active() { v.note_off(); } }
     self.acid.note_off(note);
+    self.karplus.note_off();
   }
   pub fn render(&mut self, params: &ParamStore, _part_idx: usize) -> (f32, f32) {
-    // Module dispatch (0 = Analog, 1 = Acid303)
+    // Module dispatch (0 = Analog, 1 = Acid303, 2 = KarplusStrong)
     let module = params.get_i32_h(self.paths.module_kind, 0);
+    
     if module == 1 {
       // Acid303 mono voice sample
       let s = self.acid.render_one(params, &self.acid_keys);
@@ -597,6 +623,141 @@ impl Part {
         let time_ms = 10.0 + fx2_p1.clamp(0.0, 1.0) * 990.0; let fb = (fx2_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
         let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay2.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx2_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]);
         self.fx2_reverb = None; self.fx2_crusher = None;
+      } else if fx2_t == 1 {
+        if self.fx2_reverb.is_none() {
+          let mut rv = Freeverb::new(self.sr as usize); rv.set_room_size(0.35); rv.set_dampening(0.6); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9); self.fx2_reverb = Some(rv);
+        }
+        if let Some(rv) = &mut self.fx2_reverb {
+          let room = 0.2 + fx2_p1.clamp(0.0, 1.0) * 0.8; let damp = 0.2 + fx2_p2.clamp(0.0, 1.0) * 0.8; let mix = fx2_mix;
+          rv.set_room_size(room as f64); rv.set_dampening(damp as f64); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9);
+          let dry = out; let (wl, wr) = rv.tick((dry as f64, dry as f64)); let lp_amt = 0.5 + 0.5 * (damp as f32);
+          self.fx2_wet_lp_l.set_hf_damp(lp_amt); self.fx2_wet_lp_r.set_hf_damp(lp_amt);
+          let wet_l = self.fx2_wet_lp_l.tick(wl as f32) as f32; let wet_r = self.fx2_wet_lp_r.tick(wr as f32) as f32; let wet_m = 0.5 * (wet_l + wet_r);
+          out = dry * (1.0 - mix) + wet_m * mix;
+        }
+      } else if fx2_t == 3 || fx2_t == 4 || fx2_t == 5 {
+        let rate = 0.05 + fx2_p1 * (5.0 - 0.05); let depth_ms = match fx2_t { 4 => 6.0 * fx2_p2, 5 => 12.0 * fx2_p2, _ => 4.0 * fx2_p2 };
+        if fx2_t == 3 {
+          let (wet, _) = self.phaser2.process_one(out, out, self.sr, rate, fx2_p2, 1.0); out = out * (1.0 - fx2_mix) + wet * fx2_mix;
+        } else {
+          let base_ms = match fx2_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay2.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx2_mix) + wet * fx2_mix;
+        }
+        self.fx2_reverb = None; self.fx2_crusher = None;
+      } else if fx2_t == 6 {
+        let dry = out; let drive_db = (fx2_p1.clamp(0.0, 1.0)) * 20.0; let g = (10.0_f32).powf(drive_db / 20.0); let x = (dry * g).tanh();
+        let tone = fx2_p2.clamp(0.0, 1.0); let lp_amt = 0.3 + 0.6 * (1.0 - tone); self.fx2_wet_lp_l.set_hf_damp(lp_amt);
+        let y_lp = self.fx2_wet_lp_l.tick(x); let y_hp = x - y_lp; let shaped = y_lp * (1.0 - tone) + y_hp * tone; out = dry * (1.0 - fx2_mix) + shaped * fx2_mix; self.fx2_reverb = None; self.fx2_crusher = None;
+      } else if fx2_t == 7 {
+        let dry = out; let drive = fx2_p2.clamp(0.0, 1.0) * 10.0; let g = 1.0 + drive; let cur = fx2_p1.clamp(0.0, 1.0);
+        let xin = dry * g; let shaped = if cur < 0.34 { xin.tanh() } else if cur < 0.67 { xin.clamp(-1.0, 1.0) } else { let m = (xin + 1.0).abs().rem_euclid(4.0); ((m - 2.0).abs() - 1.0).clamp(-1.0, 1.0) };
+        out = dry * (1.0 - fx2_mix) + shaped * fx2_mix; self.fx2_reverb = None; self.fx2_crusher = None;
+      } else if fx2_t == 8 {
+        if self.fx2_crusher.is_none() { self.fx2_crusher = Some(Bitcrusher::new()); }
+        if let Some(cr) = &mut self.fx2_crusher {
+          let bits = 4.0 + fx2_p1.clamp(0.0, 1.0) * 12.0; let fac = 1.0 + fx2_p2.clamp(0.0, 1.0) * 15.0; cr.set_bits(bits as u8); cr.set_factor(fac as u32); cr.set_mix(fx2_mix); let mut lbuf = [out]; let mut rbuf = [out]; cr.process(&mut lbuf, &mut rbuf); out = 0.5 * (lbuf[0] + rbuf[0]);
+        }
+      }
+      // EQ
+      let q = 1.0_f32; let mut any_nonzero = false;
+      for i in 0..8 {
+        let db = params.get_f32_h(self.paths.eq_bands[i], 0.0).clamp(-12.0, 12.0);
+        if (db - self.eq_last_db[i]).abs() > 1e-6 { self.eq_bands[i].set_peaking(self.sr, self.eq_centers[i], q, db); self.eq_last_db[i] = db; }
+        if db.abs() > 1e-3 { any_nonzero = true; }
+      }
+      if any_nonzero { for i in 0..8 { out = self.eq_bands[i].process(out); } }
+      // Mixer: PAN, VOLUME, HAAS, COMP
+      let mut l = out; let mut r = out;
+      let pan = params.get_f32_h(self.paths.mix_pan, 0.0).clamp(-1.0, 1.0);
+      let theta = (pan + 1.0) * std::f32::consts::FRAC_PI_4; let gl = theta.cos(); let gr = theta.sin(); l *= gl; r *= gr;
+      let vol = params.get_f32_h(self.paths.mix_volume, 1.0).clamp(0.0, 1.0); l *= vol; r *= vol;
+      let haas = params.get_f32_h(self.paths.mix_haas, 0.0).clamp(0.0, 1.0);
+      if haas > 0.0005 {
+        let rd = if self.haas_wr >= self.haas_d { self.haas_wr - self.haas_d } else { self.haas_wr + self.haas_len - self.haas_d };
+        let delayed_l = self.haas_buf[rd]; self.haas_buf[self.haas_wr] = l; self.haas_wr += 1; if self.haas_wr >= self.haas_len { self.haas_wr = 0; }
+        l = l * (1.0 - haas) + delayed_l * haas;
+      } else { self.haas_buf[self.haas_wr] = l; self.haas_wr += 1; if self.haas_wr >= self.haas_len { self.haas_wr = 0; } }
+      let comp = params.get_f32_h(self.paths.mix_comp, 0.0).clamp(0.0, 1.0);
+      if comp > 0.001 { let drive = 1.0 + 8.0 * comp; let id = 1.0 / drive.tanh(); l = (l * drive).tanh() * id; r = (r * drive).tanh() * id; }
+      return (l, r);
+    } else if module == 2 {
+      // Karplus-Strong mono voice sample
+      let s = self.karplus.render_one(params, &self.karplus_keys);
+      // Early-out if dry is silent and both FX mixes are ~zero (no tails needed)
+      let fx1_t_peek = params.get_i32_h(self.paths.fx1_type, 0);
+      let fx1_mix_peek = params.get_f32_h(self.paths.fx1_p3, 0.0).clamp(0.0, 1.0);
+      let fx2_t_peek = params.get_i32_h(self.paths.fx2_type, 0);
+      let fx2_mix_peek = params.get_f32_h(self.paths.fx2_p3, 0.0).clamp(0.0, 1.0);
+      if s.abs() < 1e-9 && (fx1_t_peek <= 0 || fx1_mix_peek <= 0.0005) && (fx2_t_peek <= 0 || fx2_mix_peek <= 0.0005) {
+        return (0.0, 0.0);
+      }
+      // FX chain (identical to Analog and Acid)
+      let mut out = s;
+      let fx1_t = params.get_i32_h(self.paths.fx1_type, 0);
+      let fx1_p1 = params.get_f32_h(self.paths.fx1_p1, 0.0);
+      let fx1_p2 = params.get_f32_h(self.paths.fx1_p2, 0.0);
+      let fx1_mix = params.get_f32_h(self.paths.fx1_p3, 0.0).clamp(0.0, 1.0);
+      if fx1_t <= 0 || fx1_mix <= 0.0005 {
+        if fx1_t <= 0 { self.fx1_reverb = None; self.fx1_crusher = None; }
+      } else if fx1_t == 2 {
+        let time_ms = 10.0 + fx1_p1.clamp(0.0, 1.0) * 990.0;
+        let fb = (fx1_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
+        let mut lbuf = [out]; let mut rbuf = [out];
+        self.sdelay1.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx1_mix, false);
+        out = 0.5 * (lbuf[0] + rbuf[0]);
+        self.fx1_reverb = None; self.fx1_crusher = None;
+      } else if fx1_t == 1 {
+        if self.fx1_reverb.is_none() {
+          let mut rv = Freeverb::new(self.sr as usize);
+          rv.set_room_size(0.35); rv.set_dampening(0.6); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9);
+          self.fx1_reverb = Some(rv);
+        }
+        if let Some(rv) = &mut self.fx1_reverb {
+          let room = 0.2 + fx1_p1.clamp(0.0, 1.0) * 0.8;
+          let damp = 0.2 + fx1_p2.clamp(0.0, 1.0) * 0.8;
+          let mix = fx1_mix;
+          rv.set_room_size(room as f64); rv.set_dampening(damp as f64); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9);
+          let dry = out; let (wl, wr) = rv.tick((dry as f64, dry as f64));
+          let lp_amt = 0.5 + 0.5 * (damp as f32);
+          self.fx1_wet_lp_l.set_hf_damp(lp_amt); self.fx1_wet_lp_r.set_hf_damp(lp_amt);
+          let wet_l = self.fx1_wet_lp_l.tick(wl as f32) as f32; let wet_r = self.fx1_wet_lp_r.tick(wr as f32) as f32;
+          let wet_m = 0.5 * (wet_l + wet_r);
+          out = dry * (1.0 - mix) + wet_m * mix;
+        }
+      } else if fx1_t == 3 || fx1_t == 4 || fx1_t == 5 {
+        let rate = 0.05 + fx1_p1 * (5.0 - 0.05);
+        let depth_ms = match fx1_t { 4 => 6.0 * fx1_p2, 5 => 12.0 * fx1_p2, _ => 4.0 * fx1_p2 };
+        if fx1_t == 3 {
+          let (wet, _) = self.phaser1.process_one(out, out, self.sr, rate, fx1_p2, 1.0);
+          out = out * (1.0 - fx1_mix) + wet * fx1_mix;
+        } else {
+          let base_ms = match fx1_t { 4 => 2.0, 5 => 15.0, _ => 3.0 };
+          let (wet, _) = self.delay1.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0);
+          out = out * (1.0 - fx1_mix) + wet * fx1_mix;
+        }
+        self.fx1_reverb = None; self.fx1_crusher = None;
+      } else if fx1_t == 6 {
+        let dry = out; let drive_db = (fx1_p1.clamp(0.0, 1.0)) * 20.0; let g = (10.0_f32).powf(drive_db / 20.0); let x = (dry * g).tanh();
+        let tone = fx1_p2.clamp(0.0, 1.0); let lp_amt = 0.3 + 0.6 * (1.0 - tone); self.fx1_wet_lp_l.set_hf_damp(lp_amt);
+        let y_lp = self.fx1_wet_lp_l.tick(x); let y_hp = x - y_lp; let shaped = y_lp * (1.0 - tone) + y_hp * tone; out = dry * (1.0 - fx1_mix) + shaped * fx1_mix; self.fx1_reverb = None; self.fx1_crusher = None;
+      } else if fx1_t == 7 {
+        let dry = out; let drive = fx1_p2.clamp(0.0, 1.0) * 10.0; let g = 1.0 + drive; let cur = fx1_p1.clamp(0.0, 1.0);
+        let xin = dry * g; let shaped = if cur < 0.34 { xin.tanh() } else if cur < 0.67 { xin.clamp(-1.0, 1.0) } else { let m = (xin + 1.0).abs().rem_euclid(4.0); ((m - 2.0).abs() - 1.0).clamp(-1.0, 1.0) };
+        out = dry * (1.0 - fx1_mix) + shaped * fx1_mix; self.fx1_reverb = None; self.fx1_crusher = None;
+      } else if fx1_t == 8 {
+        if self.fx1_crusher.is_none() { self.fx1_crusher = Some(Bitcrusher::new()); }
+        if let Some(cr) = &mut self.fx1_crusher {
+          let bits = 4.0 + fx1_p1.clamp(0.0, 1.0) * 12.0; let fac = 1.0 + fx1_p2.clamp(0.0, 1.0) * 15.0; cr.set_bits(bits as u8); cr.set_factor(fac as u32); cr.set_mix(fx1_mix); let mut lbuf = [out]; let mut rbuf = [out]; cr.process(&mut lbuf, &mut rbuf); out = 0.5 * (lbuf[0] + rbuf[0]);
+        }
+      }
+      // FX2
+      let fx2_t = params.get_i32_h(self.paths.fx2_type, 0);
+      let fx2_p1 = params.get_f32_h(self.paths.fx2_p1, 0.0);
+      let fx2_p2 = params.get_f32_h(self.paths.fx2_p2, 0.0);
+      let fx2_mix = params.get_f32_h(self.paths.fx2_p3, 0.0).clamp(0.0, 1.0);
+      if fx2_t <= 0 || fx2_mix <= 0.0005 {
+        if fx2_t <= 0 { self.fx2_reverb = None; self.fx2_crusher = None; }
+      } else if fx2_t == 2 {
+        let time_ms = 10.0 + fx2_p1.clamp(0.0, 1.0) * 990.0; let fb = (fx2_p2.clamp(0.0, 1.0) * 0.95).min(0.95); let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay2.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx2_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]); self.fx2_reverb = None; self.fx2_crusher = None;
       } else if fx2_t == 1 {
         if self.fx2_reverb.is_none() {
           let mut rv = Freeverb::new(self.sr as usize); rv.set_room_size(0.35); rv.set_dampening(0.6); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9); self.fx2_reverb = Some(rv);
