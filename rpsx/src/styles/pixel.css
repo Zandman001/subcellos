@@ -1,0 +1,35 @@
+/* Local pixel font fallback. Place TTF at:
+   src/assets/fonts/press-start-2p.ttf
+   You can swap to another TTF; keep the font-family name consistent.
+*/
+@font-face {
+  font-family: 'Press Start 2P';
+  src:
+    local('Press Start 2P'),
+    url('../assets/fonts/press-start-2p.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+.pixel-text {
+  /* Prefer crisper bitmap-style fonts if available */
+  font-family: 'Terminus (TTF) for Windows', 'Terminus', 'Px437 TopazPlus', 'TopazPlus', 'Press Start 2P', monospace;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeSpeed;
+}
+
+/* Mod Matrix rows (1-bit style with subtle fill) */
+.mm-row { position: relative; border: 2px solid var(--accent); padding: 4px 8px; height: 22px; overflow: hidden; }
+.mm-fill { position:absolute; top:0; left:0; bottom:0; background:rgba(var(--accent-rgb), 0.14); }
+.mm-label { position: relative; z-index: 1; }
+.mm-amt { position: absolute; right: 6px; top: 2px; z-index:1; opacity:0.85; }
+
+/* EQ panel */
+.eq-panel{display:flex;flex-direction:column;gap:10px}
+.eq-canvas-wrap{width:100%;height:180px;border:2px solid var(--line);background:var(--bg)}
+.eq-canvas-wrap canvas{display:block;width:100%;height:100%}
+.eq-readouts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:6px}
+.eq-readout{border:2px solid var(--line);padding:6px 8px;text-align:center}
+.eq-readout .val{display:block;opacity:.85}
