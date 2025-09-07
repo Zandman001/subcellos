@@ -53,17 +53,8 @@ export default function Acid303() {
   const label = page === 0 ? '[Wave, Cutoff, Reso, EnvMod]' : '[Decay, Accent, Slide, Drive]';
   return (
     <div id="acid303-tab" style={{ 
-      padding: 8, 
-      borderTop: '3px solid var(--accent)',
-      background: 'rgba(var(--neutral-1), 0.4)',
-      backdropFilter: 'blur(10px)',
-      boxShadow: '0 0 20px rgba(var(--accent-rgb), 0.1), inset 0 1px 0 rgba(var(--accent-rgb), 0.2)'
+      padding: 8
     }}>
-      <div style={{ 
-        height: 2, 
-        background: 'linear-gradient(90deg, var(--accent), var(--glow), var(--accent))',
-        boxShadow: '0 0 10px var(--accent)'
-      }} />
       <div style={{ 
         fontSize: 12, 
         margin: '6px 0 8px',

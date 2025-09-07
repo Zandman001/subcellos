@@ -31,6 +31,9 @@ export default function RightPane({ view }: { view: ViewName }) {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only trigger for preview keys when in synth level
       if (s.level === 'synth' && (e.key === 'q' || e.key === 'a')) {
+        // Ignore repeated keydown events when holding the key
+        if (e.repeat) return;
+        
         const count = 2 + Math.floor(Math.random() * 3);
         setDropletTriggerCount(prev => prev + count);
       }

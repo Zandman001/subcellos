@@ -511,6 +511,10 @@ export function setEqPage(page: 0 | 1) {
   set({ eqGroup: page });
 }
 
+export function setFxPage(page: 0 | 1 | 2 | 3) {
+  set({ fxSelect: page });
+}
+
 export function updateEqGain(index: number, db: number) {
   const idx = Math.max(0, Math.min(7, Math.round(index)));
   const clampedDb = Math.max(-8, Math.min(8, db));

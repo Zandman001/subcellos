@@ -1,6 +1,7 @@
 import React from 'react'
 import Knob from './Knob'
 import { useBrowser } from '../../store/browser'
+import { setFxPage } from '../../store/browser'
 
 export default function SynthFX() {
   const s = useBrowser() as any;
@@ -31,7 +32,12 @@ export default function SynthFX() {
     <Page title={`FX · ${which}` }>
       <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
         {pedalTypes.map((tIdx, i) => (
-          <Pedal key={i} typeIdx={tIdx} label={typeNames[tIdx]} selected={i===selIdx} />
+          <Pedal 
+            key={i} 
+            typeIdx={tIdx} 
+            label={typeNames[tIdx]} 
+            selected={i===selIdx}
+          />
         ))}
       </div>
       <Row>
@@ -80,15 +86,17 @@ function Pedal({ typeIdx, label, selected }: { typeIdx: number; label: string; s
   const muted = typeIdx === 0;
   return (
     <div style={{ marginBottom: 6 }}>
-      <div style={{
-        display: 'inline-flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        padding: 6,
-        border: `3px solid ${selected ? 'var(--accent-2)' : 'var(--accent)'}`,
-        background: '#000',
-        borderRadius: 0,
-      }}>
+      <div 
+        style={{
+          display: 'inline-flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          padding: 6,
+          border: `3px solid ${selected ? 'var(--accent-2)' : 'var(--accent)'}`,
+          background: '#000',
+          borderRadius: 0,
+        }}
+      >
         <div style={{
           width: 90,
           height: 58,

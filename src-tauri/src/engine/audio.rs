@@ -114,8 +114,8 @@ impl AudioEngine {
     }
     let config = if let Some(cfg) = chosen_cfg { cfg } else { device.default_output_config().map_err(|e| e.to_string())? };
     let mut cfg: cpal::StreamConfig = config.clone().into();
-    // Request a small buffer for low latency; fall back to default if unsupported
-    cfg.buffer_size = cpal::BufferSize::Fixed(256);
+    // Request a larger buffer for better stability; reduce underruns
+    cfg.buffer_size = cpal::BufferSize::Fixed(1024);
     self.sr = cfg.sample_rate.0 as f32;
 
     let rx = self.rx.clone();
@@ -125,6 +125,9 @@ impl AudioEngine {
     let mut spec_tx = self.spec_tx.clone();
     let mut spec_buf = Vec::<f32>::with_capacity(4096);
 
+    let err_fn = |e: cpal::StreamError| eprintln!("stream error: {e}");
+    let mut playing = true;
+    
     let err_fn = |e| eprintln!("stream error: {e}");
     let mut playing = true;
     let stream = device.build_output_stream(&cfg, move |data: &mut [f32], _| {
