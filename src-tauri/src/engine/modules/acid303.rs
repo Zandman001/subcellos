@@ -154,14 +154,16 @@ impl Acid303 {
 
   pub fn note_on(&mut self, note: u8, _vel: f32) {
     self.target_freq = midi_to_freq(note);
-    // Legato detection: if already gated, treat as slide
-    let legato = self.gate;
-    if !legato {
+    // Legato detection: if already gated, treat as slide (don't retrigger envelope)
+    let was_gated = self.gate;
+    self.gate = true;
+    self.just_triggered = true;
+    
+    // Only retrigger envelope if this is a new note (not legato)
+    if !was_gated {
       self.env = 0.0;  // Start from 0 for attack phase
       self.in_attack = true;
     }
-    self.gate = true;
-    self.just_triggered = true;
   }
 
   pub fn note_off(&mut self, _note: u8) {
@@ -237,27 +239,21 @@ impl Acid303 {
 
     // Update glide coefficient per frame from Slide parameter
     let glide_ms = (slide_n * 300.0).max(0.0);
-    if glide_ms <= 1e-3 { self.glide_alpha = 0.0; } else { self.glide_alpha = (-1.0 / ((glide_ms / 1000.0) * self.sr)).exp(); }
-
-    // Latch step flags on trigger (use I32 0/1 flags for determinism)
-    let step_slide_active = params.get_i32_h(keys.step_slide, 0) != 0;
-
-    if self.just_triggered {
-      // If slide flag, do not retrigger env; else start attack phase
-      if !self.gate { 
-        self.env = 0.0; 
-        self.in_attack = false;
-      }
-      if !step_slide_active { 
-        self.env = 0.0;
-        self.in_attack = true;  // Start attack phase for new notes
-      }
-      self.just_triggered = false;
+    if glide_ms <= 1e-3 { 
+      self.glide_alpha = 0.0; 
+    } else { 
+      self.glide_alpha = (-1.0 / ((glide_ms / 1000.0) * self.sr)).exp(); 
     }
 
-    // Update frequency toward target if glide enabled and legato/slide
-    let do_glide = self.gate || step_slide_active;
-    if do_glide && self.glide_alpha > 0.0 {
+    // Handle note trigger logic - simplified without step_slide complexity
+    if self.just_triggered {
+      self.just_triggered = false;
+      // Note: envelope and legato logic is now handled in note_on()
+    }
+
+    // Update frequency with glide if slide parameter > 0 and gate is active
+    // This creates smooth pitch transitions between notes when slide is enabled
+    if self.gate && self.glide_alpha > 0.0 {
       self.freq = self.freq * self.glide_alpha + self.target_freq * (1.0 - self.glide_alpha);
     } else {
       self.freq = self.target_freq;
