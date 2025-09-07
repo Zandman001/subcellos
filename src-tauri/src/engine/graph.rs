@@ -764,6 +764,28 @@ impl Part {
         }
       }
       // EQ
+      let q = 1.0_f32; let mut any_nonzero = false;
+      for i in 0..8 {
+        let db = params.get_f32_h(self.paths.eq_bands[i], 0.0).clamp(-12.0, 12.0);
+        if (db - self.eq_last_db[i]).abs() > 1e-6 { self.eq_bands[i].set_peaking(self.sr, self.eq_centers[i], q, db); self.eq_last_db[i] = db; }
+        if db.abs() > 1e-3 { any_nonzero = true; }
+      }
+      if any_nonzero { for i in 0..8 { out = self.eq_bands[i].process(out); } }
+      // Mixer: PAN, VOLUME, HAAS, COMP
+      let mut l = out; let mut r = out;
+      let pan = params.get_f32_h(self.paths.mix_pan, 0.0).clamp(-1.0, 1.0);
+      let theta = (pan + 1.0) * std::f32::consts::FRAC_PI_4; let gl = theta.cos(); let gr = theta.sin(); l *= gl; r *= gr;
+      let vol = params.get_f32_h(self.paths.mix_volume, 1.0).clamp(0.0, 1.0); l *= vol; r *= vol;
+      let haas = params.get_f32_h(self.paths.mix_haas, 0.0).clamp(0.0, 1.0);
+      if haas > 0.0005 {
+        let rd = if self.haas_wr >= self.haas_d { self.haas_wr - self.haas_d } else { self.haas_wr + self.haas_len - self.haas_d };
+        let delayed_l = self.haas_buf[rd]; self.haas_buf[self.haas_wr] = l; self.haas_wr += 1; if self.haas_wr >= self.haas_len { self.haas_wr = 0; }
+        l = l * (1.0 - haas) + delayed_l * haas;
+      } else { self.haas_buf[self.haas_wr] = l; self.haas_wr += 1; if self.haas_wr >= self.haas_len { self.haas_wr = 0; } }
+      let comp = params.get_f32_h(self.paths.mix_comp, 0.0).clamp(0.0, 1.0);
+      if comp > 0.001 { let drive = 1.0 + 8.0 * comp; let id = 1.0 / drive.tanh(); l = (l * drive).tanh() * id; r = (r * drive).tanh() * id; }
+      return (l, r);
+    } else if module == 2 {
       // Karplus-Strong mono voice sample
       let s = self.karplus.render_one(params, &self.karplus_keys);
       // Early-out if dry is silent and both FX mixes are ~zero (no tails needed)
@@ -986,8 +1008,9 @@ impl Part {
       let comp = params.get_f32_h(self.paths.mix_comp, 0.0).clamp(0.0, 1.0);
       if comp > 0.001 { let drive = 1.0 + 8.0 * comp; let id = 1.0 / drive.tanh(); l = (l * drive).tanh() * id; r = (r * drive).tanh() * id; }
       return (l, r);
-    }
-    // Compute LFO sample every sample; apply global depth with internal smoothing
+    } else {
+      // Analog voices (module == 0)
+      // Compute LFO sample every sample; apply global depth with internal smoothing
     let shape = params.get_i32_h(self.paths.lfo_shape, 0);
     let rate_hz = params.get_f32_h(self.paths.lfo_rate_hz, 1.0).max(0.01);
     self.lfo_phase = (self.lfo_phase + rate_hz / self.sr).fract();
@@ -1497,6 +1520,7 @@ impl Part {
       r = (r * drive).tanh() * id;
     }
     (l, r)
+    }
   }
 }
 
