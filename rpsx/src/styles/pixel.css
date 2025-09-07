@@ -20,16 +20,99 @@
   text-rendering: optimizeSpeed;
 }
 
-/* Mod Matrix rows (1-bit style with subtle fill) */
-.mm-row { position: relative; border: 2px solid var(--accent); padding: 4px 8px; height: 22px; overflow: hidden; }
-.mm-fill { position:absolute; top:0; left:0; bottom:0; background:rgba(var(--accent-rgb), 0.14); }
-.mm-label { position: relative; z-index: 1; }
-.mm-amt { position: absolute; right: 6px; top: 2px; z-index:1; opacity:0.85; }
+/* Mod Matrix rows (monochrome with patterns) */
+.mm-row { 
+  position: relative; 
+  border: 1px solid var(--line); 
+  background: var(--neutral-1);
+  padding: 6px 10px; 
+  height: 24px; 
+  overflow: hidden;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 2px,
+    rgba(var(--accent-rgb), 0.05) 2px,
+    rgba(var(--accent-rgb), 0.05) 4px
+  );
+}
+.mm-fill { 
+  position: absolute; 
+  top: 0; 
+  left: 0; 
+  bottom: 0; 
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), 0.3), rgba(var(--accent2-rgb), 0.2));
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 3px,
+    rgba(var(--accent-rgb), 0.1) 3px,
+    rgba(var(--accent-rgb), 0.1) 6px
+  );
+}
+.mm-label { 
+  position: relative; 
+  z-index: 1; 
+  color: var(--text);
+  font-weight: bold;
+}
+.mm-amt { 
+  position: absolute; 
+  right: 8px; 
+  top: 4px; 
+  z-index: 1; 
+  opacity: 0.9;
+  color: var(--accent);
+  font-weight: bold;
+}
 
 /* EQ panel */
-.eq-panel{display:flex;flex-direction:column;gap:10px}
-.eq-canvas-wrap{width:100%;height:180px;border:2px solid var(--line);background:var(--bg)}
-.eq-canvas-wrap canvas{display:block;width:100%;height:100%}
-.eq-readouts{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:6px}
-.eq-readout{border:2px solid var(--line);padding:6px 8px;text-align:center}
-.eq-readout .val{display:block;opacity:.85}
+.eq-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.eq-canvas-wrap {
+  width: 100%;
+  height: 180px;
+  border: 1px solid var(--line);
+  background: var(--neutral-1);
+  background-image: 
+    linear-gradient(90deg, var(--line) 1px, transparent 1px),
+    linear-gradient(var(--line) 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-position: 0 0, 0 0;
+}
+.eq-canvas-wrap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.eq-readouts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.eq-readout {
+  border: 1px solid var(--line);
+  background: var(--neutral-1);
+  padding: 8px 10px;
+  text-align: center;
+  position: relative;
+}
+.eq-readout::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+.eq-readout .val {
+  display: block;
+  opacity: 0.9;
+  color: var(--accent);
+  font-weight: bold;
+}

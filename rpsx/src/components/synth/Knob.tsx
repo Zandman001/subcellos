@@ -78,65 +78,76 @@ export default function Knob({ label, value, onChange, step, format, disabled }:
         style={{ userSelect: 'none', outline: 'none', cursor: disabled ? 'default' : 'ns-resize' }}
       >
         {/* Slider track */}
-        <div style={{ display:'flex', alignItems:'stretch', gap: 4 }}>
+        <div style={{ display:'flex', alignItems:'stretch', gap: 6 }}>
           <div style={{
             width: barW,
             height: barH,
-            background: 'var(--bg)',
-            border: '2px solid var(--accent)',
+            background: 'var(--neutral-1)',
+            border: '1px solid var(--line)',
             boxSizing: 'border-box',
-            position: 'relative',
-            boxShadow: 'inset 0 0 10px rgba(var(--accent-rgb), 0.2), 0 0 5px rgba(var(--accent-rgb), 0.3)'
+            position: 'relative'
           }}>
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column-reverse' }}>
+            <div style={{ position: 'absolute', inset: 2, display: 'flex', flexDirection: 'column-reverse' }}>
               {Array.from({ length: totalSteps }).map((_, i) => {
                 const on = i < litBlocks;
                 const intensity = on ? Math.min(1, (i + 1) / litBlocks) : 0;
+                // Create a pattern for visual interest in monochrome
+                const isPattern = (i % 3 === 0) && on;
                 return (
                   <div key={i} style={{ 
                     height: blockH, 
-                    borderTop: '1px solid var(--line)', 
-                    background: on ? `linear-gradient(90deg, rgba(var(--accent-rgb), ${0.4 + intensity * 0.6}), rgba(var(--accent2-rgb), ${0.3 + intensity * 0.5}))` : 'transparent',
-                    boxShadow: on ? `0 0 3px rgba(var(--accent-rgb), ${intensity * 0.8})` : 'none'
+                    marginBottom: i > 0 ? '1px' : '0',
+                    background: on ? `rgba(var(--accent-rgb), ${0.3 + intensity * 0.7})` : 'transparent',
+                    border: isPattern ? '1px solid var(--accent)' : 'none',
+                    boxSizing: 'border-box'
                   }} />
                 );
               })}
             </div>
-            {/* thumb outline at current level with glow */}
+            {/* Clean position indicator */}
             <div style={{ 
               position: 'absolute', 
-              left: 0, 
-              right: 0, 
-              bottom: filled, 
+              left: 2, 
+              right: 2, 
+              bottom: Math.max(2, filled - 1), 
               height: 2, 
-              background: 'var(--glow)',
-              boxShadow: '0 0 8px var(--glow), 0 0 4px var(--glow)'
+              background: 'var(--accent)'
             }} />
           </div>
-          {/* Tiny meter strip with synthwave styling */}
+          {/* Clean meter strip with pattern */}
           <div style={{ 
-            width: 4, 
+            width: 3, 
             height: barH, 
-            background: 'var(--bg)', 
-            border: '2px solid var(--accent-2)', 
+            background: 'var(--neutral-1)', 
+            border: '1px solid var(--line)', 
             boxSizing: 'border-box', 
-            position: 'relative',
-            boxShadow: 'inset 0 0 5px rgba(var(--accent2-rgb), 0.3)'
+            position: 'relative'
           }}>
+            {/* Add dots pattern for visual interest */}
+            {Array.from({ length: Math.floor(barH / 4) }).map((_, i) => (
+              <div key={i} style={{
+                position: 'absolute',
+                left: 0,
+                top: i * 4,
+                width: 1,
+                height: 1,
+                background: 'var(--line)',
+                opacity: 0.5
+              }} />
+            ))}
             <div style={{ 
               position: 'absolute', 
-              left: 0, 
-              bottom: 0, 
-              width: '100%', 
-              height: Math.max(1, Math.round(v * barH)), 
-              background: `linear-gradient(to top, rgba(var(--accent2-rgb), 0.9), rgba(var(--glow), 0.7))`,
-              boxShadow: `0 0 6px rgba(var(--accent2-rgb), 0.6)`
+              left: 1, 
+              bottom: 1, 
+              width: 1, 
+              height: Math.max(1, Math.round(v * (barH - 2))), 
+              background: 'var(--accent-2)'
             }} />
           </div>
         </div>
       </div>
-      <div style={{ fontSize: 11, textAlign: 'center', whiteSpace: 'nowrap', color: 'var(--text-soft)', fontVariant: 'small-caps', textShadow: '0 0 3px rgba(var(--accent-rgb), 0.4)' }}>{label}</div>
-      <div style={{ fontSize: 10, color: 'var(--accent)', animation: flashTick ? 'flash-value 250ms ease-out' : undefined as any, textShadow: '0 0 5px currentColor' }}>{valueText}</div>
+      <div style={{ fontSize: 11, textAlign: 'center', whiteSpace: 'nowrap', color: 'var(--text-soft)', fontVariant: 'small-caps' }}>{label}</div>
+      <div style={{ fontSize: 10, color: 'var(--accent)', animation: flashTick ? 'flash-value 250ms ease-out' : undefined as any }}>{valueText}</div>
     </div>
   );
 }

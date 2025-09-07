@@ -53,21 +53,22 @@ export default function Acid303() {
   const label = page === 0 ? '[Wave, Cutoff, Reso, EnvMod]' : '[Decay, Accent, Slide, Drive]';
   return (
     <div id="acid303-tab" style={{ 
-      padding: 8
+      padding: 12,
+      background: 'var(--neutral-1)',
+      margin: '8px'
     }}>
       <div style={{ 
         fontSize: 12, 
-        margin: '6px 0 8px',
+        margin: '8px 0 10px',
         color: 'var(--accent)',
-        textShadow: '0 0 8px currentColor'
+        fontWeight: 'bold'
       }}>ACID303 · {label} · press W/R</div>
       {page === 0 ? knobs0 : knobs1}
       <div style={{ 
-        marginTop: 8, 
-        opacity: 0.75, 
+        marginTop: 10, 
+        opacity: 0.8, 
         fontSize: 11,
-        color: 'var(--glow)',
-        textShadow: '0 0 5px currentColor'
+        color: 'var(--text-soft)'
       }}>
         Signal: Osc → LPF → Drive → (FX Rack) → Mixer → EQ
       </div>
@@ -77,7 +78,7 @@ export default function Acid303() {
 
 function Row({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', gap: 12 }}>{children}</div>
+    <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>{children}</div>
   )
 }
 

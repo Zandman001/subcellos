@@ -80,13 +80,15 @@ export const KarplusStrong: React.FC = () => {
 function Page({ title, children }: { title: string, children: React.ReactNode }) {
   return (
     <div style={{ 
-      padding: 8
+      padding: 12,
+      background: 'var(--neutral-1)',
+      margin: '8px'
     }}>
       <div style={{ 
         fontSize: 12, 
-        margin: '6px 0 8px', 
+        margin: '0 0 12px', 
         color: 'var(--accent)',
-        textShadow: '0 0 8px currentColor'
+        fontWeight: 'bold'
       }}>{title}</div>
       {children}
     </div>
@@ -95,6 +97,6 @@ function Page({ title, children }: { title: string, children: React.ReactNode })
 
 function Row({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', gap: 12 }}>{children}</div>
+    <div style={{ display: 'flex', gap: 16, justifyContent: 'center' }}>{children}</div>
   )
 }

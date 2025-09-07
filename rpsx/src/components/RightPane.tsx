@@ -49,18 +49,16 @@ export default function RightPane({ view }: { view: ViewName }) {
   return (
     <div style={{
       flex: 1,
-      border: '2px solid',
+      border: '1px solid',
       borderColor: focused ? 'var(--accent)' : 'var(--line)',
       boxSizing: 'border-box',
       color: 'var(--text)',
-      background: 'rgba(var(--neutral-1), 0.3)',
-      backdropFilter: 'blur(15px)',
+      background: 'var(--bg)',
       fontFamily: 'monospace',
       height: '100%',
-      padding: 8,
-      boxShadow: focused ? '0 0 25px rgba(var(--accent-rgb), 0.4)' : '0 0 10px rgba(0,0,0,0.3)',
+      padding: 0,
       position: 'relative',
-      overflow: 'hidden', // Ensure droplets don't overflow
+      overflow: 'hidden',
     }}>
       {/* Water droplets effect - only visible in Acid303 tab */}
       <WaterDroplets 

@@ -1,17 +1,18 @@
 :root {
-  /* Cyan/blue palette matching the droplets */
-  --bg: #06080c;           /* deeper navy-black */
-  --text: #d2d4d6;         /* more muted soft white */
-  --text-soft: #a8acb2;    /* even more subdued labels */
-  --accent: #00dcff;       /* bright cyan matching droplets */
-  --accent-2: #0080ff;     /* complementary blue */
-  --accent-rgb: 0, 220, 255;
-  --accent2-rgb: 0, 128, 255;
-  --neutral-1: #141821;    /* darker panel bg */
-  --neutral-2: #1c212a;    /* darker */
-  --line: #00c8ff;         /* cyan lines matching droplet glow */
-  --warn: #d63f4a;         /* more muted red */
-  --over: #8fd65a;         /* more muted green */
+  /* High-contrast monochrome palette with fun elements */
+  --bg: #000000;           /* pure black */
+  --text: #ffffff;         /* pure white text */
+  --text-soft: #b0b0b0;    /* light gray for labels */
+  --accent: #ffffff;       /* white accent for highlights */
+  --accent-2: #666666;     /* medium gray for secondary elements */
+  --accent-rgb: 255, 255, 255;
+  --accent2-rgb: 102, 102, 102;
+  --neutral-1: #1a1a1a;    /* dark gray panels */
+  --neutral-2: #2a2a2a;    /* lighter gray panels */
+  --line: #444444;         /* medium gray divider lines */
+  --warn: #cccccc;         /* light gray for warnings */
+  --over: #ffffff;         /* white for success */
+  --glow: #ffffff;         /* white glow color */
   --topbar-h: 32px;
 }
 
@@ -22,7 +23,7 @@ body {
   background: var(--bg);
   color: var(--text);
   image-rendering: pixelated;
-  -webkit-font-smoothing: none;
+  -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-family: 'Press Start 2P', monospace;
 }
@@ -66,7 +67,12 @@ body {
   outline-offset: -2px;
 }
 
-.tab.active { background: rgba(var(--accent-rgb), 0.08); color: var(--text); }
+.tab.active { 
+  background: var(--accent); 
+  color: var(--bg); 
+  border-bottom: 2px solid var(--accent);
+  font-weight: bold;
+}
 
 .main-area {
   flex: 1 1 auto;
@@ -107,9 +113,18 @@ body {
 
 /* scanline removed */
 
-/* Hover outlines for interactive controls */
-.tab:hover { outline: 1px solid var(--accent); outline-offset: -2px; }
-.ctrl:hover { outline: 1px solid var(--accent); outline-offset: 2px; }
+/* Hover effects for interactive controls - monochrome fun */
+.tab:hover { 
+  background: rgba(var(--accent-rgb), 0.1);
+  border-bottom: 1px solid var(--accent);
+  transform: translateY(-1px);
+  transition: all 0.15s ease;
+}
+.ctrl:hover { 
+  transform: translateY(-2px);
+  transition: transform 0.1s ease;
+  filter: invert(1);
+}
 
 /* Neon droplets effect */
 .neon-droplets {
@@ -127,11 +142,14 @@ body {
 
 /* Low-contrast theme overrides */
 :root[data-theme='low'] {
-  --text: #c4c7cb;
-  --text-soft: #9ca1ab;
-  --accent: #158a84;
-  --accent-2: #9d7a32;
-  --accent-rgb: 21, 138, 132;
-  --accent2-rgb: 157, 122, 50;
-  --line: #1e242e;
+  --bg: #111111;
+  --text: #dddddd;
+  --text-soft: #999999;
+  --accent: #cccccc;
+  --accent-2: #777777;
+  --accent-rgb: 204, 204, 204;
+  --accent2-rgb: 119, 119, 119;
+  --line: #333333;
+  --neutral-1: #1a1a1a;
+  --neutral-2: #222222;
 }
