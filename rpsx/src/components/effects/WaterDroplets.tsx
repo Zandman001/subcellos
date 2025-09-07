@@ -241,47 +241,47 @@ export default function WaterDroplets({ isActive, triggerCount }: WaterDropletsP
     ctx.lineTo(0, canvas.height);
     ctx.closePath();
     
-    // Water gradient
+    // Water gradient - ACID GREEN for symbolizing acid
     const gradient = ctx.createLinearGradient(0, waterSurface, 0, canvas.height);
-    gradient.addColorStop(0, 'rgba(0, 100, 255, 0.6)');
-    gradient.addColorStop(0.3, 'rgba(0, 150, 255, 0.4)');
-    gradient.addColorStop(1, 'rgba(0, 50, 150, 0.8)');
+    gradient.addColorStop(0, 'rgba(0, 255, 50, 0.6)');
+    gradient.addColorStop(0.3, 'rgba(50, 255, 100, 0.4)');
+    gradient.addColorStop(1, 'rgba(0, 200, 50, 0.8)');
     
     ctx.fillStyle = gradient;
     ctx.fill();
     
-    // Water surface glow - enhanced for dramatic effect
-    ctx.strokeStyle = 'rgba(100, 200, 255, 1.0)'; // Full opacity
+    // Water surface glow - enhanced for dramatic effect - ACID GREEN
+    ctx.strokeStyle = 'rgba(100, 255, 150, 1.0)'; // Full opacity
     ctx.lineWidth = 3; // Thicker line
-    ctx.shadowColor = '#64C8FF';
+    ctx.shadowColor = '#64FF96';
     ctx.shadowBlur = 15; // Stronger glow
     ctx.stroke();
     
-    // Add second glow layer for extra drama
-    ctx.strokeStyle = 'rgba(150, 220, 255, 0.6)';
+    // Add second glow layer for extra drama - ACID GREEN
+    ctx.strokeStyle = 'rgba(150, 255, 200, 0.6)';
     ctx.lineWidth = 1;
     ctx.shadowBlur = 25;
     ctx.stroke();
     
     ctx.shadowBlur = 0;
 
-    // Draw ripple rings with subtle visibility - focus on water surface ripples
+    // Draw ripple rings with subtle visibility - focus on water surface ripples - ACID GREEN
     ripplesRef.current.forEach(ripple => {
       const opacity = 1 - (ripple.life / ripple.maxLife);
       if (opacity > 0.1) {
-        // Small, subtle ripple ring
-        ctx.strokeStyle = `rgba(120, 210, 255, ${opacity * 0.3})`; // Even lower opacity
+        // Small, subtle ripple ring - ACID GREEN
+        ctx.strokeStyle = `rgba(120, 255, 180, ${opacity * 0.3})`; // Even lower opacity
         ctx.lineWidth = 1; // Thin rings
-        ctx.shadowColor = '#78D2FF';
+        ctx.shadowColor = '#78FF96';
         ctx.shadowBlur = 4; // Minimal glow
         
         ctx.beginPath();
         ctx.arc(ripple.x, ripple.y, ripple.radius, 0, Math.PI * 2);
         ctx.stroke();
         
-        // Very small secondary ring only for the largest ripples
+        // Very small secondary ring only for the largest ripples - ACID GREEN
         if (ripple.radius > 25 && opacity > 0.4) {
-          ctx.strokeStyle = `rgba(150, 220, 255, ${opacity * 0.15})`;
+          ctx.strokeStyle = `rgba(150, 255, 200, ${opacity * 0.15})`;
           ctx.lineWidth = 0.5;
           ctx.shadowBlur = 2;
           ctx.beginPath();
@@ -297,16 +297,16 @@ export default function WaterDroplets({ isActive, triggerCount }: WaterDropletsP
   const drawDroplet = useCallback((ctx: CanvasRenderingContext2D, droplet: Droplet) => {
     const { x, y, size, opacity, tailLength } = droplet;
     
-    // Draw tail
+    // Draw tail - ACID GREEN
     const gradient = ctx.createLinearGradient(x, y - tailLength, x, y);
-    gradient.addColorStop(0, `rgba(100, 200, 255, 0)`);
-    gradient.addColorStop(0.5, `rgba(100, 200, 255, ${opacity * 0.3})`);
-    gradient.addColorStop(1, `rgba(100, 200, 255, ${opacity * 0.7})`);
+    gradient.addColorStop(0, `rgba(100, 255, 150, 0)`);
+    gradient.addColorStop(0.5, `rgba(100, 255, 150, ${opacity * 0.3})`);
+    gradient.addColorStop(1, `rgba(100, 255, 150, ${opacity * 0.7})`);
     
     ctx.strokeStyle = gradient;
     ctx.lineWidth = size * 0.3;
     ctx.lineCap = 'round';
-    ctx.shadowColor = '#64C8FF';
+    ctx.shadowColor = '#64FF96';
     ctx.shadowBlur = 6;
     
     ctx.beginPath();
@@ -314,11 +314,11 @@ export default function WaterDroplets({ isActive, triggerCount }: WaterDropletsP
     ctx.lineTo(x, y);
     ctx.stroke();
     
-    // Draw droplet head
+    // Draw droplet head - ACID GREEN
     const headGradient = ctx.createRadialGradient(x, y, 0, x, y, size / 2);
-    headGradient.addColorStop(0, `rgba(150, 220, 255, ${opacity})`);
-    headGradient.addColorStop(0.7, `rgba(100, 200, 255, ${opacity * 0.8})`);
-    headGradient.addColorStop(1, `rgba(50, 150, 255, ${opacity * 0.6})`);
+    headGradient.addColorStop(0, `rgba(150, 255, 200, ${opacity})`);
+    headGradient.addColorStop(0.7, `rgba(100, 255, 150, ${opacity * 0.8})`);
+    headGradient.addColorStop(1, `rgba(50, 200, 100, ${opacity * 0.6})`);
     
     ctx.fillStyle = headGradient;
     ctx.shadowBlur = 12;
@@ -327,8 +327,8 @@ export default function WaterDroplets({ isActive, triggerCount }: WaterDropletsP
     ctx.arc(x, y, size / 2, 0, Math.PI * 2);
     ctx.fill();
     
-    // Inner glow
-    ctx.fillStyle = `rgba(200, 240, 255, ${opacity * 0.6})`;
+    // Inner glow - ACID GREEN
+    ctx.fillStyle = `rgba(200, 255, 220, ${opacity * 0.6})`;
     ctx.shadowBlur = 4;
     ctx.beginPath();
     ctx.arc(x, y, size / 4, 0, Math.PI * 2);
@@ -340,9 +340,9 @@ export default function WaterDroplets({ isActive, triggerCount }: WaterDropletsP
   const drawParticle = useCallback((ctx: CanvasRenderingContext2D, particle: WaterParticle) => {
     const { x, y, size, opacity } = particle;
     
-    // Enhanced particle with glow and trail effect
-    ctx.fillStyle = `rgba(100, 200, 255, ${opacity})`;
-    ctx.shadowColor = '#64C8FF';
+    // Enhanced particle with glow and trail effect - ACID GREEN
+    ctx.fillStyle = `rgba(100, 255, 150, ${opacity})`;
+    ctx.shadowColor = '#64FF96';
     ctx.shadowBlur = 8;
     
     // Main particle
@@ -350,8 +350,8 @@ export default function WaterDroplets({ isActive, triggerCount }: WaterDropletsP
     ctx.arc(x, y, size / 2, 0, Math.PI * 2);
     ctx.fill();
     
-    // Bright core
-    ctx.fillStyle = `rgba(200, 240, 255, ${opacity * 0.8})`;
+    // Bright core - ACID GREEN
+    ctx.fillStyle = `rgba(200, 255, 220, ${opacity * 0.8})`;
     ctx.shadowBlur = 4;
     ctx.beginPath();
     ctx.arc(x, y, size / 4, 0, Math.PI * 2);
