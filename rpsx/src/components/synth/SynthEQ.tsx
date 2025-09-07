@@ -23,7 +23,7 @@ export default function SynthEQ() {
 
 function Page({ title, children }: { title: string, children: React.ReactNode }) {
   return (
-    <div style={{ padding: 8, borderTop: '1px solid #333' }}>
+    <div style={{ padding: 8, borderTop: '1px solid var(--line)' }}>
       <div style={{ fontSize: 12, marginBottom: 8 }}>{title}</div>
       {children}
     </div>

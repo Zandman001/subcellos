@@ -75,9 +75,9 @@ export default function SynthEQView({ partIndex }: { partIndex?: number }) {
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    const BG = '#0a0d13';
-    const CY = '#2bd1c9';
-    const MG = '#e3b341';
+    const BG = '#000000';  // pure black background - monochrome theme
+    const CY = '#ffffff';  // white for primary lines - monochrome theme  
+    const MG = '#666666';  // gray for 0dB line - monochrome theme
     ctx.fillStyle = BG; ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = CY; ctx.lineWidth = 3; ctx.globalAlpha = 1.0;
     // Frame (neon)
@@ -86,20 +86,20 @@ export default function SynthEQView({ partIndex }: { partIndex?: number }) {
     const yA12 = yFromDb(AUDIO_DB_MAX, h), yA_12 = yFromDb(AUDIO_DB_MIN, h);
     const yV6 = yFromDb(VISUAL_DB_MAX, h), yV_6 = yFromDb(VISUAL_DB_MIN, h);
     const y0 = yFromDb(0, h);
-    // ±12 guides (dark)
-    ctx.globalAlpha = 0.25; ctx.lineWidth = 1; ctx.strokeStyle = '#222';
+    // ±12 guides (dark) - monochrome theme
+    ctx.globalAlpha = 0.25; ctx.lineWidth = 1; ctx.strokeStyle = '#2a2a2a';
     ctx.beginPath(); ctx.moveTo(6, yA12 + 0.5); ctx.lineTo(w - 6, yA12 + 0.5); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(6, yA_12 + 0.5); ctx.lineTo(w - 6, yA_12 + 0.5); ctx.stroke();
-    // visual window edges ±6 (slightly brighter)
-    ctx.globalAlpha = 0.5; ctx.lineWidth = 1; ctx.strokeStyle = '#333';
+    // visual window edges ±6 (slightly brighter) - monochrome theme
+    ctx.globalAlpha = 0.5; ctx.lineWidth = 1; ctx.strokeStyle = '#444444';
     ctx.beginPath(); ctx.moveTo(6, yV6 + 0.5); ctx.lineTo(w - 6, yV6 + 0.5); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(6, yV_6 + 0.5); ctx.lineTo(w - 6, yV_6 + 0.5); ctx.stroke();
-    // 0 dB line (magenta bold)
+    // 0 dB line (gray bold) - monochrome theme
     ctx.globalAlpha = 1.0; ctx.lineWidth = 3; ctx.strokeStyle = MG;
     ctx.beginPath(); ctx.moveTo(6, y0 + 0.5); ctx.lineTo(w - 6, y0 + 0.5); ctx.stroke();
     ctx.lineWidth = 2; ctx.strokeStyle = CY; ctx.globalAlpha = 1.0;
-    // Vertical lines at band freqs
-    ctx.setLineDash([3, 3]); ctx.strokeStyle = '#222'; ctx.globalAlpha = 1.0; ctx.lineWidth = 1;
+    // Vertical lines at band freqs - monochrome theme
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = '#2a2a2a'; ctx.globalAlpha = 1.0; ctx.lineWidth = 1;
     for (const f of FREQS) {
       const x = xFromHz(f, w);
       ctx.beginPath(); ctx.moveTo(x + 1, 1); ctx.lineTo(x + 1, h - 1); ctx.stroke();
@@ -162,7 +162,7 @@ export default function SynthEQView({ partIndex }: { partIndex?: number }) {
     const spec = spectrumSmoothRef.current || spectrumRef.current;
     if (!spec || spec.length <= 8) return;
     ctx.save();
-    ctx.globalAlpha = 0.45; ctx.strokeStyle = '#00fff7'; ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.45; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;  // white spectrum - monochrome theme
     const pad = 10; const n = spec.length;
     ctx.beginPath();
     for (let i = 0; i < n; i++) {

@@ -11,16 +11,16 @@ export default function OscPreview({ which }: { which: 'A' | 'B' }) {
     const c = ref.current; if (!c) return;
     const w = c.width, h = c.height;
     const g = c.getContext('2d'); if (!g) return;
-    // Background
-    g.fillStyle = '#0a0d13';
+    // Background - monochrome theme
+    g.fillStyle = '#000000';
     g.fillRect(0,0,w,h);
     g.lineWidth = 2;
     const N = w;
-    const accent = '#4ad3cb';
-    const ghost = '#2b8680';
+    const accent = '#ffffff';  // white accent for main waveform
+    const ghost = '#666666';   // gray for ghost waveform
 
     const drawGrid = () => {
-      g.strokeStyle = '#2a2f3b';
+      g.strokeStyle = '#2a2a2a';  // neutral-2 for grid
       g.beginPath();
       // vertical gridlines at quarters
       for (let i=1;i<4;i++) {
@@ -29,7 +29,7 @@ export default function OscPreview({ which }: { which: 'A' | 'B' }) {
       }
       g.stroke();
       // zero axis
-      g.strokeStyle = '#3a4051';
+      g.strokeStyle = '#444444';  // line color for zero axis
       g.beginPath();
       g.moveTo(0, Math.floor(h/2)+0.5); g.lineTo(w, Math.floor(h/2)+0.5);
       g.stroke();
@@ -66,24 +66,24 @@ export default function OscPreview({ which }: { which: 'A' | 'B' }) {
     };
 
     const drawNoise = (sIdx: number) => {
-      // TV static with different density/brightness per noise type
+      // TV static with different density/brightness per noise type - monochrome
       // 5: white, 6: pink, 7: brown
       const dots = sIdx === 5 ? 0.18 : sIdx === 6 ? 0.12 : 0.08; // toned-down fill
-      const minB = sIdx === 5 ? 120 : sIdx === 6 ? 100 : 70;
-      const maxB = sIdx === 5 ? 200 : sIdx === 6 ? 160 : 130;
+      const minB = sIdx === 5 ? 180 : sIdx === 6 ? 140 : 100;  // brighter whites/grays
+      const maxB = sIdx === 5 ? 255 : sIdx === 6 ? 200 : 160;  // pure white for white noise
       // Sparse grid of pixels to keep performance reasonable
       const step = 2; // 2px grid
       for (let y = 0; y < h; y += step) {
         for (let x = 0; x < w; x += step) {
           if (Math.random() < dots) {
             const b = Math.floor(minB + Math.random() * (maxB - minB));
-            g.fillStyle = `rgb(${b},${b},${b})`;
+            g.fillStyle = `rgb(${b},${b},${b})`;  // pure grayscale
             g.fillRect(x, y, step, step);
           }
         }
       }
-      // Light scanlines overlay for retro feel
-      g.fillStyle = 'rgba(0,0,0,0.08)';
+      // Light scanlines overlay for retro feel - monochrome
+      g.fillStyle = 'rgba(0,0,0,0.15)';  // slightly stronger for better contrast
       for (let y = 1; y < h; y += 2) { g.fillRect(0, y, w, 1); }
     };
 

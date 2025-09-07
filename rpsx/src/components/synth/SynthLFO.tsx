@@ -38,7 +38,7 @@ export default function SynthLFO() {
     }
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const BG = '#0a0d13', CY = '#2bd1c9', MG = '#e3b341';
+    const BG = '#000000', CY = '#ffffff', MG = '#666666';  // monochrome theme colors
     ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
     // axis (magenta)
     ctx.strokeStyle = MG; ctx.lineWidth = 2; ctx.globalAlpha = 1.0;

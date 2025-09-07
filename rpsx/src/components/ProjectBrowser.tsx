@@ -43,7 +43,7 @@ export default function ProjectBrowser() {
           </div>
         ))}
         {state.items.length === 0 && (
-          <div style={{ padding: 8, color: "#aaa" }}>(empty)</div>
+          <div style={{ padding: 8, color: "var(--text-soft)" }}>(empty)</div>
         )}
       </div>
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, borderTop: '1px solid var(--line)', padding: '8px 10px', color: 'var(--text-soft)', background: 'var(--neutral-2)', fontSize: '10px' }}>
@@ -62,7 +62,7 @@ export default function ProjectBrowser() {
           border: '1px solid var(--line)',
           background: 'var(--bg)',
           color: 'var(--text)',
-          boxShadow: '0 0 0 2px #000',
+          boxShadow: '0 0 0 2px var(--bg)',
         }}>
           {["Analog Synth", "Acid 303", "KarplusStrong", "Sampler", "Drum"].map((name, i) => (
             <div key={name} style={{
@@ -74,7 +74,7 @@ export default function ProjectBrowser() {
               {name}
             </div>
           ))}
-          <div style={{ padding: 6, color: '#aaa', borderTop: '1px solid #333', textAlign: 'center' }}>
+          <div style={{ padding: 6, color: 'var(--text-soft)', borderTop: '1px solid var(--line)', textAlign: 'center' }}>
             Q to add · A to cancel
           </div>
         </div>
@@ -89,12 +89,12 @@ export default function ProjectBrowser() {
           border: '1px solid var(--accent-2)',
           background: 'var(--bg)',
           color: 'var(--text)',
-          boxShadow: '0 0 0 2px #000',
+          boxShadow: '0 0 0 2px var(--bg)',
         }}>
-          <div style={{ padding: '8px 10px', borderBottom: '1px solid #333' }}>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--line)' }}>
             Confirm delete {state.confirmKind}: {state.confirmLabel}
           </div>
-          <div style={{ padding: '6px 10px', color: '#aaa', textAlign: 'center', borderTop: '1px solid #333' }}>
+          <div style={{ padding: '6px 10px', color: 'var(--text-soft)', textAlign: 'center', borderTop: '1px solid var(--line)' }}>
             Q confirm · A cancel
           </div>
         </div>

@@ -93,14 +93,14 @@ function Pedal({ typeIdx, label, selected }: { typeIdx: number; label: string; s
           alignItems: 'center',
           padding: 6,
           border: `3px solid ${selected ? 'var(--accent-2)' : 'var(--accent)'}`,
-          background: '#000',
+          background: 'var(--bg)',
           borderRadius: 0,
         }}
       >
         <div style={{
           width: 90,
           height: 58,
-          background: '#000',
+          background: 'var(--bg)',
           borderRadius: 0,
           boxShadow: 'inset 0 0 0 3px var(--accent)',
           display: 'flex',
