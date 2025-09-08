@@ -673,26 +673,42 @@ state.setPressedQA = (q: boolean | null, a: boolean | null) => {
 };
 
 state.updatePreviewFromPressed = async () => {
-  if (state._previewLock) { setTimeout(() => { state.updatePreviewFromPressed(); }, 0); return; }
-  set({ _previewLock: true });
-  try {
-    const pressed = state._pressedQA || { q: false, a: false };
-    const desired = pressed.q && pressed.a ? 72 : pressed.q ? 60 : pressed.a ? 48 : undefined;
-    const cur = state.currentPreview;
-    if (desired === cur) return;
-    try { await rpc.startAudio(); } catch (e) { console.error('startAudio failed', e); }
-    if (cur !== undefined) {
-      const part = state.selectedSoundPart ?? 0;
-      try { await rpc.noteOff(part, cur); } catch (e) { console.error('noteOff failed', e); }
-    }
-    if (desired !== undefined) {
-      const part = state.selectedSoundPart ?? 0;
-      try { await rpc.noteOn(part, desired, 0.9); } catch (e) { console.error('noteOn failed', e); }
-    }
-    set({ currentPreview: desired });
-  } finally {
-    set({ _previewLock: false });
+  const pressed = state._pressedQA || { q: false, a: false };
+  const desired = pressed.q && pressed.a ? 72 : pressed.q ? 60 : pressed.a ? 48 : undefined;
+  const cur = state.currentPreview;
+
+  if (desired === cur) {
+    // The correct note is already playing (or no note is playing). Do nothing.
+    return;
   }
+
+  // If a note is currently playing, turn it off first.
+  if (cur !== undefined) {
+    const part = state.selectedSoundPart ?? 0;
+    try {
+      await rpc.noteOff(part, cur);
+    } catch (e) {
+      console.error('noteOff failed', e);
+    }
+  }
+
+  // If a new note is desired, play it.
+  if (desired !== undefined) {
+    try {
+      await rpc.startAudio();
+    } catch (e) {
+      console.error('startAudio failed', e);
+    }
+    const part = state.selectedSoundPart ?? 0;
+    try {
+      await rpc.noteOn(part, desired, 0.9);
+    } catch (e) {
+      console.error('noteOn failed', e);
+    }
+  }
+
+  // Finally, update the state to reflect the new playing note.
+  set({ currentPreview: desired });
 };
 
 state.forceStopPreview = async () => {
@@ -1151,12 +1167,12 @@ async function applyPreset(preset: any) {
     send(`resonator/pitch`, { F32: p.resonator.pitch ?? 0.0 });
     send(`resonator/decay`, { F32: p.resonator.decay ?? 0.5 });
     send(`resonator/brightness`, { F32: p.resonator.brightness ?? 0.5 });
-    send(`resonator/bank_size`, { I32: p.resonator.bank_size ?? 8 });
-    send(`resonator/mode`, { I32: p.resonator.mode ?? 0 });
+    send(`resonator/bank_size`, { I32: Math.round(p.resonator.bank_size ?? 8) });
+    send(`resonator/mode`, { I32: Math.round(p.resonator.mode ?? 0) });
     send(`resonator/inharmonicity`, { F32: p.resonator.inharmonicity ?? 0.1 });
     send(`resonator/feedback`, { F32: p.resonator.feedback ?? 0.3 });
     send(`resonator/drive`, { F32: p.resonator.drive ?? 0.0 });
-    send(`resonator/exciter_type`, { I32: p.resonator.exciter_type ?? 0 });
+    send(`resonator/exciter_type`, { I32: Math.round(p.resonator.exciter_type ?? 0) });
     send(`resonator/exciter_amount`, { F32: p.resonator.exciter_amount ?? 0.5 });
     send(`resonator/noise_color`, { F32: p.resonator.noise_color ?? 0.0 });
     send(`resonator/strike_rate`, { F32: p.resonator.strike_rate ?? 0.0 });
@@ -1294,12 +1310,12 @@ async function preloadAndReplayProjectPresets(project: string) {
         await set(`resonator/pitch`, { F32: p.resonator.pitch ?? 0.0 });
         await set(`resonator/decay`, { F32: p.resonator.decay ?? 0.5 });
         await set(`resonator/brightness`, { F32: p.resonator.brightness ?? 0.5 });
-        await set(`resonator/bank_size`, { I32: p.resonator.bank_size ?? 8 });
-        await set(`resonator/mode`, { I32: p.resonator.mode ?? 0 });
+        await set(`resonator/bank_size`, { I32: Math.round(p.resonator.bank_size ?? 8) });
+        await set(`resonator/mode`, { I32: Math.round(p.resonator.mode ?? 0) });
         await set(`resonator/inharmonicity`, { F32: p.resonator.inharmonicity ?? 0.1 });
         await set(`resonator/feedback`, { F32: p.resonator.feedback ?? 0.0 });
         await set(`resonator/drive`, { F32: p.resonator.drive ?? 0.0 });
-        await set(`resonator/exciter_type`, { I32: p.resonator.exciter_type ?? 0 });
+        await set(`resonator/exciter_type`, { I32: Math.round(p.resonator.exciter_type ?? 0) });
         await set(`resonator/exciter_amount`, { F32: p.resonator.exciter_amount ?? 0.5 });
         await set(`resonator/noise_color`, { F32: p.resonator.noise_color ?? 0.5 });
         await set(`resonator/strike_rate`, { F32: p.resonator.strike_rate ?? 1.0 });
