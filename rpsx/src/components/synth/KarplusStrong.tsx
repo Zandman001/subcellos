@@ -6,13 +6,19 @@ export const KarplusStrong: React.FC = () => {
   const s = useBrowser() as any;
   const ui = s.getSynthUI();
   const part = s.selectedSoundPart ?? 0;
+  const selectedSoundId = s.selectedSoundId;
+  const moduleKindById = s.moduleKindById;
   
-  // Ensure module is set to KarplusStrong when page is active
+  // Ensure module is set to KarplusStrong when page is active, but only if it's not already KarplusStrong
   React.useEffect(() => { 
     try { 
-      s.setSynthParam(`part/${part}/module_kind`, 2, 'I32'); 
+      if (!selectedSoundId) return;
+      const moduleKind = moduleKindById?.[selectedSoundId];
+      if (moduleKind !== 'karplus') {
+        s.setSynthParam(`part/${part}/module_kind`, 2, 'I32'); 
+      }
     } catch {} 
-  }, [part]);
+  }, [part, selectedSoundId, moduleKindById, s.setSynthParam]);
 
   // Mirror values in UI state; apply robust defaults so NaN/undefined never leak into knobs
   const raw = (ui as any).karplus || {};

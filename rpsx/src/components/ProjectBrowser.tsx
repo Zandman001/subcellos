@@ -64,7 +64,7 @@ export default function ProjectBrowser() {
           color: 'var(--text)',
           boxShadow: '0 0 0 2px var(--bg)',
         }}>
-          {["Analog Synth", "Acid 303", "KarplusStrong", "Sampler", "Drum"].map((name, i) => (
+          {["Analog Synth", "Acid 303", "KarplusStrong", "ResonatorBank", "Sampler", "Drum"].map((name, i) => (
             <div key={name} style={{
               padding: '6px 8px',
               borderBottom: '1px solid var(--line)',

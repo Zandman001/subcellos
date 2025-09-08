@@ -452,7 +452,7 @@ struct ParamPaths {
   resonator_strike_rate: u64,
   resonator_stereo_width: u64,
   resonator_randomize: u64,
-  resonator_velocity_sens: u64,
+  resonator_body_blend: u64,
   resonator_output_gain: u64,
 }
 
@@ -516,7 +516,7 @@ impl ParamPaths {
       resonator_strike_rate: p("resonator/strike_rate"),
       resonator_stereo_width: p("resonator/stereo_width"),
       resonator_randomize: p("resonator/randomize"),
-      resonator_velocity_sens: p("resonator/velocity_sens"),
+      resonator_body_blend: p("resonator/body_blend"),
       resonator_output_gain: p("resonator/output_gain"),
     }
   }
@@ -567,7 +567,7 @@ impl Part {
         strike_rate: hash_path(&format!("part/{}/resonator/strike_rate", idx)),
         stereo_width: hash_path(&format!("part/{}/resonator/stereo_width", idx)),
         randomize: hash_path(&format!("part/{}/resonator/randomize", idx)),
-        velocity_sens: hash_path(&format!("part/{}/resonator/velocity_sens", idx)),
+        body_blend: hash_path(&format!("part/{}/resonator/body_blend", idx)),
         output_gain: hash_path(&format!("part/{}/resonator/output_gain", idx)),
       },
       delay1: ModDelay::new(1500.0, sr), delay2: ModDelay::new(1500.0, sr),

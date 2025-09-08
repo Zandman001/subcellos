@@ -6,8 +6,19 @@ export default function Acid303() {
   const s = useBrowser() as any;
   const ui = s.getSynthUI();
   const part = s.selectedSoundPart ?? 0;
-  // Ensure module is set to Acid when page is active
-  React.useEffect(() => { try { s.setSynthParam(`part/${part}/module_kind`, 1, 'I32'); } catch {} }, [part]);
+  const selectedSoundId = s.selectedSoundId;
+  const moduleKindById = s.moduleKindById;
+  
+  // Ensure module is set to Acid when page is active, but only if it's not already Acid
+  React.useEffect(() => { 
+    try { 
+      if (!selectedSoundId) return;
+      const moduleKind = moduleKindById?.[selectedSoundId];
+      if (moduleKind !== 'acid') {
+        s.setSynthParam(`part/${part}/module_kind`, 1, 'I32'); 
+      }
+    } catch {} 
+  }, [part, selectedSoundId, moduleKindById, s.setSynthParam]);
   // Local paging: W -> first 4, R -> second 4
   const [page, setPage] = React.useState<0|1>(0);
   React.useEffect(() => {

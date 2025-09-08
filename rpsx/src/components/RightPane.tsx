@@ -11,6 +11,7 @@ import SynthMIXER from "./synth/SynthMIXER";
 import SynthEQView from "./synth/SynthEQView";
 import Acid303 from "./synth/Acid303";
 import { KarplusStrong } from "./synth/KarplusStrong";
+import ResonatorBank from "./synth/ResonatorBank";
 import WaterDroplets from "./effects/WaterDroplets";
 
 export default function RightPane({ view }: { view: ViewName }) {
@@ -119,6 +120,7 @@ function renderSynthPage(label: string): React.ReactNode {
   switch (label) {
     case 'ACID303': return <Acid303 />;
     case 'KARPLUS': return <KarplusStrong />;
+    case 'RESONATOR': return <ResonatorBank />;
     case 'OSC': return <SynthOSC />;
     case 'ENV': return <SynthENV />;
     case 'FILTER': return <SynthFILTER />;

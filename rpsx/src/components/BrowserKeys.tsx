@@ -19,6 +19,7 @@ export default function BrowserKeys() {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (target as any).isContentEditable) return;
       }
       const k = e.key;
+      
       // While picker is open, only E/D/Q/S should act
       if (st.level === 'pattern' && st.modulePickerOpen) {
         if (k === 'e') { st.moveUp(); e.preventDefault(); return; }

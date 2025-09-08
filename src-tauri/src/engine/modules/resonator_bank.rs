@@ -12,10 +12,12 @@ fn cents_to_ratio(c: f32) -> f32 { 2f32.powf(c / 1200.0) }
 fn db_to_gain(db: f32) -> f32 { 10f32.powf(db / 20.0) }
 
 // Simple exciter for generating different types of excitation
-#[derive(Clone)]
-pub struct Exciter {
+#[derive(Clone, Copy)]
+struct Exciter {
     noise_state: u32,
     impulse_counter: u32,
+    noise_lp: f32,
+    strike_counter: u32,
 }
 
 impl Exciter {
@@ -23,6 +25,8 @@ impl Exciter {
         Self {
             noise_state: 1,
             impulse_counter: 0,
+            noise_lp: 0.0,
+            strike_counter: 0,
         }
     }
 
@@ -50,13 +54,23 @@ impl Exciter {
                 }
             },
             1 => { // Noise
-                let noise = self.white_noise() * amount;
-                // Apply color filtering
-                if noise_color.abs() > 0.01 {
-                    // Simple one-pole filter for color
-                    signal = noise; // For now, just pass through
+                signal = self.white_noise() * amount;
+            },
+            2 => {
+                // Click exciter - brief burst of high frequency content
+                if triggered {
+                    self.impulse_counter = (sr * 0.001).max(1.0) as u32; // 1ms click
+                }
+                
+                if self.impulse_counter > 0 {
+                    self.impulse_counter -= 1;
+                    // Generate click with alternating polarity for high-freq content
+                    let click_sample = if self.impulse_counter % 2 == 0 { 1.0 } else { -1.0 };
+                    // Apply exponential decay over the click duration
+                    let decay_factor = self.impulse_counter as f32 / (sr * 0.001).max(1.0);
+                    signal = click_sample * amount * 8.0 * decay_factor;
                 } else {
-                    signal = noise;
+                    signal = 0.0;
                 }
             },
             _ => {
@@ -64,10 +78,33 @@ impl Exciter {
             }
         }
         
-        // Auto-retrigger (strike rate)
+        // Apply color filtering to all exciter types - noise_color ranges from -1 to +1
+        if noise_color.abs() > 0.01 {
+            // More aggressive filtering for audible effect
+            let alpha = 0.05 + noise_color.abs() * 0.6; // 0.05 to 0.65 filter strength
+            if noise_color > 0.0 {
+                // Positive = highpass (brighter) - let high frequencies through
+                self.noise_lp = self.noise_lp * (1.0 - alpha) + signal * alpha;
+                signal = signal - self.noise_lp; // Highpass
+            } else {
+                // Negative = lowpass (darker) - smooth out high frequencies  
+                self.noise_lp = self.noise_lp * (1.0 - alpha) + signal * alpha;
+                signal = self.noise_lp; // Lowpass
+            }
+        }
+        
+        // Auto-retrigger (strike rate) - creates rhythmic re-excitation
         if strike_rate > 0.01 {
-            // Simple auto-trigger implementation
-            signal += amount * 0.1; // Small continuous excitation
+            // Convert strike rate to Hz (0-1 maps to 0.5-10 Hz for more musical control)
+            let strike_hz = 0.5 + strike_rate * 9.5;
+            let samples_per_strike = (sr / strike_hz).max(1.0);
+            
+            // Use separate strike counter
+            self.strike_counter = (self.strike_counter + 1) % samples_per_strike as u32;
+            if self.strike_counter == 0 {
+                // Generate more noticeable periodic excitation bursts
+                signal += amount * 0.7; // Stronger auto-excitation for audible effect
+            }
         }
         
         signal
@@ -138,6 +175,19 @@ pub struct ResonatorVoice {
     
     // Output processing
     limiter_state: f32,
+    
+    // Parameter caching to avoid expensive recalculations
+    last_pitch: f32,
+    last_decay: f32,
+    last_brightness: f32,
+    last_bank_size: usize,
+    last_mode: i32,
+    last_inharmonicity: f32,
+    last_randomize: f32,
+    last_body_blend: f32,
+    
+    // Body blend partial weights (precomputed for performance)
+    partial_weights: Vec<f32>,
 }
 
 impl ResonatorVoice {
@@ -154,6 +204,18 @@ impl ResonatorVoice {
             resonator_gains: vec![0.0; max_resonators],
             exciter: Exciter::new(),
             limiter_state: 0.0,
+            // Initialize cache with invalid values to force first update
+            last_pitch: -999.0,
+            last_decay: -999.0,
+            last_brightness: -999.0,
+            last_bank_size: 999,
+            last_mode: -999,
+            last_inharmonicity: -999.0,
+            last_randomize: -999.0,
+            last_body_blend: -999.0,
+            
+            // Initialize partial weights
+            partial_weights: vec![1.0; max_resonators],
         }
     }
 
@@ -173,6 +235,36 @@ impl ResonatorVoice {
         self.gate = false;
     }
 
+    // Compute partial weights for body blend between "stringy" and "plate/glass" materials
+    fn compute_partial_weights(&mut self, body_blend: f32, bank_size: usize) {
+        for i in 0..bank_size {
+            let partial = i as f32 + 1.0;
+            
+            // String curve: 1/(i+1)^1.2 with slight odd-harmonic bias
+            let string_weight = 1.0 / partial.powf(1.2);
+            let odd_bias = if i % 2 == 0 { 1.05 } else { 1.0 }; // Slight boost for odd harmonics (1st, 3rd, 5th...)
+            let string_weight = string_weight * odd_bias;
+            
+            // Plate curve: 1/(i+1)^0.6 with high-shelf boost for higher partials
+            let plate_weight = 1.0 / partial.powf(0.6);
+            let high_shelf = if i >= 7 { 1.5 } else { 1.0 }; // +3dB boost for partial 8+ (index 7+)
+            let plate_weight = plate_weight * high_shelf;
+            
+            // Interpolate between curves
+            let weight = string_weight * (1.0 - body_blend) + plate_weight * body_blend;
+            self.partial_weights[i] = weight;
+        }
+        
+        // Normalize weights so sum approximately equals bank_size for consistent loudness
+        let sum: f32 = self.partial_weights[0..bank_size].iter().sum();
+        if sum > 0.001 {
+            let normalization = bank_size as f32 / sum;
+            for i in 0..bank_size {
+                self.partial_weights[i] *= normalization;
+            }
+        }
+    }
+
     pub fn render(&mut self, params: &ParamStore, param_keys: &ResonatorParamKeys) -> f32 {
         // Get parameters
         let pitch_offset = params.get_f32_h(param_keys.pitch, 0.0); // ±1 for ±48 semitones
@@ -187,23 +279,61 @@ impl ResonatorVoice {
         let exciter_amount = params.get_f32_h(param_keys.exciter_amount, 0.5);
         let noise_color = params.get_f32_h(param_keys.noise_color, 0.0);
         let strike_rate = params.get_f32_h(param_keys.strike_rate, 0.0);
-        let velocity_sens = params.get_f32_h(param_keys.velocity_sens, 0.5);
+        let _stereo_width = params.get_f32_h(param_keys.stereo_width, 0.0);
+        let randomize = params.get_f32_h(param_keys.randomize, 0.0);
+        let body_blend = params.get_f32_h(param_keys.body_blend, 0.4);
         let output_gain_db = params.get_f32_h(param_keys.output_gain, 0.0);
 
         // Calculate base frequency with pitch offset
         let note_freq = midi_to_freq(self.note);
         let base_freq = note_freq * cents_to_ratio(pitch_offset * 4800.0); // ±48 semitones
         
-        // Update resonator bank based on mode
-        match mode {
+        // Only update resonator frequencies if parameters have changed (performance optimization)
+        let params_changed = pitch_offset != self.last_pitch || 
+                            decay != self.last_decay ||
+                            brightness != self.last_brightness ||
+                            bank_size != self.last_bank_size ||
+                            mode != self.last_mode ||
+                            inharmonicity != self.last_inharmonicity ||
+                            randomize != self.last_randomize ||
+                            body_blend != self.last_body_blend;
+        
+        if params_changed || self.just_triggered {
+            // Update cache
+            self.last_pitch = pitch_offset;
+            self.last_decay = decay;
+            self.last_brightness = brightness;
+            self.last_bank_size = bank_size;
+            self.last_mode = mode;
+            self.last_inharmonicity = inharmonicity;
+            self.last_randomize = randomize;
+            self.last_body_blend = body_blend;
+            
+            // Compute partial weights for body blend
+            self.compute_partial_weights(body_blend, bank_size);
+            
+            // Update resonator bank based on mode
+            match mode {
             0 => { // Modal mode - harmonic resonators
                 for i in 0..bank_size {
                     let partial = i as f32 + 1.0;
                     let harmonic_freq = base_freq * partial;
                     
                     // Add inharmonicity (detunes higher harmonics)
-                    let detune_cents = inharmonicity * partial * partial * 10.0;
-                    let freq = harmonic_freq * cents_to_ratio(detune_cents);
+                    // inharmonicity comes as 0-2 range from UI, scale appropriately
+                    let detune_cents = inharmonicity * partial * partial * 5.0; // Reduced scaling
+                    
+                    // Add randomization to frequency
+                    let random_detune = if randomize > 0.01 {
+                        // Use voice note as seed for consistent randomness per voice
+                        let seed = (self.note as f32 * 17.0 + i as f32 * 23.0) % 1000.0;
+                        let random_factor = (seed.sin() * 2.0 - 1.0) * randomize * 50.0; // ±50 cents max
+                        random_factor
+                    } else {
+                        0.0
+                    };
+                    
+                    let freq = harmonic_freq * cents_to_ratio(detune_cents + random_detune);
                     
                     // Higher partials decay faster (brightness control)
                     let decay_factor = 1.0 - brightness * 0.8 * (i as f32 / bank_size as f32);
@@ -240,12 +370,11 @@ impl ResonatorVoice {
                 }
             }
         }
+        } // Close the if params_changed block
         
-        // Generate excitation with velocity sensitivity
-        let vel_factor = 1.0 - velocity_sens + velocity_sens * self.velocity;
-        let exc_amount = exciter_amount * vel_factor;
+        // Generate excitation (velocity now only affects note-on amplitude via global MIDI routing)
         let excitation = self.exciter.process(
-            exciter_type, exc_amount, noise_color, 
+            exciter_type, exciter_amount, noise_color, 
             strike_rate, self.sr, self.just_triggered
         );
         
@@ -253,8 +382,11 @@ impl ResonatorVoice {
         
         // Apply drive/saturation
         let driven_excitation = if drive > 0.01 {
-            let gain = 1.0 + drive * 10.0;
-            (excitation * gain).tanh() / gain.tanh()
+            // Simple but effective drive: 0-1 maps to 1x-5x gain
+            let gain = 1.0 + drive * 4.0;
+            let driven = excitation * gain;
+            // Simple tanh saturation - predictable and musical
+            driven.tanh()
         } else {
             excitation
         };
@@ -263,19 +395,28 @@ impl ResonatorVoice {
         let mut output = 0.0;
         
         if mode == 1 && bank_size > 0 { // Comb mode with feedback
-            let resonator_out = self.resonators[0].process(driven_excitation + output * feedback.min(0.95));
-            output = resonator_out;
-        } else { // Modal mode
+            // Scale feedback to be more audible (0-1 UI range to 0-0.98 for stability)
+            let scaled_feedback = feedback * 0.98;
+            let resonator_out = self.resonators[0].process(driven_excitation + output * scaled_feedback);
+            // Apply simple spectral tilt based on body blend (0 = warmer, 1 = brighter)
+            let body_tilt = 0.7 + body_blend * 0.6; // Range from 0.7 to 1.3
+            output = resonator_out * body_tilt;
+        } else { // Modal mode - feedback adds inter-resonator coupling
+            let scaled_feedback = feedback * 0.3; // Lower feedback for stability in modal mode
             for i in 0..bank_size {
                 if self.resonator_gains[i] > 0.001 {
-                    let resonator_out = self.resonators[i].process(driven_excitation);
-                    output += resonator_out * self.resonator_gains[i];
+                    // Add feedback from current output to create coupling between resonators
+                    let input = driven_excitation + output * scaled_feedback;
+                    let resonator_out = self.resonators[i].process(input);
+                    // Apply both resonator gain and body blend weight
+                    let combined_gain = self.resonator_gains[i] * self.partial_weights[i];
+                    output += resonator_out * combined_gain;
                 }
             }
         }
         
-        // Apply output gain
-        output *= db_to_gain(output_gain_db);
+        // Apply output gain (±1 range for ±24dB)
+        output *= db_to_gain(output_gain_db * 24.0);
         
         // Update limiter state for voice activity detection
         self.limiter_state = output;
@@ -302,7 +443,7 @@ pub struct ResonatorParamKeys {
     pub strike_rate: u64,
     pub stereo_width: u64,
     pub randomize: u64,
-    pub velocity_sens: u64,
+    pub body_blend: u64,
     pub output_gain: u64,
 }
 
