@@ -306,6 +306,7 @@ pub fn create_sound(project_name: String, sound_type: String) -> Result<Sound, S
     "synth" => ("Synth".to_string(), "analog synth".to_string()),
     "acid" | "acid303" => ("Synth".to_string(), "acid 303".to_string()),
     "karplus" => ("Synth".to_string(), "karplus string".to_string()),
+    "resonator" => ("Synth".to_string(), "resonator bank".to_string()),
     "sampler" => ("Sampler".to_string(), "sampler".to_string()),
     "drum" => ("Drum".to_string(), "drum".to_string()),
     other => {
@@ -314,6 +315,7 @@ pub fn create_sound(project_name: String, sound_type: String) -> Result<Sound, S
       if l == "synth" || l == "Synth".to_string() { ("Synth".to_string(), "analog synth".to_string()) }
       else if l == "Acid" || l == "Acid303" || l == "acid303" { ("Synth".to_string(), "acid 303".to_string()) }
       else if l == "karplus" || l == "Karplus" { ("Synth".to_string(), "karplus string".to_string()) }
+      else if l == "resonator" || l == "Resonator" { ("Synth".to_string(), "resonator bank".to_string()) }
       else if l == "sampler" || l == "Sampler".to_string() { ("Sampler".to_string(), "sampler".to_string()) }
       else if l == "drum" || l == "Drum".to_string() { ("Drum".to_string(), "drum".to_string()) }
       else { return Err("invalid sound type".to_string()); }
