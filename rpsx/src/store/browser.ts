@@ -450,17 +450,21 @@ state.add = async () => {
           // Build and save default preset immediately, then replay
           const ui = defaultSynthUI();
           ui.oscB.level = 0.0; // default tweak
+          
+          // Update UI state for this new sound so knobs match audio
+          const map = state.synthUIById || {};
+          map[created.id] = ui;
+          set({ synthUIById: { ...map } });
+          
           const preset = uiToSchema(ui);
           try { await fsClient.saveSoundPreset(pn, created.id, preset); } catch (e) { console.error('save default preset failed', e); }
           try { await rpc.startAudio(); } catch(_){}
           try { await applyPreset(preset); } catch(e){ console.error('apply default preset failed', e); }
-          if (t === 'acid') {
-            try { await rpc.setParam(`part/${part}/module_kind`, { I32: 1 } as any); } catch(e) { console.error('set module_kind failed', e); }
-          } else if (t === 'karplus') {
-            try { await rpc.setParam(`part/${part}/module_kind`, { I32: 2 } as any); } catch(e) { console.error('set module_kind failed', e); }
-          } else if (t === 'resonator') {
-            try { await rpc.setParam(`part/${part}/module_kind`, { I32: 3 } as any); } catch(e) { console.error('set module_kind failed', e); }
-          }
+          
+          // Mark preset as applied so it doesn't get reloaded when entering synth level
+          const appliedMap = state._presetApplied || {};
+          appliedMap[created.id] = true;
+          set({ _presetApplied: { ...appliedMap } });
         }
       }
     } catch (e) {
@@ -677,38 +681,20 @@ state.updatePreviewFromPressed = async () => {
   const desired = pressed.q && pressed.a ? 72 : pressed.q ? 60 : pressed.a ? 48 : undefined;
   const cur = state.currentPreview;
 
-  if (desired === cur) {
-    // The correct note is already playing (or no note is playing). Do nothing.
-    return;
-  }
+  if (desired === cur) return;
 
-  // If a note is currently playing, turn it off first.
-  if (cur !== undefined) {
-    const part = state.selectedSoundPart ?? 0;
-    try {
-      await rpc.noteOff(part, cur);
-    } catch (e) {
-      console.error('noteOff failed', e);
+  try {
+    if (cur !== undefined) {
+      await rpc.noteOff(state.selectedSoundPart ?? 0, cur);
     }
-  }
-
-  // If a new note is desired, play it.
-  if (desired !== undefined) {
-    try {
+    if (desired !== undefined) {
       await rpc.startAudio();
-    } catch (e) {
-      console.error('startAudio failed', e);
+      await rpc.noteOn(state.selectedSoundPart ?? 0, desired, 0.9);
     }
-    const part = state.selectedSoundPart ?? 0;
-    try {
-      await rpc.noteOn(part, desired, 0.9);
-    } catch (e) {
-      console.error('noteOn failed', e);
-    }
+    set({ currentPreview: desired });
+  } catch (e) {
+    console.error("Preview note error", e);
   }
-
-  // Finally, update the state to reflect the new playing note.
-  set({ currentPreview: desired });
 };
 
 state.forceStopPreview = async () => {
@@ -822,7 +808,7 @@ function defaultSynthUI(): SynthUI {
     },
     // Add default ResonatorBank parameters
     resonator: {
-      pitch: 0.0,
+      pitch: 0.5,
       decay: 0.5,
       brightness: 0.5,
       bank_size: 8,
@@ -833,7 +819,7 @@ function defaultSynthUI(): SynthUI {
       exciter_type: 0,
       exciter_amount: 0.5,
       noise_color: 0.5,
-      strike_rate: 1.0,
+      strike_rate: 0.0,
       stereo_width: 0.5,
       randomize: 0.0,
       body_blend: 0.4,
@@ -956,6 +942,24 @@ function uiToSchema(ui: SynthUI) {
         excite: (ui as any).karplus.excite ?? 0.7,
         tune: (ui as any).karplus.tune ?? 0.0,
       } : undefined,
+      resonator: (ui as any).resonator ? {
+        pitch: (ui as any).resonator.pitch ?? 0.5,
+        decay: (ui as any).resonator.decay ?? 0.5,
+        brightness: (ui as any).resonator.brightness ?? 0.5,
+        bank_size: Math.round((ui as any).resonator.bank_size ?? 8),
+        mode: Math.round((ui as any).resonator.mode ?? 0),
+        inharmonicity: (ui as any).resonator.inharmonicity ?? 0.1,
+        feedback: (ui as any).resonator.feedback ?? 0.0,
+        drive: (ui as any).resonator.drive ?? 0.0,
+        exciter_type: Math.round((ui as any).resonator.exciter_type ?? 0),
+        exciter_amount: (ui as any).resonator.exciter_amount ?? 0.5,
+        noise_color: (ui as any).resonator.noise_color ?? 0.5,
+        strike_rate: (ui as any).resonator.strike_rate ?? 0.0,
+        stereo_width: (ui as any).resonator.stereo_width ?? 0.5,
+        randomize: (ui as any).resonator.randomize ?? 0.0,
+        body_blend: (ui as any).resonator.body_blend ?? 0.4,
+        output_gain: (ui as any).resonator.output_gain ?? 0.7,
+      } : undefined,
     }
   };
 }
@@ -1049,6 +1053,24 @@ async function applyPreset(preset: any) {
       damp: p.karplus?.damp ?? 0.5,
       excite: p.karplus?.excite ?? 0.7,
       tune: p.karplus?.tune ?? 0.0,
+    },
+    resonator: {
+      pitch: p.resonator?.pitch ?? 0.5,
+      decay: p.resonator?.decay ?? 0.5,
+      brightness: p.resonator?.brightness ?? 0.5,
+      bank_size: p.resonator?.bank_size ?? 8,
+      mode: p.resonator?.mode ?? 0,
+      inharmonicity: p.resonator?.inharmonicity ?? 0.1,
+      feedback: p.resonator?.feedback ?? 0.0,
+      drive: p.resonator?.drive ?? 0.0,
+      exciter_type: p.resonator?.exciter_type ?? 0,
+      exciter_amount: p.resonator?.exciter_amount ?? 0.5,
+      noise_color: p.resonator?.noise_color ?? 0.5,
+      strike_rate: p.resonator?.strike_rate ?? 0.0,
+      stereo_width: p.resonator?.stereo_width ?? 0.5,
+      randomize: p.resonator?.randomize ?? 0.0,
+      body_blend: p.resonator?.body_blend ?? 0.4,
+      output_gain: p.resonator?.output_gain ?? 0.7,
     },
   }));
   // Replay to engine
@@ -1164,22 +1186,22 @@ async function applyPreset(preset: any) {
   }
   // ResonatorBank macros
   if (p.resonator) {
-    send(`resonator/pitch`, { F32: p.resonator.pitch ?? 0.0 });
+    send(`resonator/pitch`, { F32: (p.resonator.pitch ?? 0.5) * 2 - 1 }); // Transform to ±1 range
     send(`resonator/decay`, { F32: p.resonator.decay ?? 0.5 });
     send(`resonator/brightness`, { F32: p.resonator.brightness ?? 0.5 });
     send(`resonator/bank_size`, { I32: Math.round(p.resonator.bank_size ?? 8) });
     send(`resonator/mode`, { I32: Math.round(p.resonator.mode ?? 0) });
     send(`resonator/inharmonicity`, { F32: p.resonator.inharmonicity ?? 0.1 });
-    send(`resonator/feedback`, { F32: p.resonator.feedback ?? 0.3 });
+    send(`resonator/feedback`, { F32: p.resonator.feedback ?? 0.0 });
     send(`resonator/drive`, { F32: p.resonator.drive ?? 0.0 });
     send(`resonator/exciter_type`, { I32: Math.round(p.resonator.exciter_type ?? 0) });
     send(`resonator/exciter_amount`, { F32: p.resonator.exciter_amount ?? 0.5 });
-    send(`resonator/noise_color`, { F32: p.resonator.noise_color ?? 0.0 });
+    send(`resonator/noise_color`, { F32: p.resonator.noise_color ?? 0.5 });
     send(`resonator/strike_rate`, { F32: p.resonator.strike_rate ?? 0.0 });
-    send(`resonator/stereo_width`, { F32: p.resonator.stereo_width ?? 0.0 });
+    send(`resonator/stereo_width`, { F32: p.resonator.stereo_width ?? 0.5 });
     send(`resonator/randomize`, { F32: p.resonator.randomize ?? 0.0 });
     send(`resonator/body_blend`, { F32: p.resonator.body_blend ?? 0.4 });
-    send(`resonator/output_gain`, { F32: p.resonator.output_gain ?? 0.0 });
+    send(`resonator/output_gain`, { F32: p.resonator.output_gain ?? 0.7 });
   }
   // Throttle slightly to avoid spamming
   for (const c of calls) { try { await c; } catch(e) { console.error('apply preset set_param failed', e); } }
@@ -1216,11 +1238,13 @@ async function preloadAndReplayProjectPresets(project: string) {
     const id = s.id; const part = (s as any).part_index ?? 0;
     const preset = await fsClient.loadSoundPreset(project, id);
     if (!preset || preset.schema !== 1) continue;
+    
     // Apply to engine only (do not touch current UI selection here)
     try { await rpc.startAudio(); } catch {}
     const pf = `part/${part}/`;
     const p = preset.params || {};
     const set = (path: string, v: any) => rpc.setParam(pf + path, v);
+    
     try {
       if (typeof p.module_kind === 'number') { await set(`module_kind`, { I32: p.module_kind }); }
       await set(`oscA/shape`, { I32: p.oscA?.shape ?? 0 });
@@ -1251,13 +1275,11 @@ async function preloadAndReplayProjectPresets(project: string) {
       await set(`lfo/rate_hz`, { F32: p.lfo?.rate_hz ?? 1.0 });
       await set(`lfo/amount`, { F32: p.lfo?.amount ?? 1.0 });
       await set(`lfo/drive`, { F32: p.lfo?.drive ?? 0 });
-      // Mod matrix LFO rows
       for (let i=0;i<5;i++) {
         const lrow = p.mod?.lfo?.[i] || { dest:0, amount:1 };
         await set(`mod/lfo/row${i}/dest`, { I32: lrow.dest ?? 0 });
         await set(`mod/lfo/row${i}/amount`, { F32: (lrow.amount ?? 1.0) as number });
       }
-      // Mod matrix ENV rows
       for (let i=0;i<5;i++) {
         const erow = p.mod?.env?.[i] || { dest:0, amount:1 };
         await set(`mod/env/row${i}/dest`, { I32: erow.dest ?? 0 });
@@ -1307,7 +1329,7 @@ async function preloadAndReplayProjectPresets(project: string) {
         await set(`ks/tune`, { F32: p.karplus.tune ?? 0.0 });
       }
       if (p.resonator) {
-        await set(`resonator/pitch`, { F32: p.resonator.pitch ?? 0.0 });
+        await set(`resonator/pitch`, { F32: (p.resonator.pitch ?? 0.5) * 2 - 1 }); // Transform to ±1 range
         await set(`resonator/decay`, { F32: p.resonator.decay ?? 0.5 });
         await set(`resonator/brightness`, { F32: p.resonator.brightness ?? 0.5 });
         await set(`resonator/bank_size`, { I32: Math.round(p.resonator.bank_size ?? 8) });
@@ -1318,7 +1340,7 @@ async function preloadAndReplayProjectPresets(project: string) {
         await set(`resonator/exciter_type`, { I32: Math.round(p.resonator.exciter_type ?? 0) });
         await set(`resonator/exciter_amount`, { F32: p.resonator.exciter_amount ?? 0.5 });
         await set(`resonator/noise_color`, { F32: p.resonator.noise_color ?? 0.5 });
-        await set(`resonator/strike_rate`, { F32: p.resonator.strike_rate ?? 1.0 });
+        await set(`resonator/strike_rate`, { F32: p.resonator.strike_rate ?? 0.0 });
         await set(`resonator/stereo_width`, { F32: p.resonator.stereo_width ?? 0.5 });
         await set(`resonator/randomize`, { F32: p.resonator.randomize ?? 0.0 });
         await set(`resonator/body_blend`, { F32: p.resonator.body_blend ?? 0.4 });
