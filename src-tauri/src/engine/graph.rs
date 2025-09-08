@@ -341,9 +341,13 @@ pub struct Part {
   // Modulated delay lines for chorus/flanger
   delay1: ModDelay,
   delay2: ModDelay,
+  delay3: ModDelay,
+  delay4: ModDelay,
   // Simple delays for explicit TIME/FEEDBACK
   sdelay1: SimpleDelay,
   sdelay2: SimpleDelay,
+  sdelay3: SimpleDelay,
+  sdelay4: SimpleDelay,
   fx1_reverb: Option<Freeverb>,
   fx2_reverb: Option<Freeverb>,
   fx3_reverb: Option<Freeverb>,
@@ -509,7 +513,9 @@ impl Part {
         tune: hash_path(&format!("part/{}/ks/tune", idx)),
       },
       delay1: ModDelay::new(1500.0, sr), delay2: ModDelay::new(1500.0, sr),
+      delay3: ModDelay::new(1500.0, sr), delay4: ModDelay::new(1500.0, sr),
       sdelay1: SimpleDelay::new(1200.0, sr), sdelay2: SimpleDelay::new(1200.0, sr),
+      sdelay3: SimpleDelay::new(1200.0, sr), sdelay4: SimpleDelay::new(1200.0, sr),
       fx1_reverb: None, fx2_reverb: None, fx3_reverb: None, fx4_reverb: None,
       fx1_crusher: None, fx2_crusher: None, fx3_crusher: None, fx4_crusher: None,
       fx1_wet_lp_l: OnePoleLP::new(), fx1_wet_lp_r: OnePoleLP::new(),
@@ -559,12 +565,16 @@ impl Part {
     if module == 1 {
       // Acid303 mono voice sample
       let s = self.acid.render_one(params, &self.acid_keys);
-      // Early-out if dry is silent and both FX mixes are ~zero (no tails needed)
+      // Early-out if dry is silent and all FX mixes are ~zero (no tails needed)
       let fx1_t_peek = params.get_i32_h(self.paths.fx1_type, 0);
       let fx1_mix_peek = params.get_f32_h(self.paths.fx1_p3, 0.0).clamp(0.0, 1.0);
       let fx2_t_peek = params.get_i32_h(self.paths.fx2_type, 0);
       let fx2_mix_peek = params.get_f32_h(self.paths.fx2_p3, 0.0).clamp(0.0, 1.0);
-      if s.abs() < 1e-9 && (fx1_t_peek <= 0 || fx1_mix_peek <= 0.0005) && (fx2_t_peek <= 0 || fx2_mix_peek <= 0.0005) {
+      let fx3_t_peek = params.get_i32_h(self.paths.fx3_type, 0);
+      let fx3_mix_peek = params.get_f32_h(self.paths.fx3_p3, 0.0).clamp(0.0, 1.0);
+      let fx4_t_peek = params.get_i32_h(self.paths.fx4_type, 0);
+      let fx4_mix_peek = params.get_f32_h(self.paths.fx4_p3, 0.0).clamp(0.0, 1.0);
+      if s.abs() < 1e-9 && (fx1_t_peek <= 0 || fx1_mix_peek <= 0.0005) && (fx2_t_peek <= 0 || fx2_mix_peek <= 0.0005) && (fx3_t_peek <= 0 || fx3_mix_peek <= 0.0005) && (fx4_t_peek <= 0 || fx4_mix_peek <= 0.0005) {
         return (0.0, 0.0);
       }
       // FX chain (identical to Analog)
@@ -683,7 +693,7 @@ impl Part {
       if fx3_t <= 0 || fx3_mix <= 0.0005 { if fx3_t <= 0 { self.fx3_reverb = None; self.fx3_crusher = None; } }
       else if fx3_t == 2 {
         let time_ms = 10.0 + fx3_p1.clamp(0.0, 1.0) * 990.0; let fb = (fx3_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
-        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay1.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx3_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]);
+        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay3.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx3_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]);
         self.fx3_reverb = None; self.fx3_crusher = None;
       } else if fx3_t == 1 {
         if self.fx3_reverb.is_none() {
@@ -702,7 +712,7 @@ impl Part {
         if fx3_t == 3 {
           let (wet, _) = self.phaser3.process_one(out, out, self.sr, rate, fx3_p2, 1.0); out = out * (1.0 - fx3_mix) + wet * fx3_mix;
         } else {
-          let base_ms = match fx3_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay1.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx3_mix) + wet * fx3_mix;
+          let base_ms = match fx3_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay3.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx3_mix) + wet * fx3_mix;
         }
         self.fx3_reverb = None; self.fx3_crusher = None;
       } else if fx3_t == 6 {
@@ -727,7 +737,7 @@ impl Part {
       if fx4_t <= 0 || fx4_mix <= 0.0005 { if fx4_t <= 0 { self.fx4_reverb = None; self.fx4_crusher = None; } }
       else if fx4_t == 2 {
         let time_ms = 10.0 + fx4_p1.clamp(0.0, 1.0) * 990.0; let fb = (fx4_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
-        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay2.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx4_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]);
+        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay4.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx4_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]);
         self.fx4_reverb = None; self.fx4_crusher = None;
       } else if fx4_t == 1 {
         if self.fx4_reverb.is_none() {
@@ -746,7 +756,7 @@ impl Part {
         if fx4_t == 3 {
           let (wet, _) = self.phaser4.process_one(out, out, self.sr, rate, fx4_p2, 1.0); out = out * (1.0 - fx4_mix) + wet * fx4_mix;
         } else {
-          let base_ms = match fx4_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay2.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx4_mix) + wet * fx4_mix;
+          let base_ms = match fx4_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay4.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx4_mix) + wet * fx4_mix;
         }
         self.fx4_reverb = None; self.fx4_crusher = None;
       } else if fx4_t == 6 {
@@ -788,12 +798,16 @@ impl Part {
     } else if module == 2 {
       // Karplus-Strong mono voice sample
       let s = self.karplus.render_one(params, &self.karplus_keys);
-      // Early-out if dry is silent and both FX mixes are ~zero (no tails needed)
+      // Early-out if dry is silent and all FX mixes are ~zero (no tails needed)
       let fx1_t_peek = params.get_i32_h(self.paths.fx1_type, 0);
       let fx1_mix_peek = params.get_f32_h(self.paths.fx1_p3, 0.0).clamp(0.0, 1.0);
       let fx2_t_peek = params.get_i32_h(self.paths.fx2_type, 0);
       let fx2_mix_peek = params.get_f32_h(self.paths.fx2_p3, 0.0).clamp(0.0, 1.0);
-      if s.abs() < 1e-9 && (fx1_t_peek <= 0 || fx1_mix_peek <= 0.0005) && (fx2_t_peek <= 0 || fx2_mix_peek <= 0.0005) {
+      let fx3_t_peek = params.get_i32_h(self.paths.fx3_type, 0);
+      let fx3_mix_peek = params.get_f32_h(self.paths.fx3_p3, 0.0).clamp(0.0, 1.0);
+      let fx4_t_peek = params.get_i32_h(self.paths.fx4_type, 0);
+      let fx4_mix_peek = params.get_f32_h(self.paths.fx4_p3, 0.0).clamp(0.0, 1.0);
+      if s.abs() < 1e-9 && (fx1_t_peek <= 0 || fx1_mix_peek <= 0.0005) && (fx2_t_peek <= 0 || fx2_mix_peek <= 0.0005) && (fx3_t_peek <= 0 || fx3_mix_peek <= 0.0005) && (fx4_t_peek <= 0 || fx4_mix_peek <= 0.0005) {
         return (0.0, 0.0);
       }
       // FX chain (identical to Analog and Acid)
@@ -906,7 +920,7 @@ impl Part {
       if fx3_t <= 0 || fx3_mix <= 0.0005 { if fx3_t <= 0 { self.fx3_reverb = None; self.fx3_crusher = None; } }
       else if fx3_t == 2 {
         let time_ms = 10.0 + fx3_p1.clamp(0.0, 1.0) * 990.0; let fb = (fx3_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
-        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay1.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx3_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]);
+        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay3.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx3_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]);
         self.fx3_reverb = None; self.fx3_crusher = None;
       } else if fx3_t == 1 {
         if self.fx3_reverb.is_none() {
@@ -925,7 +939,7 @@ impl Part {
         if fx3_t == 3 {
           let (wet, _) = self.phaser3.process_one(out, out, self.sr, rate, fx3_p2, 1.0); out = out * (1.0 - fx3_mix) + wet * fx3_mix;
         } else {
-          let base_ms = match fx3_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay1.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx3_mix) + wet * fx3_mix;
+          let base_ms = match fx3_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay3.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx3_mix) + wet * fx3_mix;
         }
         self.fx3_reverb = None; self.fx3_crusher = None;
       } else if fx3_t == 6 {
@@ -950,7 +964,7 @@ impl Part {
       if fx4_t <= 0 || fx4_mix <= 0.0005 { if fx4_t <= 0 { self.fx4_reverb = None; self.fx4_crusher = None; } }
       else if fx4_t == 2 {
         let time_ms = 10.0 + fx4_p1.clamp(0.0, 1.0) * 990.0; let fb = (fx4_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
-        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay2.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx4_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]);
+        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay4.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx4_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]);
         self.fx4_reverb = None; self.fx4_crusher = None;
       } else if fx4_t == 1 {
         if self.fx4_reverb.is_none() {
@@ -969,7 +983,7 @@ impl Part {
         if fx4_t == 3 {
           let (wet, _) = self.phaser4.process_one(out, out, self.sr, rate, fx4_p2, 1.0); out = out * (1.0 - fx4_mix) + wet * fx4_mix;
         } else {
-          let base_ms = match fx4_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay2.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx4_mix) + wet * fx4_mix;
+          let base_ms = match fx4_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay4.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx4_mix) + wet * fx4_mix;
         }
         self.fx4_reverb = None; self.fx4_crusher = None;
       } else if fx4_t == 6 {
@@ -1041,12 +1055,16 @@ impl Part {
     }
     let mut s = 0.0f32;
     for v in &mut self.voices { if v.is_active() { s += v.render(params, &self.paths, self.sr, &modf); } }
-    // Early-out if dry is silent and both FX mixes are ~zero (no tails needed)
+    // Early-out if dry is silent and all FX mixes are ~zero (no tails needed)
     let fx1_t_peek = params.get_i32_h(self.paths.fx1_type, 0);
     let fx1_mix_peek = params.get_f32_h(self.paths.fx1_p3, 0.0).clamp(0.0, 1.0);
     let fx2_t_peek = params.get_i32_h(self.paths.fx2_type, 0);
     let fx2_mix_peek = params.get_f32_h(self.paths.fx2_p3, 0.0).clamp(0.0, 1.0);
-    if s.abs() < 1e-9 && (fx1_t_peek <= 0 || fx1_mix_peek <= 0.0005) && (fx2_t_peek <= 0 || fx2_mix_peek <= 0.0005) {
+    let fx3_t_peek = params.get_i32_h(self.paths.fx3_type, 0);
+    let fx3_mix_peek = params.get_f32_h(self.paths.fx3_p3, 0.0).clamp(0.0, 1.0);
+    let fx4_t_peek = params.get_i32_h(self.paths.fx4_type, 0);
+    let fx4_mix_peek = params.get_f32_h(self.paths.fx4_p3, 0.0).clamp(0.0, 1.0);
+    if s.abs() < 1e-9 && (fx1_t_peek <= 0 || fx1_mix_peek <= 0.0005) && (fx2_t_peek <= 0 || fx2_mix_peek <= 0.0005) && (fx3_t_peek <= 0 || fx3_mix_peek <= 0.0005) && (fx4_t_peek <= 0 || fx4_mix_peek <= 0.0005) {
       return (0.0, 0.0);
     }
     // FX1
@@ -1275,7 +1293,7 @@ impl Part {
       let time_ms = 10.0 + fx3_p1.clamp(0.0, 1.0) * 990.0;
       let fb = (fx3_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
       let mut lbuf = [out]; let mut rbuf = [out];
-      self.sdelay1.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx3_mix, false);
+      self.sdelay3.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx3_mix, false);
       out = 0.5 * (lbuf[0] + rbuf[0]);
       self.fx3_reverb = None; self.fx3_crusher = None;
     } else if fx3_t == 1 {
@@ -1382,7 +1400,7 @@ impl Part {
       let time_ms = 10.0 + fx4_p1.clamp(0.0, 1.0) * 990.0;
       let fb = (fx4_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
       let mut lbuf = [out]; let mut rbuf = [out];
-      self.sdelay2.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx4_mix, false);
+      self.sdelay4.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx4_mix, false);
       out = 0.5 * (lbuf[0] + rbuf[0]);
       self.fx4_reverb = None; self.fx4_crusher = None;
     } else if fx4_t == 1 {

@@ -118,6 +118,7 @@ pub struct Acid303 {
   in_attack: bool,
   gate: bool,
   just_triggered: bool,
+  current_note: Option<u8>,  // Track current note for proper legato detection
   filt: BiquadLP,
   // Accent smoothing for TB-303 style global accent behavior
   accent_smooth: f32,
@@ -146,6 +147,7 @@ impl Acid303 {
       in_attack: false,
       gate: false,
       just_triggered: false,
+      current_note: None,  // Initialize to no note
       filt: BiquadLP::new(),
       accent_smooth: 0.0,
       accent_smooth_alpha,
@@ -154,13 +156,18 @@ impl Acid303 {
 
   pub fn note_on(&mut self, note: u8, _vel: f32) {
     self.target_freq = midi_to_freq(note);
-    // Legato detection: if already gated, treat as slide (don't retrigger envelope)
-    let was_gated = self.gate;
+    
+    // Legato detection: only treat as legato if:
+    // 1. A note is already gated AND
+    // 2. It's a DIFFERENT note (same note = retrigger)
+    let is_legato = self.gate && self.current_note.is_some() && self.current_note != Some(note);
+    
     self.gate = true;
+    self.current_note = Some(note);
     self.just_triggered = true;
     
-    // Only retrigger envelope if this is a new note (not legato)
-    if !was_gated {
+    // Only retrigger envelope if this is NOT legato
+    if !is_legato {
       self.env = 0.0;  // Start from 0 for attack phase
       self.in_attack = true;
     }
@@ -168,6 +175,7 @@ impl Acid303 {
 
   pub fn note_off(&mut self, _note: u8) {
     self.gate = false;
+    self.current_note = None;  // Clear current note
     self.in_attack = false;  // Exit attack if in progress
   }
 
