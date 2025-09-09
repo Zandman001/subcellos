@@ -1,4 +1,4 @@
-use std::{thread, time::Duration};
+use std::{thread, time::Duration, path::PathBuf, fs};
 
 use crossbeam_channel::Sender;
 use once_cell::sync::OnceCell;
@@ -136,4 +136,121 @@ pub fn debug_ping() -> Result<(), String> {
     });
     Ok(())
   } else { Err("engine not started".into()) }
+}
+
+#[tauri::command]
+pub fn start_recording() -> Result<(), String> {
+  if let Some(tx) = ENGINE_TX.get() {
+    let _ = tx.send(EngineMsg::StartRecording);
+    Ok(())
+  } else { Err("engine not started".into()) }
+}
+
+#[tauri::command]
+pub fn stop_recording() -> Result<String, String> {
+  if let Some(tx) = ENGINE_TX.get() {
+    let _ = tx.send(EngineMsg::StopRecording);
+    // For now, return a mock filename - in real implementation this would
+    // return the actual saved file path
+    Ok("sample1.wav".to_string())
+  } else { Err("engine not started".into()) }
+}
+
+#[tauri::command]
+pub fn list_subsamples() -> Result<Vec<String>, String> {
+  let documents_dir = dirs::document_dir()
+    .ok_or("Could not find documents directory")?;
+  
+  let subsamples_dir = documents_dir.join("subsamples");
+  
+  // Create directory if it doesn't exist
+  if !subsamples_dir.exists() {
+    fs::create_dir_all(&subsamples_dir)
+      .map_err(|e| format!("Failed to create subsamples directory: {}", e))?;
+  }
+  
+  let mut samples = Vec::new();
+  
+  if let Ok(entries) = fs::read_dir(&subsamples_dir) {
+    for entry in entries {
+      if let Ok(entry) = entry {
+        if let Some(filename) = entry.file_name().to_str() {
+          let filename_lower = filename.to_lowercase();
+          if filename_lower.ends_with(".wav") || 
+             filename_lower.ends_with(".aiff") || 
+             filename_lower.ends_with(".flac") || 
+             filename_lower.ends_with(".mp3") {
+            samples.push(filename.to_string());
+          }
+        }
+      }
+    }
+  }
+  
+  samples.sort();
+  Ok(samples)
+}
+
+#[tauri::command]
+pub fn load_sample(part: usize, path: String) -> Result<(), String> {
+  let documents_dir = dirs::document_dir()
+    .ok_or("Could not find documents directory")?;
+  
+  let sample_path = documents_dir.join("subsamples").join(&path);
+  
+  if !sample_path.exists() {
+    return Err(format!("Sample file not found: {}", path));
+  }
+  
+  if let Some(tx) = ENGINE_TX.get() {
+    let path_str = sample_path.to_string_lossy().to_string();
+    let _ = tx.send(EngineMsg::LoadSample { part, path: path_str });
+    Ok(())
+  } else { Err("engine not started".into()) }
+}
+
+#[tauri::command]
+pub fn preview_sample(path: String) -> Result<(), String> {
+  let documents_dir = dirs::document_dir()
+    .ok_or("Could not find documents directory")?;
+  
+  let sample_path = documents_dir.join("subsamples").join(&path);
+  
+  if !sample_path.exists() {
+    return Err(format!("Sample file not found: {}", path));
+  }
+  
+  if let Some(tx) = ENGINE_TX.get() {
+    let path_str = sample_path.to_string_lossy().to_string();
+    let _ = tx.send(EngineMsg::PreviewSample { path: path_str });
+    Ok(())
+  } else { Err("engine not started".into()) }
+}
+
+#[tauri::command]
+pub fn stop_preview() -> Result<(), String> {
+  if let Some(tx) = ENGINE_TX.get() {
+    let _ = tx.send(EngineMsg::StopPreview);
+    Ok(())
+  } else { Err("engine not started".into()) }
+}
+
+#[tauri::command]
+pub fn get_sample_waveform(path: String) -> Result<Vec<f32>, String> {
+  let documents_dir = dirs::document_dir()
+    .ok_or("Could not find documents directory")?;
+  
+  let sample_path = documents_dir.join("subsamples").join(&path);
+  
+  if !sample_path.exists() {
+    return Err(format!("Sample file not found: {}", path));
+  }
+  
+  // Load sample and generate waveform overview
+  use crate::engine::modules::sampler::Sampler;
+  let mut sampler = Sampler::new(44100.0);
+  sampler.load_sample(&sample_path.to_string_lossy());
+  
+  let waveform = sampler.get_waveform_overview(512); // 512 points for display
+  Ok(waveform)
 }

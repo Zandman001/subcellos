@@ -41,6 +41,14 @@ pub fn run() {
       delete_sound,
       load_sound_preset,
       save_sound_preset,
+      // Recording and Sample Management
+      start_recording,
+      stop_recording,
+      list_subsamples,
+      load_sample,
+      preview_sample,
+      stop_preview,
+      get_sample_waveform,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

@@ -1,5 +1,8 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_channel::{unbounded, Receiver, Sender, TryRecvError};
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::PathBuf;
 
 use super::{graph::EngineGraph, messages::EngineMsg, params::{ParamStore}};
 
@@ -12,6 +15,8 @@ pub struct AudioEngine {
   stream: Option<cpal::Stream>,
   spec_tx: Option<Sender<Vec<f32>>>,
   spec_buf: Vec<f32>,
+  recording: bool,
+  recorded_samples: Vec<f32>,
 }
 
 impl AudioEngine {
@@ -68,6 +73,8 @@ impl AudioEngine {
       stream: None,
       spec_tx: None,
       spec_buf: Vec::with_capacity(4096),
+      recording: false,
+      recorded_samples: Vec::new(),
     })
   }
 
@@ -124,6 +131,8 @@ impl AudioEngine {
     let mut params = self.params.take().unwrap_or_else(|| ParamStore::new());
     let mut spec_tx = self.spec_tx.clone();
     let mut spec_buf = Vec::<f32>::with_capacity(4096);
+    let mut recording = false;
+    let mut recorded_samples = Vec::<f32>::new();
 
     let err_fn = |e: cpal::StreamError| eprintln!("stream error: {e}");
     let mut playing = true;
@@ -135,7 +144,7 @@ impl AudioEngine {
       let mut drained = 0usize;
       loop {
         match rx.try_recv() {
-          Ok(msg) => apply_msg(&mut graph, &mut params, msg, &mut playing),
+          Ok(msg) => apply_msg(&mut graph, &mut params, msg, &mut playing, &mut recording, &mut recorded_samples),
           Err(TryRecvError::Empty) => break,
           Err(TryRecvError::Disconnected) => break,
         }
@@ -151,6 +160,11 @@ impl AudioEngine {
           // accumulate mono for spectrum
           let mono = 0.5 * (l + r);
           if spec_buf.len() < 2048 { spec_buf.push(mono); }
+          
+          // Record if recording is active
+          if recording {
+            recorded_samples.push(mono);
+          }
         }
         if spec_buf.len() >= 2048 {
           if let Some(tx) = spec_tx.as_ref() {
@@ -179,7 +193,7 @@ impl AudioEngine {
   pub fn sender(&self) -> Sender<EngineMsg> { self.tx.clone() }
 }
 
-fn apply_msg(graph: &mut EngineGraph, params: &mut ParamStore, msg: EngineMsg, playing: &mut bool) {
+fn apply_msg(graph: &mut EngineGraph, params: &mut ParamStore, msg: EngineMsg, playing: &mut bool, recording: &mut bool, recorded_samples: &mut Vec<f32>) {
   match msg {
     EngineMsg::SetParam { path, value } => { params.set(path, value) },
     EngineMsg::NoteOn { part, note, vel } => {
@@ -190,8 +204,101 @@ fn apply_msg(graph: &mut EngineGraph, params: &mut ParamStore, msg: EngineMsg, p
     }
     EngineMsg::SetTempo { .. } => {}
     EngineMsg::Transport { playing: p } => { *playing = p; }
+    EngineMsg::StartRecording => {
+      *recording = true;
+      recorded_samples.clear();
+    }
+    EngineMsg::StopRecording => {
+      *recording = false;
+      // Save recorded samples to file
+      if !recorded_samples.is_empty() {
+        if let Err(e) = save_recorded_samples(recorded_samples) {
+          eprintln!("Failed to save recording: {}", e);
+        }
+      }
+    }
+    EngineMsg::LoadSample { part, path } => {
+      if part < graph.parts.len() {
+        if let Err(e) = graph.parts[part].load_sample(&path) {
+          eprintln!("Failed to load sample: {}", e);
+        }
+      }
+    }
+    EngineMsg::PreviewSample { path } => {
+      if let Err(e) = graph.load_preview_sample(&path) {
+        eprintln!("Failed to load preview sample: {}", e);
+      }
+    }
+    EngineMsg::StopPreview => {
+      graph.stop_preview();
+    }
     EngineMsg::Quit => {}
   }
+}
+
+fn save_recorded_samples(samples: &[f32]) -> Result<(), String> {
+  // Create subsamples directory in Documents
+  let documents_path = dirs::document_dir().ok_or("Could not find Documents directory")?;
+  let subsamples_path = documents_path.join("subsamples");
+  
+  // Create directory if it doesn't exist
+  fs::create_dir_all(&subsamples_path).map_err(|e| format!("Failed to create subsamples directory: {}", e))?;
+  
+  // Find next available sample number
+  let mut sample_num = 1;
+  loop {
+    let filename = format!("sample{}.wav", sample_num);
+    let file_path = subsamples_path.join(&filename);
+    if !file_path.exists() {
+      break;
+    }
+    sample_num += 1;
+  }
+  
+  let filename = format!("sample{}.wav", sample_num);
+  let file_path = subsamples_path.join(&filename);
+  
+  // Write WAV file (simple 44.1kHz mono format)
+  write_wav_file(&file_path, samples, 44100.0)?;
+  
+  println!("Saved recording to: {}", file_path.display());
+  Ok(())
+}
+
+fn write_wav_file(path: &PathBuf, samples: &[f32], sample_rate: f32) -> Result<(), String> {
+  let mut file = File::create(path).map_err(|e| format!("Failed to create WAV file: {}", e))?;
+  
+  let num_samples = samples.len() as u32;
+  let byte_rate = (sample_rate * 2.0) as u32; // 16-bit mono
+  let data_size = num_samples * 2; // 16-bit samples
+  let file_size = 36 + data_size;
+  
+  // WAV header
+  file.write_all(b"RIFF").map_err(|e| format!("Failed to write WAV header: {}", e))?;
+  file.write_all(&file_size.to_le_bytes()).map_err(|e| format!("Failed to write file size: {}", e))?;
+  file.write_all(b"WAVE").map_err(|e| format!("Failed to write WAVE: {}", e))?;
+  
+  // Format chunk
+  file.write_all(b"fmt ").map_err(|e| format!("Failed to write fmt: {}", e))?;
+  file.write_all(&16u32.to_le_bytes()).map_err(|e| format!("Failed to write fmt size: {}", e))?;
+  file.write_all(&1u16.to_le_bytes()).map_err(|e| format!("Failed to write audio format: {}", e))?; // PCM
+  file.write_all(&1u16.to_le_bytes()).map_err(|e| format!("Failed to write channels: {}", e))?; // Mono
+  file.write_all(&(sample_rate as u32).to_le_bytes()).map_err(|e| format!("Failed to write sample rate: {}", e))?;
+  file.write_all(&byte_rate.to_le_bytes()).map_err(|e| format!("Failed to write byte rate: {}", e))?;
+  file.write_all(&2u16.to_le_bytes()).map_err(|e| format!("Failed to write block align: {}", e))?; // 16-bit mono
+  file.write_all(&16u16.to_le_bytes()).map_err(|e| format!("Failed to write bits per sample: {}", e))?;
+  
+  // Data chunk
+  file.write_all(b"data").map_err(|e| format!("Failed to write data chunk: {}", e))?;
+  file.write_all(&data_size.to_le_bytes()).map_err(|e| format!("Failed to write data size: {}", e))?;
+  
+  // Convert f32 samples to 16-bit PCM
+  for &sample in samples {
+    let sample_16 = (sample.clamp(-1.0, 1.0) * 32767.0) as i16;
+    file.write_all(&sample_16.to_le_bytes()).map_err(|e| format!("Failed to write sample data: {}", e))?;
+  }
+  
+  Ok(())
 }
 
 // Intentionally not Clone; engine state moves into the audio callback.

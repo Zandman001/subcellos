@@ -5,6 +5,7 @@ use crate::engine::dsp::{delay::SimpleDelay, mod_delay::ModDelay, phaser::Phaser
 use crate::engine::modules::acid303::{Acid303, AcidParamKeys};
 use crate::engine::modules::karplus_strong::{KarplusStrong, KSParamKeys};
 use crate::engine::modules::resonator_bank::{ResonatorBank, ResonatorParamKeys};
+use crate::engine::modules::sampler::{Sampler, SamplerParamKeys};
 use freeverb::Freeverb;
 
 #[inline]
@@ -342,6 +343,9 @@ pub struct Part {
   // Mono Resonator Bank engine
   resonator: ResonatorBank,
   resonator_keys: ResonatorParamKeys,
+  // Mono Sampler engine
+  sampler: Sampler,
+  sampler_keys: SamplerParamKeys,
   // Modulated delay lines for chorus/flanger
   delay1: ModDelay,
   delay2: ModDelay,
@@ -454,6 +458,20 @@ struct ParamPaths {
   resonator_randomize: u64,
   resonator_body_blend: u64,
   resonator_output_gain: u64,
+  // Sampler params
+  sampler_sample_start: u64,
+  sampler_sample_end: u64,
+  sampler_pitch_semitones: u64,
+  sampler_pitch_cents: u64,
+  sampler_playback_mode: u64,
+  sampler_loop_start: u64,
+  sampler_loop_end: u64,
+  sampler_loop_mode: u64,
+  sampler_smoothness: u64,
+  sampler_attack: u64,
+  sampler_decay: u64,
+  sampler_sustain: u64,
+  sampler_release: u64,
 }
 
 impl ParamPaths {
@@ -518,6 +536,20 @@ impl ParamPaths {
       resonator_randomize: p("resonator/randomize"),
       resonator_body_blend: p("resonator/body_blend"),
       resonator_output_gain: p("resonator/output_gain"),
+      // Sampler params
+      sampler_sample_start: p("sampler/sample_start"),
+      sampler_sample_end: p("sampler/sample_end"),
+      sampler_pitch_semitones: p("sampler/pitch_semitones"),
+      sampler_pitch_cents: p("sampler/pitch_cents"),
+      sampler_playback_mode: p("sampler/playback_mode"),
+      sampler_loop_start: p("sampler/loop_start"),
+      sampler_loop_end: p("sampler/loop_end"),
+      sampler_loop_mode: p("sampler/loop_mode"),
+      sampler_smoothness: p("sampler/smoothness"),
+      sampler_attack: p("sampler/attack"),
+      sampler_decay: p("sampler/decay"),
+      sampler_sustain: p("sampler/sustain"),
+      sampler_release: p("sampler/release"),
     }
   }
 }
@@ -570,6 +602,23 @@ impl Part {
         body_blend: hash_path(&format!("part/{}/resonator/body_blend", idx)),
         output_gain: hash_path(&format!("part/{}/resonator/output_gain", idx)),
       },
+      sampler: Sampler::new(sr),
+      sampler_keys: SamplerParamKeys {
+        module_kind: hash_path(&format!("part/{}/module_kind", idx)),
+        sample_start: hash_path(&format!("part/{}/sampler/sample_start", idx)),
+        sample_end: hash_path(&format!("part/{}/sampler/sample_end", idx)),
+        pitch_semitones: hash_path(&format!("part/{}/sampler/pitch_semitones", idx)),
+        pitch_cents: hash_path(&format!("part/{}/sampler/pitch_cents", idx)),
+        playback_mode: hash_path(&format!("part/{}/sampler/playback_mode", idx)),
+        loop_start: hash_path(&format!("part/{}/sampler/loop_start", idx)),
+        loop_end: hash_path(&format!("part/{}/sampler/loop_end", idx)),
+        loop_mode: hash_path(&format!("part/{}/sampler/loop_mode", idx)),
+        smoothness: hash_path(&format!("part/{}/sampler/smoothness", idx)),
+        attack: hash_path(&format!("part/{}/sampler/attack", idx)),
+        decay: hash_path(&format!("part/{}/sampler/decay", idx)),
+        sustain: hash_path(&format!("part/{}/sampler/sustain", idx)),
+        release: hash_path(&format!("part/{}/sampler/release", idx)),
+      },
       delay1: ModDelay::new(1500.0, sr), delay2: ModDelay::new(1500.0, sr),
       delay3: ModDelay::new(1500.0, sr), delay4: ModDelay::new(1500.0, sr),
       sdelay1: SimpleDelay::new(1200.0, sr), sdelay2: SimpleDelay::new(1200.0, sr),
@@ -611,6 +660,8 @@ impl Part {
     self.karplus.note_on(note, vel);
     // Also feed mono Resonator Bank engine
     self.resonator.note_on(note, vel);
+    // Also feed mono Sampler engine
+    self.sampler.note_on(note, vel);
   }
   pub fn note_off(&mut self, note: u8) {
     // Stop all voices with this note to guarantee preview stops fully
@@ -618,9 +669,16 @@ impl Part {
     self.acid.note_off(note);
     self.karplus.note_off();
     self.resonator.note_off(note);
+    self.sampler.note_off(note);
   }
+
+  pub fn load_sample(&mut self, path: &str) -> Result<(), String> {
+    self.sampler.load_sample(path);
+    Ok(())
+  }
+
   pub fn render(&mut self, params: &ParamStore, _part_idx: usize) -> (f32, f32) {
-    // Module dispatch (0 = Analog, 1 = Acid303, 2 = KarplusStrong, 3 = ResonatorBank)
+    // Module dispatch (0 = Analog, 1 = Acid303, 2 = KarplusStrong, 3 = ResonatorBank, 4 = Sampler)
     let module = params.get_i32_h(self.paths.module_kind, 0);
     
     // Debug: Log module kind for part 0 when it changes
@@ -1329,6 +1387,41 @@ impl Part {
       let comp = params.get_f32_h(self.paths.mix_comp, 0.0).clamp(0.0, 1.0);
       if comp > 0.001 { let drive = 1.0 + 8.0 * comp; let id = 1.0 / drive.tanh(); l = (l * drive).tanh() * id; r = (r * drive).tanh() * id; }
       return (l, r);
+    } else if module == 4 {
+      // Sampler mono voice sample
+      let s = self.sampler.render_one(params, &self.sampler_keys);
+      // Early-out if dry is silent and all FX mixes are ~zero (no tails needed)
+      let fx1_t_peek = params.get_i32_h(self.paths.fx1_type, 0);
+      let fx1_mix_peek = params.get_f32_h(self.paths.fx1_p3, 0.0).clamp(0.0, 1.0);
+      let fx2_t_peek = params.get_i32_h(self.paths.fx2_type, 0);
+      let fx2_mix_peek = params.get_f32_h(self.paths.fx2_p3, 0.0).clamp(0.0, 1.0);
+      let fx3_t_peek = params.get_i32_h(self.paths.fx3_type, 0);
+      let fx3_mix_peek = params.get_f32_h(self.paths.fx3_p3, 0.0).clamp(0.0, 1.0);
+      let fx4_t_peek = params.get_i32_h(self.paths.fx4_type, 0);
+      let fx4_mix_peek = params.get_f32_h(self.paths.fx4_p3, 0.0).clamp(0.0, 1.0);
+      if s.abs() < 1e-9 && (fx1_t_peek <= 0 || fx1_mix_peek <= 0.0005) && (fx2_t_peek <= 0 || fx2_mix_peek <= 0.0005) && (fx3_t_peek <= 0 || fx3_mix_peek <= 0.0005) && (fx4_t_peek <= 0 || fx4_mix_peek <= 0.0005) {
+        return (0.0, 0.0);
+      }
+      // Simple processing for now - full FX chain can be added later
+      let mut out = s;
+      let l = out;
+      let r = out;
+      
+      // Apply final mixer processing
+      let mix_vol = params.get_f32_h(self.paths.mix_volume, 0.8).clamp(0.0, 1.0);
+      let l = l * mix_vol;
+      let r = r * mix_vol;
+      
+      // Apply compression if enabled
+      let comp = params.get_f32_h(self.paths.mix_comp, 0.0).clamp(0.0, 1.0);
+      if comp > 0.001 { 
+        let drive = 1.0 + 8.0 * comp; 
+        let id = 1.0 / drive.tanh(); 
+        let l = (l * drive).tanh() * id; 
+        let r = (r * drive).tanh() * id;
+        return (l, r);
+      }
+      return (l, r);
     } else {
       // Analog voices (module == 0)
       // Compute LFO sample every sample; apply global depth with internal smoothing
@@ -1877,6 +1970,8 @@ pub struct EngineGraph {
   pub parts: Vec<Part>,
   pub mixer: Mixer,
   pub sr: f32,
+  preview_sampler: Sampler,
+  preview_playing: bool,
 }
 
 impl EngineGraph {
@@ -1884,7 +1979,58 @@ impl EngineGraph {
     let mut parts = Vec::with_capacity(6);
     // 6-voice polyphony per part
     for i in 0..6 { parts.push(Part::new(sr, 6, i)); }
-    Self { parts, mixer: Mixer::new(sr), sr }
+    Self { 
+      parts, 
+      mixer: Mixer::new(sr), 
+      sr,
+      preview_sampler: Sampler::new(sr),
+      preview_playing: false,
+    }
   }
-  pub fn render_frame(&mut self, params: &ParamStore) -> (f32, f32) { self.mixer.mix(&mut self.parts, params) }
+  
+  pub fn load_preview_sample(&mut self, path: &str) -> Result<(), String> {
+    self.preview_sampler.load_sample(path);
+    self.preview_sampler.note_on(60, 127.0); // Trigger preview playback
+    self.preview_playing = true;
+    Ok(())
+  }
+  
+  pub fn stop_preview(&mut self) {
+    self.preview_sampler.note_off(60);
+    self.preview_playing = false;
+  }
+  
+  pub fn render_frame(&mut self, params: &ParamStore) -> (f32, f32) { 
+    let mut result = self.mixer.mix(&mut self.parts, params);
+    
+    // Add preview sample if playing
+    if self.preview_playing {
+      let preview_keys = SamplerParamKeys {
+        module_kind: 0, // dummy hash
+        sample_start: 0,
+        sample_end: 0,
+        pitch_semitones: 0,
+        pitch_cents: 0,
+        playback_mode: 0,
+        loop_start: 0,
+        loop_end: 0,
+        loop_mode: 0,
+        smoothness: 0,
+        attack: 0,
+        decay: 0,
+        sustain: 0,
+        release: 0,
+      };
+      let preview_out = self.preview_sampler.render_one(params, &preview_keys);
+      result.0 += preview_out * 0.3; // Lower volume for preview
+      result.1 += preview_out * 0.3;
+      
+      // Stop preview if sample finished
+      if !self.preview_sampler.is_playing() {
+        self.preview_playing = false;
+      }
+    }
+    
+    result
+  }
 }

@@ -20,6 +20,16 @@ export default function BrowserKeys() {
       }
       const k = e.key;
       
+      // While sample browser is open, pause E/D navigation and let sample browser handle it
+      if (st.sampleBrowserOpen) {
+        // Allow only Escape to close the sample browser from here
+        if (k === 'Escape') {
+          st.closeSampleBrowser?.();
+          e.preventDefault();
+        }
+        return;
+      }
+      
       // While picker is open, only E/D/Q/S should act
       if (st.level === 'pattern' && st.modulePickerOpen) {
         if (k === 'e') { st.moveUp(); e.preventDefault(); return; }

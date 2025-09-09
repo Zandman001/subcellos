@@ -26,4 +26,11 @@ export const rpc = {
   noteOff: (part: number, note: number) => safeInvoke<void>("note_off", { part, note }),
   setParam: (path: string, value: any) => safeInvoke<void>("set_param", { path, value }),
   getAudioLevels: (part: number) => safeInvoke<{ left: number; right: number }>("get_audio_levels", { part }, { left: 0, right: 0 }),
+  startRecording: () => safeInvoke<void>("start_recording", undefined),
+  stopRecording: () => safeInvoke<void>("stop_recording", undefined),
+  listSubsamples: () => safeInvoke<string[]>("list_subsamples", undefined, []),
+  loadSample: (part: number, path: string) => safeInvoke<void>("load_sample", { part, path }),
+  previewSample: (path: string) => safeInvoke<void>("preview_sample", { path }),
+  stopPreview: () => safeInvoke<void>("stop_preview"),
+  getSampleWaveform: (path: string) => safeInvoke<number[]>("get_sample_waveform", { path }, []),
 };

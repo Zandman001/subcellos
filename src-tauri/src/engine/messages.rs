@@ -15,6 +15,11 @@ pub enum EngineMsg {
   NoteOff { part: usize, note: u8 },
   SetTempo { bpm: f32 },
   Transport { playing: bool },
+  StartRecording,
+  StopRecording,
+  LoadSample { part: usize, path: String },
+  PreviewSample { path: String },
+  StopPreview,
   Quit,
 }
 

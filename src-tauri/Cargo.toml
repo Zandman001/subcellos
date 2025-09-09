@@ -33,4 +33,6 @@ fundsp = "0.15"
 once_cell = "1.19"
 rustfft = "6.1"
 dirs = "5.0"
+hound = "3.5"
+symphonia = { version = "0.5", features = ["mp3", "flac", "wav", "aiff"] }
 

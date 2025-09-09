@@ -29,6 +29,12 @@ export interface BrowserState {
   eqGroup: 0 | 1; // 0=bands 1..4, 1=bands 5..8
   modulePickerOpen: boolean;
   modulePickerIndex: number; // 0: Synth, 1: Acid, 2: KarplusStrong, 3: ResonatorBank, 4: Sampler, 5: Drum
+  // Sample browser state
+  sampleBrowserOpen: boolean;
+  sampleBrowserItems: string[];
+  sampleBrowserSelected: number;
+  isRecording: boolean;
+  closeSampleBrowser: () => void;
   confirmOpen?: boolean;
   confirmKind?: 'project'|'pattern'|'module';
   confirmLabel?: string;
@@ -78,7 +84,7 @@ export interface BrowserState {
   pendingSaves?: Record<string, any>;
   scheduleSavePreset?: (preset: any) => void;
   // per-sound module kind hint (UI-only). 'acid' constrains pages to 4.
-  moduleKindById?: Record<string, 'acid' | 'analog' | 'karplus' | 'resonator'>;
+  moduleKindById?: Record<string, 'acid' | 'analog' | 'karplus' | 'resonator' | 'sampler'>;
 }
 
 // Simple no-deps store with subscribe/get/set
@@ -114,6 +120,11 @@ const state: InternalState = {
   eqGroup: 0,
   modulePickerOpen: false,
   modulePickerIndex: 0,
+  sampleBrowserOpen: false,
+  sampleBrowserItems: [],
+  sampleBrowserSelected: 0,
+  isRecording: false,
+  closeSampleBrowser: () => {},
   confirmOpen: false,
   // placeholders, replaced below
   loadLevel: async () => {},
@@ -220,6 +231,8 @@ async function refreshPatternItems() {
       moduleKindById[s.id] = 'karplus';
     } else if (name.startsWith('resonator bank')) {
       moduleKindById[s.id] = 'resonator';
+    } else if (name.startsWith('sampler')) {
+      moduleKindById[s.id] = 'sampler';
     }
   });
   set({ moduleKindById: { ...moduleKindById } });
@@ -326,7 +339,7 @@ state.goRight = async () => {
       break;
     }
     case "pattern": {
-      if (state.selectedSoundId && state.currentSoundType === "synth") {
+      if (state.selectedSoundId && (state.currentSoundType === "synth" || state.currentSoundType === "sampler")) {
         set({ level: "synth", synthPageIndex: 0, selected: 0 });
         await state.loadLevel();
         // Only (re)apply preset the first time we open this synth to avoid floods/underruns
@@ -436,6 +449,10 @@ state.add = async () => {
         const map = state.moduleKindById || {};
         map[created.id] = 'resonator';
         set({ moduleKindById: { ...map } });
+      } else if (t === 'sampler') {
+        const map = state.moduleKindById || {};
+        map[created.id] = 'sampler';
+        set({ moduleKindById: { ...map } });
       }
       set({ modulePickerOpen: false });
       await state.loadLevel();
@@ -445,7 +462,7 @@ state.add = async () => {
       if (idx >= 0) {
         set({ selected: idx, selectedSoundId: created.id, selectedSoundPart: (created as any).part_index ?? 0 });
         // Default preset for synth: Osc B level = 0; if Acid, also set module_kind
-        if (t === "synth" || t === "acid" || t === "karplus" || t === "resonator") {
+        if (t === "synth" || t === "acid" || t === "karplus" || t === "resonator" || t === "sampler") {
           const part = (created as any).part_index ?? 0;
           // Build and save default preset immediately, then replay
           const ui = defaultSynthUI();
@@ -610,16 +627,22 @@ function getCurrentModuleKind(): number {
   if (map[id] === 'acid') return 1;
   if (map[id] === 'karplus') return 2;
   if (map[id] === 'resonator') return 3;
+  if (map[id] === 'sampler') return 4;
   const label = state.selectedSoundName || '';
   const l = label.toLowerCase();
   if (l.startsWith('acid 303')) return 1;
   if (l.startsWith('karplus string')) return 2;
   if (l.startsWith('resonator bank')) return 3;
+  if (l.startsWith('sampler')) return 4;
   return 0;
 }
 
 function isAcidCurrent(): boolean {
   return getCurrentModuleKind() === 1;
+}
+
+function isSamplerCurrent(): boolean {
+  return getCurrentModuleKind() === 4;
 }
 
 function computeSynthPagesForCurrent(): readonly string[] {
@@ -630,6 +653,8 @@ function computeSynthPagesForCurrent(): readonly string[] {
     return ["KARPLUS", "FX", "MIXER", "EQ"] as const;
   } else if (moduleKind === 3) { // ResonatorBank
     return ["RESONATOR", "FX", "MIXER", "EQ"] as const;
+  } else if (moduleKind === 4) { // Sampler
+    return ["SAMPLER", "LOOP", "ENVELOPE", "MIXER", "FX", "EQ"] as const;
   }
   // Analog synth (default)
   return ["OSC","ENV","FILTER","LFO","MOD","FX","MIXER","EQ"] as const;
@@ -765,6 +790,21 @@ export type SynthUI = {
     body_blend: number;
     output_gain: number;
   };
+  sampler?: {
+    sample_start: number;
+    sample_end: number;
+    pitch_semitones: number;
+    pitch_cents: number;
+    playback_mode: number;
+    loop_start: number;
+    loop_end: number;
+    loop_mode: number;
+    smoothness: number;
+    attack: number;
+    decay: number;
+    sustain: number;
+    release: number;
+  };
 };
 
 function defaultSynthUI(): SynthUI {
@@ -824,6 +864,22 @@ function defaultSynthUI(): SynthUI {
       randomize: 0.0,
       body_blend: 0.4,
       output_gain: 0.7,
+    },
+    // Add default Sampler parameters
+    sampler: {
+      sample_start: 0.0,
+      sample_end: 1.0,
+      pitch_semitones: 0.0,
+      pitch_cents: 0.0,
+      playback_mode: 0, // OneShot
+      loop_start: 0.0,
+      loop_end: 1.0,
+      loop_mode: 0, // Forward
+      smoothness: 0.0,
+      attack: 10.0,
+      decay: 100.0,
+      sustain: 0.7,
+      release: 200.0,
     },
   };
 }
@@ -960,6 +1016,21 @@ function uiToSchema(ui: SynthUI) {
         body_blend: (ui as any).resonator.body_blend ?? 0.4,
         output_gain: (ui as any).resonator.output_gain ?? 0.7,
       } : undefined,
+      sampler: (ui as any).sampler ? {
+        sample_start: (ui as any).sampler.sample_start ?? 0.0,
+        sample_end: (ui as any).sampler.sample_end ?? 1.0,
+        pitch_coarse: Math.round((ui as any).sampler.pitch_coarse ?? 0),
+        pitch_fine: (ui as any).sampler.pitch_fine ?? 0.0,
+        playback_mode: Math.round((ui as any).sampler.playback_mode ?? 0),
+        loop_mode: Math.round((ui as any).sampler.loop_mode ?? 0),
+        loop_start: (ui as any).sampler.loop_start ?? 0.2,
+        loop_end: (ui as any).sampler.loop_end ?? 0.8,
+        attack: (ui as any).sampler.attack ?? 0.01,
+        decay: (ui as any).sampler.decay ?? 0.3,
+        sustain: (ui as any).sampler.sustain ?? 0.7,
+        release: (ui as any).sampler.release ?? 0.5,
+        gain: (ui as any).sampler.gain ?? 0.8,
+      } : undefined,
     }
   };
 }
@@ -1072,6 +1143,21 @@ async function applyPreset(preset: any) {
       body_blend: p.resonator?.body_blend ?? 0.4,
       output_gain: p.resonator?.output_gain ?? 0.7,
     },
+    sampler: {
+      sample_start: p.sampler?.sample_start ?? 0.0,
+      sample_end: p.sampler?.sample_end ?? 1.0,
+      pitch_coarse: p.sampler?.pitch_coarse ?? 0,
+      pitch_fine: p.sampler?.pitch_fine ?? 0.0,
+      playback_mode: p.sampler?.playback_mode ?? 0,
+      loop_mode: p.sampler?.loop_mode ?? 0,
+      loop_start: p.sampler?.loop_start ?? 0.2,
+      loop_end: p.sampler?.loop_end ?? 0.8,
+      attack: p.sampler?.attack ?? 0.01,
+      decay: p.sampler?.decay ?? 0.3,
+      sustain: p.sampler?.sustain ?? 0.7,
+      release: p.sampler?.release ?? 0.5,
+      gain: p.sampler?.gain ?? 0.8,
+    },
   }));
   // Replay to engine
   const part = state.selectedSoundPart ?? 0;
@@ -1092,6 +1178,8 @@ async function applyPreset(preset: any) {
         map[soundId] = 'karplus';
       } else if (p.module_kind === 3) {
         map[soundId] = 'resonator';
+      } else if (p.module_kind === 4) {
+        map[soundId] = 'sampler';
       } else {
         delete map[soundId]; // Remove hint for analog (default)
       }
@@ -1202,6 +1290,22 @@ async function applyPreset(preset: any) {
     send(`resonator/randomize`, { F32: p.resonator.randomize ?? 0.0 });
     send(`resonator/body_blend`, { F32: p.resonator.body_blend ?? 0.4 });
     send(`resonator/output_gain`, { F32: p.resonator.output_gain ?? 0.7 });
+  }
+  // Sampler parameters
+  if (p.sampler) {
+    send(`sampler/sample_start`, { F32: p.sampler.sample_start ?? 0.0 });
+    send(`sampler/sample_end`, { F32: p.sampler.sample_end ?? 1.0 });
+    send(`sampler/pitch_coarse`, { I32: Math.round(p.sampler.pitch_coarse ?? 0) });
+    send(`sampler/pitch_fine`, { F32: p.sampler.pitch_fine ?? 0.0 });
+    send(`sampler/playback_mode`, { I32: Math.round(p.sampler.playback_mode ?? 0) });
+    send(`sampler/loop_mode`, { I32: Math.round(p.sampler.loop_mode ?? 0) });
+    send(`sampler/loop_start`, { F32: p.sampler.loop_start ?? 0.2 });
+    send(`sampler/loop_end`, { F32: p.sampler.loop_end ?? 0.8 });
+    send(`sampler/attack`, { F32: p.sampler.attack ?? 0.01 });
+    send(`sampler/decay`, { F32: p.sampler.decay ?? 0.3 });
+    send(`sampler/sustain`, { F32: p.sampler.sustain ?? 0.7 });
+    send(`sampler/release`, { F32: p.sampler.release ?? 0.5 });
+    send(`sampler/gain`, { F32: p.sampler.gain ?? 0.8 });
   }
   // Throttle slightly to avoid spamming
   for (const c of calls) { try { await c; } catch(e) { console.error('apply preset set_param failed', e); } }
@@ -1346,6 +1450,21 @@ async function preloadAndReplayProjectPresets(project: string) {
         await set(`resonator/body_blend`, { F32: p.resonator.body_blend ?? 0.4 });
         await set(`resonator/output_gain`, { F32: p.resonator.output_gain ?? 0.7 });
       }
+      if (p.sampler) {
+        await set(`sampler/sample_start`, { F32: p.sampler.sample_start ?? 0.0 });
+        await set(`sampler/sample_end`, { F32: p.sampler.sample_end ?? 1.0 });
+        await set(`sampler/pitch_coarse`, { I32: Math.round(p.sampler.pitch_coarse ?? 0) });
+        await set(`sampler/pitch_fine`, { F32: p.sampler.pitch_fine ?? 0.0 });
+        await set(`sampler/playback_mode`, { I32: Math.round(p.sampler.playback_mode ?? 0) });
+        await set(`sampler/loop_mode`, { I32: Math.round(p.sampler.loop_mode ?? 0) });
+        await set(`sampler/loop_start`, { F32: p.sampler.loop_start ?? 0.2 });
+        await set(`sampler/loop_end`, { F32: p.sampler.loop_end ?? 0.8 });
+        await set(`sampler/attack`, { F32: p.sampler.attack ?? 0.01 });
+        await set(`sampler/decay`, { F32: p.sampler.decay ?? 0.3 });
+        await set(`sampler/sustain`, { F32: p.sampler.sustain ?? 0.7 });
+        await set(`sampler/release`, { F32: p.sampler.release ?? 0.5 });
+        await set(`sampler/gain`, { F32: p.sampler.gain ?? 0.8 });
+      }
     } catch (e) { console.error('replay preset failed', e); }
   }
 }
@@ -1405,4 +1524,87 @@ state.updateEnvAmount = (row: number, amt: number) => {
   const part = state.selectedSoundPart ?? 0;
   state.setSynthParam(`part/${part}/mod/env/row${r}/amount`, next, 'F32');
   try { state.scheduleSavePreset!(serializeCurrentPreset()); } catch {}
+};
+
+// Sample browser functions
+const openSampleBrowser = async () => {
+  try {
+    const samples = await rpc.listSubsamples();
+    set({ 
+      sampleBrowserOpen: true, 
+      sampleBrowserItems: samples, 
+      sampleBrowserSelected: 0 
+    });
+  } catch (e) {
+    console.error('Failed to load samples:', e);
+    set({ 
+      sampleBrowserOpen: true, 
+      sampleBrowserItems: [], 
+      sampleBrowserSelected: 0 
+    });
+  }
+};
+
+const closeSampleBrowser = () => {
+  set({ sampleBrowserOpen: false });
+};
+
+// Assign to state
+state.closeSampleBrowser = closeSampleBrowser;
+
+const sampleBrowserMoveUp = () => {
+  if (state.sampleBrowserItems.length === 0) return;
+  const next = state.sampleBrowserSelected > 0 ? state.sampleBrowserSelected - 1 : 0;
+  set({ sampleBrowserSelected: next });
+};
+
+const sampleBrowserMoveDown = () => {
+  if (state.sampleBrowserItems.length === 0) return;
+  const next = state.sampleBrowserSelected < state.sampleBrowserItems.length - 1 
+    ? state.sampleBrowserSelected + 1 
+    : state.sampleBrowserSelected;
+  set({ sampleBrowserSelected: next });
+};
+
+const loadSelectedSample = async () => {
+  if (state.sampleBrowserItems.length === 0) return;
+  const selectedSample = state.sampleBrowserItems[state.sampleBrowserSelected];
+  const part = state.selectedSoundPart ?? 0;
+  
+  try {
+    // Load the sample into the current sampler part
+    await rpc.loadSample(part, selectedSample);
+    closeSampleBrowser();
+  } catch (e) {
+    console.error('Failed to load sample:', e);
+  }
+};
+
+const startRecording = async () => {
+  try {
+    await rpc.startRecording();
+    set({ isRecording: true });
+  } catch (e) {
+    console.error('Failed to start recording:', e);
+  }
+};
+
+const stopRecording = async () => {
+  try {
+    await rpc.stopRecording();
+    set({ isRecording: false });
+  } catch (e) {
+    console.error('Failed to stop recording:', e);
+  }
+};
+
+// Export sample browser functions for external use
+export const sampleBrowser = {
+  openSampleBrowser,
+  closeSampleBrowser,
+  sampleBrowserMoveUp,
+  sampleBrowserMoveDown,
+  loadSelectedSample,
+  startRecording,
+  stopRecording,
 };
