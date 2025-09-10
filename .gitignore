@@ -1,0 +1,24 @@
+# Rust
+/target
+/src-tauri/target
+/src-tauri/**/bundle
+
+# Node / React
+node_modules
+dist
+.next
+.cache
+
+# Logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / Editors
+.DS_Store
+*.swp
+.vscode/*
+!.vscode/settings.json
+
+
