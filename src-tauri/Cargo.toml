@@ -36,3 +36,19 @@ dirs = "5.0"
 hound = "3.5"
 symphonia = { version = "0.5", features = ["mp3", "flac", "wav", "aiff"] }
 
+[profile.dev]
+# Enable optimizations in dev to keep real-time audio stable (debug default is too slow)
+opt-level = 2        # Good balance of build speed and performance
+debug = true
+codegen-units = 8
+incremental = true
+lto = false
+
+[profile.release]
+opt-level = 3
+codegen-units = 1    # Better inlining for DSP hot paths
+lto = "thin"
+panic = "abort"
+strip = "debuginfo"
+incremental = false
+

@@ -6,7 +6,7 @@ import BrowserKeys from './components/BrowserKeys'
 import SampleBrowser from './components/SampleBrowser'
 import type { ViewName } from './types/ui'
 import { rpc } from './rpc'
-import { sampleBrowser } from './store/browser'
+import { sampleBrowser, useBrowserStore } from './store/browser'
 
 export default function Shell() {
   const [view, setView] = useState<ViewName>('Sounds')
@@ -27,19 +27,30 @@ export default function Shell() {
         case '3': setView('Arrangement'); break
         case '4': setView('Perform'); break
         case 'r':
-        case 'R':
-          // Start recording when R is pressed (only if in Sounds view with sampler)
+        case 'R': {
+          // Start recording only if in Sounds view AND current module is sampler
+            if (view === 'Sounds') {
+              const s = useBrowserStore.getState();
+              const selectedSoundId = s.selectedSoundId;
+              const mk = selectedSoundId ? s.moduleKindById?.[selectedSoundId] : undefined;
+              if (mk === 'sampler') {
+                sampleBrowser.startRecording();
+              }
+            }
+            break;
+        }
+        case 'w':
+        case 'W': {
           if (view === 'Sounds') {
-            sampleBrowser.startRecording()
+            const s = useBrowserStore.getState();
+            const selectedSoundId = s.selectedSoundId;
+            const mk = selectedSoundId ? s.moduleKindById?.[selectedSoundId] : undefined;
+            if (mk === 'sampler') {
+              sampleBrowser.openSampleBrowser();
+            }
           }
-          break
-        case 'e':
-        case 'E':
-          // Open sample browser when E is pressed (only if in Sounds view with sampler)
-          if (view === 'Sounds') {
-            sampleBrowser.openSampleBrowser()
-          }
-          break
+          break;
+        }
       }
     }
 
@@ -51,12 +62,17 @@ export default function Shell() {
       }
       switch (e.key) {
         case 'r':
-        case 'R':
-          // Stop recording when R is released
+        case 'R': {
           if (view === 'Sounds') {
-            sampleBrowser.stopRecording()
+            const s = useBrowserStore.getState();
+            const selectedSoundId = s.selectedSoundId;
+            const mk = selectedSoundId ? s.moduleKindById?.[selectedSoundId] : undefined;
+            if (mk === 'sampler') {
+              sampleBrowser.stopRecording();
+            }
           }
-          break
+          break;
+        }
       }
     }
     

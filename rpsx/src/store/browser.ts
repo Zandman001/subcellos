@@ -1528,20 +1528,17 @@ state.updateEnvAmount = (row: number, amt: number) => {
 
 // Sample browser functions
 const openSampleBrowser = async () => {
+  // Require selected sound to be sampler module
+  const selectedSoundId = state.selectedSoundId;
+  const moduleKindById = state.moduleKindById || {};
+  const mk = selectedSoundId ? moduleKindById[selectedSoundId] : undefined;
+  if (mk !== 'sampler') return; // silently ignore if not sampler
   try {
     const samples = await rpc.listSubsamples();
-    set({ 
-      sampleBrowserOpen: true, 
-      sampleBrowserItems: samples, 
-      sampleBrowserSelected: 0 
-    });
+    set({ sampleBrowserOpen: true, sampleBrowserItems: samples, sampleBrowserSelected: 0 });
   } catch (e) {
     console.error('Failed to load samples:', e);
-    set({ 
-      sampleBrowserOpen: true, 
-      sampleBrowserItems: [], 
-      sampleBrowserSelected: 0 
-    });
+    set({ sampleBrowserOpen: true, sampleBrowserItems: [], sampleBrowserSelected: 0 });
   }
 };
 
@@ -1581,6 +1578,10 @@ const loadSelectedSample = async () => {
 };
 
 const startRecording = async () => {
+  // Only allow recording when selected module is sampler
+  const selectedSoundId = state.selectedSoundId;
+  const mk = selectedSoundId ? (state.moduleKindById || {})[selectedSoundId] : undefined;
+  if (mk !== 'sampler') return;
   try {
     await rpc.startRecording();
     set({ isRecording: true });
@@ -1590,6 +1591,10 @@ const startRecording = async () => {
 };
 
 const stopRecording = async () => {
+  // Gate stop as well (harmless if not sampler but consistent)
+  const selectedSoundId = state.selectedSoundId;
+  const mk = selectedSoundId ? (state.moduleKindById || {})[selectedSoundId] : undefined;
+  if (mk !== 'sampler') return;
   try {
     await rpc.stopRecording();
     set({ isRecording: false });
