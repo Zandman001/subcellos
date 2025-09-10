@@ -290,7 +290,8 @@ impl SamplerVoice {
 
     pub fn note_on(&mut self, note: u8, velocity: f32) {
         self.note = note;
-        self.velocity = velocity;
+    // Clamp velocity to a 0..1 range to avoid extreme scaling causing distortion
+    self.velocity = velocity.clamp(0.0, 1.0);
         self.gate = true;
         self.just_triggered = true;
         self.position = 0.0;
@@ -566,7 +567,20 @@ impl Sampler {
 
     pub fn load_sample(&mut self, file_path: &str) {
         match self.load_audio_file(file_path) {
-            Ok(_) => println!("Successfully loaded sample: {}", file_path),
+            Ok(_) => {
+                // Normalize peak to ~0.9 to avoid clipping and keep consistent preview loudness
+                if let Ok(mut buffer) = self.sample_buffer.lock() {
+                    let mut peak = 0.0f32;
+                    for &s in &buffer.data { let a = s.abs(); if a > peak { peak = a; } }
+                    if peak > 0.0001 {
+                        let norm = 0.9 / peak;
+                        if norm < 1.5 { // avoid over-amplifying very quiet samples drastically here
+                            for s in &mut buffer.data { *s *= norm; }
+                        }
+                    }
+                }
+                println!("Successfully loaded sample: {}", file_path)
+            },
             Err(e) => eprintln!("Failed to load sample {}: {}", file_path, e),
         }
     }

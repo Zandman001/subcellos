@@ -1983,7 +1983,8 @@ impl EngineGraph {
   
   pub fn load_preview_sample(&mut self, path: &str) -> Result<(), String> {
     self.preview_sampler.load_sample(path);
-    self.preview_sampler.note_on(60, 127.0); // Trigger preview playback
+  // Use normalized velocity (0..1) now that sampler clamps internally; 0.85 gives headroom
+  self.preview_sampler.note_on(60, 0.85); // Trigger preview playback at moderate level
     self.preview_playing = true;
     Ok(())
   }

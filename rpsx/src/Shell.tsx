@@ -46,7 +46,11 @@ export default function Shell() {
             const selectedSoundId = s.selectedSoundId;
             const mk = selectedSoundId ? s.moduleKindById?.[selectedSoundId] : undefined;
             if (mk === 'sampler') {
-              sampleBrowser.openSampleBrowser();
+              if (s.sampleBrowserOpen) {
+                sampleBrowser.closeSampleBrowser();
+              } else {
+                sampleBrowser.openSampleBrowser();
+              }
             }
           }
           break;

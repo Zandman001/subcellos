@@ -51,176 +51,116 @@ function SampleWaveform({ samplePath }: SampleWaveformProps) {
 }
 
 export default function SampleBrowser() {
-  const { 
-    sampleBrowserOpen, 
-    sampleBrowserItems, 
-    sampleBrowserSelected,
-    isRecording 
-  } = useBrowser()
+  const { sampleBrowserOpen, sampleBrowserItems, sampleBrowserSelected, isRecording } = useBrowser() as any;
+  const { sampleBrowserMoveUp, sampleBrowserMoveDown, loadSelectedSample, closeSampleBrowser } = sampleBrowser;
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const currentSample = sampleBrowserItems[sampleBrowserSelected];
 
-  const {
-    sampleBrowserMoveUp,
-    sampleBrowserMoveDown,
-    loadSelectedSample,
-    closeSampleBrowser
-  } = sampleBrowser
+  const deleteCurrent = async () => {
+    if (!currentSample) return;
+    try {
+      await rpc.deleteSubsample(currentSample);
+    } catch (e) {
+      console.error('delete sample failed', e);
+    }
+    // Refresh list by closing and reopening quickly (simple approach)
+    closeSampleBrowser();
+    setTimeout(()=>{ sampleBrowser.openSampleBrowser(); }, 10);
+  };
 
-  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false)
-  const currentSample = sampleBrowserItems[sampleBrowserSelected]
+  // Window key handling (menu style like module picker)
+  useEffect(() => {
+    if (!sampleBrowserOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (['e','d','q','enter','a','w','r'].includes(k)) e.preventDefault();
+      switch (k) {
+        case 'e': sampleBrowserMoveUp(); break;
+        case 'd': sampleBrowserMoveDown(); break;
+        case 'q':
+        case 'enter': loadSelectedSample(); break;
+        case 'a': togglePreview(); break;
+        case 'r': deleteCurrent(); break; // R deletes while browser open
+        case 'w': stopPreview(true); break; // toggle close
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sampleBrowserOpen, sampleBrowserSelected, currentSample, isPreviewPlaying]);
 
-  const handlePreview = async () => {
-    if (!currentSample) return
-    
+  const stopPreview = async (close?: boolean) => {
+    if (isPreviewPlaying) {
+      try { await rpc.stopPreview(); } catch {}
+      setIsPreviewPlaying(false);
+    }
+    if (close) closeSampleBrowser();
+  };
+
+  const togglePreview = async () => {
+    if (!currentSample) return;
     try {
       if (isPreviewPlaying) {
-        await rpc.stopPreview()
-        setIsPreviewPlaying(false)
+        await rpc.stopPreview();
+        setIsPreviewPlaying(false);
       } else {
-        await rpc.previewSample(currentSample)
-        setIsPreviewPlaying(true)
-        // Auto-stop after 3 seconds
-        setTimeout(() => setIsPreviewPlaying(false), 3000)
+        await rpc.previewSample(currentSample);
+        setIsPreviewPlaying(true);
+        // Auto-stop after 3s
+        setTimeout(() => setIsPreviewPlaying(false), 3000);
       }
-    } catch (err) {
-      console.error('Preview failed:', err)
-      setIsPreviewPlaying(false)
+    } catch (e) {
+      console.error('preview failed', e);
+      setIsPreviewPlaying(false);
     }
-  }
+  };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    switch (e.key.toLowerCase()) {
-      case 'e':
-        e.preventDefault()
-        sampleBrowserMoveUp()
-        break
-      case 'd':
-        e.preventDefault()
-        sampleBrowserMoveDown()
-        break
-      case 'q':
-      case 'enter':
-        e.preventDefault()
-        loadSelectedSample()
-        break
-      case ' ': // Spacebar for preview
-        e.preventDefault()
-        handlePreview()
-        break
-      case 'z': // Z key for preview (matching typical controls)
-        e.preventDefault()
-        handlePreview()
-        break
-      case 'escape':
-        e.preventDefault()
-        if (isPreviewPlaying) {
-          rpc.stopPreview().then(() => setIsPreviewPlaying(false))
-        }
-        closeSampleBrowser()
-        break
-    }
-  }
+  // Stop preview on selection change
+  useEffect(() => { if (isPreviewPlaying) { (async()=>{ try { await rpc.stopPreview(); } catch {} setIsPreviewPlaying(false); })(); } }, [sampleBrowserSelected]);
+  // Stop when closing
+  useEffect(() => { if (!sampleBrowserOpen && isPreviewPlaying) { (async()=>{ try { await rpc.stopPreview(); } catch {} setIsPreviewPlaying(false); })(); } }, [sampleBrowserOpen]);
 
-  // Stop preview when sample selection changes
-  useEffect(() => {
-    if (isPreviewPlaying) {
-      rpc.stopPreview().then(() => setIsPreviewPlaying(false))
-    }
-  }, [sampleBrowserSelected])
-
-  // Stop preview when closing browser
-  useEffect(() => {
-    if (!sampleBrowserOpen && isPreviewPlaying) {
-      rpc.stopPreview().then(() => setIsPreviewPlaying(false))
-    }
-  }, [sampleBrowserOpen])
-
-  if (!sampleBrowserOpen) return null
+  if (!sampleBrowserOpen) return null;
 
   return (
-    <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-      tabIndex={-1}
-      onKeyDown={handleKeyDown}
-      autoFocus
-    >
-      <div className="bg-gray-800 border border-gray-600 rounded-lg p-4 max-w-2xl w-full mx-4">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-white">Sample Browser</h2>
-          {isRecording && (
-            <div className="text-red-500 text-sm font-semibold animate-pulse">
-              ● RECORDING
-            </div>
-          )}
+    <div style={{ position:'absolute', top:60, left:'10%', width:'80%', border:'1px solid var(--line)', background:'var(--bg)', color:'var(--text)', boxShadow:'0 0 0 2px var(--bg)', zIndex:20 }}>
+      <div style={{ padding:'6px 8px', borderBottom:'1px solid var(--line)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <span style={{ fontWeight:'bold' }}>Samples</span>
+        {isRecording && <span style={{ color:'#f33', fontSize:10, animation:'blink 1s steps(2,start) infinite' }}>● REC</span>}
+      </div>
+      {currentSample && (
+        <div style={{ padding:'6px 8px', borderBottom:'1px solid var(--line)', display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(var(--accent-rgb),0.04)' }}>
+          <span style={{ fontSize:11, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'70%' }}>{currentSample}</span>
+          <button onClick={togglePreview} style={{ fontSize:10, padding:'2px 6px', cursor:'pointer', background:isPreviewPlaying? 'var(--accent)' : 'transparent', color:isPreviewPlaying? 'var(--bg)' : 'var(--text)', border:'1px solid var(--line)' }}>{isPreviewPlaying? 'Stop' : 'Preview'}</button>
         </div>
-        
-        <div className="text-sm text-gray-300 mb-3">
-          Documents/subsamples • WAV, MP3, FLAC, AIFF
-        </div>
-
-        {/* Waveform Display */}
-        {currentSample && (
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-300">{currentSample}</span>
-              <button
-                onClick={handlePreview}
-                className={`px-3 py-1 text-xs rounded transition-colors ${
-                  isPreviewPlaying 
-                    ? 'bg-red-600 text-white hover:bg-red-700' 
-                    : 'bg-cyan-600 text-white hover:bg-cyan-700'
-                }`}
-              >
-                {isPreviewPlaying ? '⏹ Stop' : '▶ Preview'}
-              </button>
-            </div>
-            <SampleWaveform samplePath={currentSample} />
-          </div>
+      )}
+      <div style={{ maxHeight:240, overflowY:'auto' }}>
+        {sampleBrowserItems.length === 0 && (
+          <div style={{ padding:'6px 8px', color:'var(--text-soft)' }}>(no samples)</div>
         )}
-        
-        <div className="max-h-60 overflow-y-auto border-2 border-gray-600 rounded bg-gray-900">
-          {sampleBrowserItems.length === 0 ? (
-            <div className="p-4 text-center text-gray-400">
-              No samples found
-            </div>
-          ) : (
-            sampleBrowserItems.map((item, index) => (
-              <div
-                key={item}
-                className={`p-3 cursor-pointer text-sm border-l-4 transition-all duration-150 ${
-                  index === sampleBrowserSelected
-                    ? 'bg-cyan-600 text-white border-l-cyan-300 font-semibold shadow-lg'
-                    : 'text-gray-300 hover:bg-gray-700 border-l-transparent hover:border-l-gray-500'
-                }`}
-                onClick={() => {
-                  if (index === sampleBrowserSelected) {
-                    loadSelectedSample()
-                  } else {
-                    // Update selection
-                    const diff = index - sampleBrowserSelected
-                    if (diff > 0) {
-                      for (let i = 0; i < diff; i++) sampleBrowserMoveDown()
-                    } else {
-                      for (let i = 0; i < -diff; i++) sampleBrowserMoveUp()
-                    }
-                  }
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <span>{item}</span>
-                  {index === sampleBrowserSelected && (
-                    <span className="text-cyan-300 text-xs">◄ SELECTED</span>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-        
-        <div className="mt-4 text-xs text-gray-400 space-y-1">
-          <div>E/D Navigate • Q/Enter: Load Sample • Space/Z: Preview • Esc: Close</div>
-          <div>Hold R: Record • Release R: Stop Recording</div>
-        </div>
+        {sampleBrowserItems.map((item:string, i:number) => (
+          <div key={item} style={{
+            padding:'6px 8px',
+            borderBottom:'1px solid var(--line)',
+            background: i === sampleBrowserSelected ? 'rgba(var(--accent-rgb),0.14)' : 'transparent',
+            fontWeight: i === sampleBrowserSelected ? 'bold' : 'normal',
+            cursor: 'pointer'
+          }}
+            onClick={() => {
+              if (i === sampleBrowserSelected) loadSelectedSample();
+              else {
+                const diff = i - sampleBrowserSelected;
+                if (diff > 0) for (let n=0;n<diff;n++) sampleBrowserMoveDown(); else for (let n=0;n<-diff;n++) sampleBrowserMoveUp();
+              }
+            }}
+            onDoubleClick={() => loadSelectedSample()}
+          >
+            {item}
+          </div>
+        ))}
+      </div>
+      <div style={{ padding:'6px 8px', borderTop:'1px solid var(--line)', fontSize:10, textAlign:'center', color:'var(--text-soft)' }}>
+        E/D move · Q/Enter load · A preview · R delete · W close
       </div>
     </div>
-  )
+  );
 }
