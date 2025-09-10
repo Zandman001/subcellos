@@ -97,6 +97,7 @@ type InternalState = BrowserState & {
   _projectData?: Project;
   _patternData?: Pattern;
   _presetApplied?: Record<string, boolean>;
+  _lastAppliedModuleKind?: number;
 };
 
 const state: InternalState = {
@@ -119,6 +120,7 @@ const state: InternalState = {
   fxSelect: 0,
   eqGroup: 0,
   modulePickerOpen: false,
+  _lastAppliedModuleKind: undefined,
   modulePickerIndex: 0,
   sampleBrowserOpen: false,
   sampleBrowserItems: [],
@@ -647,6 +649,15 @@ function isSamplerCurrent(): boolean {
 
 function computeSynthPagesForCurrent(): readonly string[] {
   const moduleKind = getCurrentModuleKind();
+  // Ensure engine module_kind matches inferred moduleKind (including analog=0)
+  try {
+    const part = state.selectedSoundPart ?? 0;
+    // We only send if mismatch to avoid extra IPC
+    if (moduleKind !== state._lastAppliedModuleKind) {
+      state._lastAppliedModuleKind = moduleKind as any;
+      state.setSynthParam?.(`part/${part}/module_kind`, moduleKind, 'I32');
+    }
+  } catch {}
   if (moduleKind === 1) { // Acid
     return ["ACID303", "FX", "MIXER", "EQ"] as const;
   } else if (moduleKind === 2) { // KarplusStrong
