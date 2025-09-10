@@ -332,7 +332,6 @@ fn map_ft(t: i32) -> FilterType { match t { 1 => FilterType::HP, 2 => FilterType
 pub struct Part {
   voices: Vec<Voice>,
   sr: f32,
-  idx: usize,
   next_voice: usize,
   // Mono Acid engine
   acid: Acid303,
@@ -381,15 +380,9 @@ pub struct Part {
   eq_bands: [Biquad; 8],
   eq_centers: [f32; 8],
   eq_last_db: [f32; 8],
-  fx1_lfo: f32,
-  fx2_lfo: f32,
-  fx3_lfo: f32,
-  fx4_lfo: f32,
   paths: ParamPaths,
   lfo_phase: f32,
   lfo_hold: f32,
-  lfo_decim: u8,
-  modf_last: ModFrame,
   // Haas delay (left channel buffer)
   haas_buf: Vec<f32>,
   haas_wr: usize,
@@ -559,7 +552,7 @@ impl Part {
     let mut voices = Vec::with_capacity(poly);
     for _ in 0..poly { voices.push(Voice::new(sr)); }
     // Allocate modulated delay buffers for FX and explicit delays for TIME/FEEDBACK
-    let mut p = Self { voices, sr, idx, next_voice: 0,
+    let mut p = Self { voices, sr, next_voice: 0,
       acid: Acid303::new(sr),
       acid_keys: AcidParamKeys {
         module_kind: hash_path(&format!("part/{}/module_kind", idx)),
@@ -631,9 +624,9 @@ impl Part {
       fx4_wet_lp_l: OnePoleLP::new(), fx4_wet_lp_r: OnePoleLP::new(),
       phaser1: Phaser::new(), phaser2: Phaser::new(), phaser3: Phaser::new(), phaser4: Phaser::new(),
       eq_lp: Svf::new(), eq_hp: Svf::new(),
-      eq_bands: [Biquad::new(), Biquad::new(), Biquad::new(), Biquad::new(), Biquad::new(), Biquad::new(), Biquad::new(), Biquad::new()],
-      eq_centers: [60.0,120.0,250.0,500.0,1000.0,2000.0,4000.0,8000.0], eq_last_db: [0.0; 8],
-      fx1_lfo: 0.0, fx2_lfo: 0.0, fx3_lfo: 0.0, fx4_lfo: 0.0, paths: ParamPaths::new(idx), lfo_phase: 0.0, lfo_hold: 0.0, lfo_decim: 0, modf_last: ModFrame { cents_a:0.0, cents_b:0.0, lvl_a:0.0, lvl_b:0.0, filt1:0.0, filt2:0.0 },
+  eq_bands: [Biquad::new(), Biquad::new(), Biquad::new(), Biquad::new(), Biquad::new(), Biquad::new(), Biquad::new(), Biquad::new()],
+  eq_centers: [60.0,120.0,250.0,500.0,1000.0,2000.0,4000.0,8000.0], eq_last_db: [0.0; 8],
+  paths: ParamPaths::new(idx), lfo_phase: 0.0, lfo_hold: 0.0,
       haas_buf: Vec::new(), haas_wr: 0, haas_len: 0, haas_d: 0 };
     // Initialize helper filters used for pseudo-side width
     p.eq_lp.set_params(250.0, 0.707, sr);

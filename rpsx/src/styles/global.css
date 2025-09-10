@@ -310,3 +310,17 @@ body {
   color: var(--text-soft);
   margin: 2px 0;
 }
+
+/* ===== Circular Knob Styles ===== */
+.knob-shell { position: relative; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; outline: none; }
+.knob-face { position: relative; width: 48px; height: 48px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #222 0%, #111 60%, #080808 100%); border: 1px solid var(--line); box-shadow: inset 0 2px 4px rgba(255,255,255,0.05), 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,0.6); }
+.knob-face:active { filter: brightness(1.2); }
+.knob-ticks { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+.knob-tick { position: absolute; top: 50%; left: 50%; width: 2px; height: 6px; margin: -3px 0 0 -1px; background: var(--accent); border-radius: 1px; box-shadow: 0 0 2px rgba(255,255,255,0.4); }
+/* Step markers slightly longer; center them properly (remove large negative margins) */
+.knob-step { position: absolute; top: 50%; left: 50%; width: 3px; height: 9px; margin: -5px 0 0 -1.5px; background: var(--accent-2); opacity: 0.9; border-radius: 1px; }
+.knob-pointer { position: absolute; top: 50%; left: 50%; width: 4px; height: 18px; margin: -18px 0 0 -2px; background: linear-gradient(#fff,#bbb); border-radius: 2px; box-shadow: 0 0 4px rgba(255,255,255,0.6), 0 0 1px #000 inset; transform-origin: 50% 16px; }
+.knob-center { position: absolute; top: 50%; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #333 0%, #222 40%, #111 100%); box-shadow: inset 0 1px 2px rgba(255,255,255,0.12), 0 1px 2px rgba(0,0,0,0.8); }
+.knob-shell:focus-visible .knob-face { outline: 1px dashed var(--accent); outline-offset: 2px; }
+.knob-shell:hover .knob-face { box-shadow: inset 0 2px 4px rgba(255,255,255,0.15), 0 0 0 1px #000, 0 3px 6px rgba(0,0,0,0.7); }
+.knob-shell:active .knob-pointer { filter: brightness(1.3); }

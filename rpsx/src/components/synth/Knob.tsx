@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 
 type KnobProps = {
   label: string;
@@ -10,12 +10,14 @@ type KnobProps = {
 };
 
 export default function Knob({ label, value, onChange, step, format, disabled }: KnobProps) {
-  // Render as a vertical slider or stepped grid (no circular knob)
+  // Round knob with radial ticks & pointer
   const [v, setV] = useState<number>(clamp01(value));
   useEffect(() => setV(clamp01(value)), [value]);
   const dragging = useRef(false);
   const startY = useRef(0);
   const startV = useRef(0);
+  const ANG_MIN = -135;
+  const ANG_MAX = 135;
 
   const quantize = useCallback((x: number) => {
     if (!step || step <= 1) return x;
@@ -39,8 +41,9 @@ export default function Knob({ label, value, onChange, step, format, disabled }:
   };
   const onMouseMove = (e: MouseEvent) => {
     if (!dragging.current) return;
-    const dy = startY.current - e.clientY; // up increases
-    const nv = startV.current + dy * 0.003; // sensitivity
+    const dy = startY.current - e.clientY;
+    const sensitivity = e.shiftKey ? 0.001 : 0.003;
+    const nv = startV.current + dy * sensitivity;
     commit(nv);
   };
   const onMouseUp = () => {
@@ -49,101 +52,73 @@ export default function Knob({ label, value, onChange, step, format, disabled }:
     window.removeEventListener('mouseup', onMouseUp);
   };
 
+  const onWheel = (e: React.WheelEvent) => {
+    if (disabled) return;
+    e.preventDefault();
+    const delta = -e.deltaY * 0.0006; // fine tuning
+    commit(v + delta);
+  };
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
-    if (e.key === '+' || e.key === '=' || e.key === 'ArrowUp' || e.key === 'ArrowRight') {
-      e.preventDefault();
-      commit(v + (step ? 1 / (step - 1) : 0.02));
-    } else if (e.key === '-' || e.key === '_' || e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
-      e.preventDefault();
-      commit(v - (step ? 1 / (step - 1) : 0.02));
-    }
+    const stepSize = step ? 1 / (step - 1) : 0.02;
+    if (['+', '=', 'ArrowUp', 'ArrowRight'].includes(e.key)) { e.preventDefault(); commit(v + stepSize); }
+    else if (['-', '_', 'ArrowDown', 'ArrowLeft'].includes(e.key)) { e.preventDefault(); commit(v - stepSize); }
+    else if (e.key === 'Home') { e.preventDefault(); commit(0); }
+    else if (e.key === 'End') { e.preventDefault(); commit(1); }
   };
 
   const [flashTick, setFlashTick] = useState(0);
-  useEffect(() => { setFlashTick((t)=>t+1); }, [value]);
+  useEffect(() => { setFlashTick(t => t + 1); }, [value]);
   const valueText = format ? format(v) : `${Math.round(v * 100)}%`;
-  const barH = 64, barW = 16;
-  const filled = Math.round(v * barH);
-  const blockH = 4; // blocky steps for retro feel
-  const totalSteps = Math.max(1, Math.floor(barH / blockH));
-  const litBlocks = Math.round((v) * totalSteps);
+  const angle = ANG_MIN + v * (ANG_MAX - ANG_MIN);
+  const ticks = 24; // fixed total ticks
+  const activeTicks = Math.round(v * (ticks - 1));
+  const showSteps = !!step && step > 1;
+  const stepTicks = step ? Array.from({ length: step }, (_, i) => i / (step - 1)) : [];
 
   return (
-    <div className="ctrl" style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 76, opacity: disabled ? 0.5 : 1 }}>
+    <div className="ctrl" style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 72, opacity: disabled ? 0.5 : 1 }}>
       <div
+        className="knob-shell"
         tabIndex={disabled ? -1 : 0}
+        role="slider"
+        aria-valuemin={0}
+        aria-valuemax={1}
+        aria-valuenow={Number(v.toFixed(3))}
+        aria-label={label}
         onKeyDown={onKeyDown}
         onMouseDown={onMouseDown}
-        style={{ userSelect: 'none', outline: 'none', cursor: disabled ? 'default' : 'ns-resize' }}
+        onWheel={onWheel}
+        style={{ cursor: disabled ? 'default' : 'grab' }}
       >
-        {/* Slider track */}
-        <div style={{ display:'flex', alignItems:'stretch', gap: 6 }}>
-          <div style={{
-            width: barW,
-            height: barH,
-            background: 'var(--neutral-1)',
-            border: '1px solid var(--line)',
-            boxSizing: 'border-box',
-            position: 'relative'
-          }}>
-            <div style={{ position: 'absolute', inset: 2, display: 'flex', flexDirection: 'column-reverse' }}>
-              {Array.from({ length: totalSteps }).map((_, i) => {
-                const on = i < litBlocks;
-                const intensity = on ? Math.min(1, (i + 1) / litBlocks) : 0;
-                // Create a pattern for visual interest in monochrome
-                const isPattern = (i % 3 === 0) && on;
-                return (
-                  <div key={i} style={{ 
-                    height: blockH, 
-                    marginBottom: i > 0 ? '1px' : '0',
-                    background: on ? `rgba(var(--accent-rgb), ${0.3 + intensity * 0.7})` : 'transparent',
-                    border: isPattern ? '1px solid var(--accent)' : 'none',
-                    boxSizing: 'border-box'
-                  }} />
-                );
-              })}
-            </div>
-            {/* Clean position indicator */}
-            <div style={{ 
-              position: 'absolute', 
-              left: 2, 
-              right: 2, 
-              bottom: Math.max(2, filled - 1), 
-              height: 2, 
-              background: 'var(--accent)'
-            }} />
+        <div className="knob-face">
+          {/* tick ring */}
+          <div className="knob-ticks">
+            {Array.from({ length: ticks }).map((_, i) => {
+              const tNorm = i / (ticks - 1);
+              const a = ANG_MIN + tNorm * (ANG_MAX - ANG_MIN);
+              const on = i <= activeTicks;
+              return (
+                <div
+                  key={i}
+                  className="knob-tick"
+                  style={{
+                    // Single translation outward from center – no extra negative margins in CSS now
+                    transform: `rotate(${a}deg) translateY(-22px)`,
+                    opacity: on ? 1 : 0.15,
+                  }}
+                />
+              );
+            })}
+            {showSteps && stepTicks.map((sv, i) => {
+              const a = ANG_MIN + sv * (ANG_MAX - ANG_MIN);
+              return <div key={"s"+i} className="knob-step" style={{ transform: `rotate(${a}deg) translateY(-20px)` }} />
+            })}
           </div>
-          {/* Clean meter strip with pattern */}
-          <div style={{ 
-            width: 3, 
-            height: barH, 
-            background: 'var(--neutral-1)', 
-            border: '1px solid var(--line)', 
-            boxSizing: 'border-box', 
-            position: 'relative'
-          }}>
-            {/* Add dots pattern for visual interest */}
-            {Array.from({ length: Math.floor(barH / 4) }).map((_, i) => (
-              <div key={i} style={{
-                position: 'absolute',
-                left: 0,
-                top: i * 4,
-                width: 1,
-                height: 1,
-                background: 'var(--line)',
-                opacity: 0.5
-              }} />
-            ))}
-            <div style={{ 
-              position: 'absolute', 
-              left: 1, 
-              bottom: 1, 
-              width: 1, 
-              height: Math.max(1, Math.round(v * (barH - 2))), 
-              background: 'var(--accent-2)'
-            }} />
-          </div>
+          {/* pointer */}
+          <div className="knob-pointer" style={{ transform: `rotate(${angle}deg)` }} />
+          <div className="knob-center" />
         </div>
       </div>
       <div style={{ fontSize: 11, textAlign: 'center', whiteSpace: 'nowrap', color: 'var(--text-soft)', fontVariant: 'small-caps' }}>{label}</div>
