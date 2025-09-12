@@ -15,6 +15,7 @@ export default function SamplerLoop() {
     pitch_semitones: 0,
     pitch_cents: 0,
     current_sample: undefined as string | undefined,
+  smoothness: 0, // milliseconds
   };
   const safeLoopMode = Number.isFinite(sampler.loop_mode) ? Math.max(0, Math.min(1, Math.round(sampler.loop_mode))) : 0; // 0=Forward,1=PingPong
   const sampleStart = Math.max(0, Math.min(1, sampler.sample_start ?? 0));
@@ -57,78 +58,33 @@ export default function SamplerLoop() {
   // Playhead: prefer engine-reported position; fallback to local simulation
   const [playhead, setPlayhead] = useState(0); // relative (0..1) inside loop region
   const [playheadActive, setPlayheadActive] = useState(false);
-  const [engineFollow, setEngineFollow] = useState(true); // switch to true once backend supports
+  // Follow engine playhead only; no local simulation
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.repeat) return; // avoid reset while holding
-      // Treat any key as a trigger to show playhead
-      if (!currentSamplePath) return;
-  // Start at beginning of loop (relative inside loop)
-  setPlayhead(0);
-      setPlayheadActive(true);
-      setEngineFollow(true); // try backend follow after key trigger
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [currentSamplePath, sampler.loop_mode, sampler.loop_start, sampler.loop_end, sampleStart, span]);
-
-  // Backend polling loop
-  useEffect(() => {
-    if (!playheadActive || !engineFollow) return;
     let cancelled = false;
     const part = s.selectedSoundPart ?? 0;
     const poll = async () => {
       if (cancelled) return;
       try {
         const st = await rpc.getSamplerPlayhead(part);
-        if (st && typeof st.position_rel === 'number') { // engine provides position 0..1 inside trimmed region (sample_start..sample_end)
-          // Map engine region-relative position to loop-relative [0..1] for our UI
+        if (st && typeof st.position_rel === 'number' && st.playing) {
           const ls = Math.max(0, Math.min(1, (sampler.loop_start - sampleStart) / span));
           const le = Math.max(ls + 1e-6, Math.min(1, (sampler.loop_end - sampleStart) / span));
           const loopW = Math.max(1e-6, le - ls);
           let rel = (st.position_rel - ls) / loopW;
-          // For forward mode clamp 0..1; for ping-pong we still clamp since UI line only sweeps loop area
           if (!Number.isFinite(rel)) rel = 0;
           setPlayhead(Math.max(0, Math.min(1, rel)));
+          setPlayheadActive(true);
         } else {
-          setEngineFollow(false);
+          setPlayheadActive(false);
         }
-      } catch { setEngineFollow(false); }
-      if (!cancelled && playheadActive) setTimeout(poll, 60);
+      } catch {
+        setPlayheadActive(false);
+      }
+      if (!cancelled) setTimeout(poll, 16);
     };
     poll();
     return () => { cancelled = true; };
-  }, [playheadActive, engineFollow, s.selectedSoundPart, sampler.loop_start, sampler.loop_end, sampleStart, span]);
-
-  // Local simulation fallback
-  useEffect(() => {
-    if (!playheadActive || engineFollow) return;
-    let frame: number;
-    let direction = 1;
-    let last = performance.now();
-    const pitchRatio = Math.pow(2, (((sampler.pitch_semitones||0) + (sampler.pitch_cents||0)/100) / 12));
-    // Make base speed independent of selection span to avoid visual jitter when region changes
-    const baseSpeed = pitchRatio * 0.3; // fraction of loop per second
-  const loopSpan = Math.max(0.000001, sampler.loop_end - sampler.loop_start);
-  const loopMode = Math.max(0, Math.min(1, Math.round(sampler.loop_mode||0)));
-    const step = (now: number) => {
-      const dt = (now - last) / 1000; last = now;
-      setPlayhead(prev => {
-  let p = prev + direction * baseSpeed * dt; // 0..1 inside loop span
-  if (loopMode === 0) { // forward
-          if (p >= 1) { p = p - 1; }
-          else if (p < 0) { p = 1 + p; }
-          return p;
-        }
-        if (p >= 1) { p = 1 - (p - 1); direction = -1; }
-        else if (p <= 0) { p = -p; direction = 1; }
-        return p;
-      });
-      if (playheadActive && !engineFollow) frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [playheadActive, engineFollow, sampler.loop_mode, sampler.loop_start, sampler.loop_end, sampleStart, span, sampler.pitch_semitones, sampler.pitch_cents]);
+  }, [s.selectedSoundPart, sampler.loop_start, sampler.loop_end, sampleStart, span]);
 
   // --- Loop editing state & handlers (restored) ---
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -227,6 +183,10 @@ export default function SamplerLoop() {
           s.setSynthParam(`part/${part}/sampler/loop_end`, Math.max(0, Math.min(1, rel)));
         }
         break;
+      case 'smoothness':
+        // value is milliseconds 0..50
+        s.setSynthParam(`part/${part}/sampler/smoothness`, value);
+        break;
     }
   };
 
@@ -269,7 +229,9 @@ export default function SamplerLoop() {
                         <line x1={le * 100} y1={0} x2={le * 100} y2={100} stroke="#ffffff" strokeOpacity={0.55} strokeWidth={0.6} />
                         <rect x={ls*100 - 1.5} y={0} width={3} height={100} fill={editing==='start'? '#fff' : '#fff8'} />
                         <rect x={le*100 - 1.5} y={0} width={3} height={100} fill={editing==='end'? '#fff' : '#fff8'} />
-                        <line x1={loopPlayheadX * 100} y1={0} x2={loopPlayheadX * 100} y2={100} stroke="#fffb" strokeWidth={0.7} />
+                        {playheadActive && (
+                          <line x1={loopPlayheadX * 100} y1={0} x2={loopPlayheadX * 100} y2={100} stroke="#fffb" strokeWidth={0.7} />
+                        )}
                       </g>
                     );
                   })()}
@@ -324,6 +286,15 @@ export default function SamplerLoop() {
             }}
             label="Loop End"
             format={(v: number) => ((sampleStart + v * span) * 100).toFixed(1) + '%'}
+          />
+        </div>
+
+        <div className="knob-group">
+          <Knob
+            value={Math.max(0, Math.min(1, ((sampler.smoothness ?? 0) as number) / 50))}
+            onChange={(v: number) => setParam('smoothness', Math.max(0, Math.min(50, v * 50)))}
+            label="Smoothing"
+            format={(v: number) => `${Math.round(v * 50)} ms`}
           />
         </div>
       </div>

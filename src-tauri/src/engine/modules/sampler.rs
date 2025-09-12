@@ -207,6 +207,13 @@ impl Envelope {
         self.rate = 1.0 / (self.release_ms * 0.001 * self.sr);
     }
 
+    // Ensure we're in release if not already (idempotent entry to Release)
+    fn ensure_release(&mut self) {
+        if !matches!(self.stage, EnvelopeStage::Release | EnvelopeStage::Idle) {
+            self.note_off();
+        }
+    }
+
     fn process(&mut self) -> f32 {
         match self.stage {
             EnvelopeStage::Idle => 0.0,
@@ -298,8 +305,9 @@ impl SamplerVoice {
     }
 
     pub fn note_off(&mut self, _note: u8) {
+        // Do not immediately force envelope into release; One-Shot will ignore note-off and play to end.
+        // For Loop/Keytrack we'll start release inside render once we know the current playback mode.
         self.gate = false;
-        self.envelope.note_off();
     }
 
     pub fn render(&mut self, buffer: &SampleBuffer, params: &ParamStore, param_keys: &SamplerParamKeys) -> f32 {
@@ -317,7 +325,8 @@ impl SamplerVoice {
         let loop_start = params.get_f32_h(param_keys.loop_start, 0.0).clamp(0.0, 1.0);
         let loop_end = params.get_f32_h(param_keys.loop_end, 1.0).clamp(0.0, 1.0);
         let loop_mode = LoopMode::from_index(params.get_i32_h(param_keys.loop_mode, 0));
-        let smoothness_ms = params.get_f32_h(param_keys.smoothness, 0.0).max(0.0);
+    // Crossfade smoothing window length (ms), clamped to 0..50ms
+    let smoothness_ms = params.get_f32_h(param_keys.smoothness, 0.0).clamp(0.0, 50.0);
         
         let attack_ms = params.get_f32_h(param_keys.attack, 10.0);
         let decay_ms = params.get_f32_h(param_keys.decay, 100.0);
@@ -335,8 +344,8 @@ impl SamplerVoice {
         let total_pitch = pitch_semitones + pitch_cents / 100.0;
         let mut pitch_ratio = cents_to_ratio(total_pitch * 100.0);
         
-        // Apply keytrack if enabled
-        if matches!(playback_mode, PlaybackMode::Keytrack) {
+    // Apply keytrack in Keytrack and Loop modes
+    if matches!(playback_mode, PlaybackMode::Keytrack | PlaybackMode::Loop) {
             let root_note = 60; // C4 as default root note
             let note_offset = self.note as f32 - root_note as f32;
             pitch_ratio *= cents_to_ratio(note_offset * 100.0);
@@ -350,7 +359,12 @@ impl SamplerVoice {
             self.just_triggered = false;
         }
 
-        // Check if voice should be active
+        // For Loop/Keytrack modes, start envelope release if key was lifted
+        if !self.gate && matches!(playback_mode, PlaybackMode::Loop | PlaybackMode::Keytrack) {
+            self.envelope.ensure_release();
+        }
+
+        // Check if voice should be active (envelope finished and key is up)
         if !self.envelope.is_active() && !self.gate {
             return 0.0;
         }
@@ -370,18 +384,38 @@ impl SamplerVoice {
             PlaybackMode::Loop => {
                 let loop_start_pos = start_pos + (loop_start * (end_pos - start_pos));
                 let loop_end_pos = start_pos + (loop_end * (end_pos - start_pos));
+                let loop_len = (loop_end_pos - loop_start_pos).max(1.0);
+                // Convert smoothing from ms to samples and clamp to half the loop length
+                let mut smooth_samps = (smoothness_ms * 0.001 * self.sr).max(0.0);
+                if smooth_samps > loop_len * 0.5 { smooth_samps = loop_len * 0.5; }
                 
                 if self.position >= loop_start_pos && self.position <= loop_end_pos {
-                    output = buffer.get_sample_interpolated(self.position, 0);
+                    // Base sample at current position
+                    let base = buffer.get_sample_interpolated(self.position, 0);
+                    output = base;
                     
                     match loop_mode {
                         LoopMode::Forward => {
+                            // Linear overlap crossfade near loop end
+                            if smooth_samps >= 1.0 {
+                                let window_start = loop_end_pos - smooth_samps;
+                                if self.position >= window_start && self.position <= loop_end_pos {
+                                    let t = ((self.position - window_start) / smooth_samps).clamp(0.0, 1.0);
+                                    // Align start window to loop start with same offset
+                                    let start_pos = loop_start_pos + (self.position - window_start);
+                                    let s_start = buffer.get_sample_interpolated(start_pos, 0);
+                                    let s_end = base;
+                                    output = s_end * (1.0 - t) + s_start * t;
+                                }
+                            }
+
                             self.position += self.pitch_ratio * self.direction;
                             if self.position >= loop_end_pos {
                                 self.position = loop_start_pos + (self.position - loop_end_pos);
                             }
                         },
                         LoopMode::PingPong => {
+                            // No smoothing at bounce by default; rely on reverse motion to reduce discontinuities
                             self.position += self.pitch_ratio * self.direction;
                             if self.position >= loop_end_pos {
                                 self.direction = -1.0;

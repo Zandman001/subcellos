@@ -85,6 +85,8 @@ export interface BrowserState {
   scheduleSavePreset?: (preset: any) => void;
   // per-sound module kind hint (UI-only). 'acid' constrains pages to 4.
   moduleKindById?: Record<string, 'acid' | 'analog' | 'karplus' | 'resonator' | 'sampler'>;
+  // recompute pages when conditions change (e.g., sampler playback type toggles LOOP availability)
+  refreshSynthPages?: () => void;
 }
 
 // Simple no-deps store with subscribe/get/set
@@ -528,6 +530,18 @@ state.toggleFocus = () => {
   set({ focus: state.focus === "browser" ? "right" : "browser" });
 };
 
+// Public helper to recompute pages and keep selection in bounds
+state.refreshSynthPages = () => {
+  if (state.level !== 'synth') return;
+  const pages = computeSynthPagesForCurrent();
+  const maxIdx = pages.length - 1;
+  const curLabel = state.synthPages[state.synthPageIndex];
+  // try to keep same label if still present, else clamp index
+  const idxSame = pages.indexOf(curLabel);
+  const nextIdx = idxSame >= 0 ? idxSame : Math.max(0, Math.min(maxIdx, state.synthPageIndex));
+  set({ synthPages: pages, items: pages.slice(), synthPageIndex: nextIdx, selected: nextIdx });
+};
+
 // Hook to use the store
 export function useBrowser<T = InternalState>(selector?: (s: InternalState) => T): T {
   useEffect(() => { state.loadLevel(); }, []);
@@ -665,7 +679,13 @@ function computeSynthPagesForCurrent(): readonly string[] {
   } else if (moduleKind === 3) { // ResonatorBank
     return ["RESONATOR", "FX", "MIXER", "EQ"] as const;
   } else if (moduleKind === 4) { // Sampler
-    return ["SAMPLER", "LOOP", "ENVELOPE", "MIXER", "FX", "EQ"] as const;
+    // Hide LOOP tab unless playback mode is Loop (index 1)
+    const ui = state.getSynthUI() as any;
+    const pmode = Math.round(ui?.sampler?.playback_mode ?? 0);
+    if (pmode === 1) {
+      return ["SAMPLER", "LOOP", "ENVELOPE", "MIXER", "FX", "EQ"] as const;
+    }
+    return ["SAMPLER", "ENVELOPE", "MIXER", "FX", "EQ"] as const;
   }
   // Analog synth (default)
   return ["OSC","ENV","FILTER","LFO","MOD","FX","MIXER","EQ"] as const;
@@ -1170,6 +1190,8 @@ async function applyPreset(preset: any) {
       gain: p.sampler?.gain ?? 0.8,
     },
   }));
+  // Pages may depend on sampler playback_mode (hide/show LOOP)
+  try { state.refreshSynthPages?.(); } catch {}
   // Replay to engine
   const part = state.selectedSoundPart ?? 0;
   const pf = `part/${part}/`;

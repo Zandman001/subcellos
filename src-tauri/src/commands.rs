@@ -261,3 +261,25 @@ pub fn get_sample_waveform(path: String) -> Result<Vec<f32>, String> {
 pub fn get_sampler_playhead(_part: usize) -> Result<Option<PlayheadState>, String> {
   Ok(get_playhead_state(_part))
 }
+
+#[derive(serde::Serialize)]
+pub struct SampleInfo {
+  pub length_samples: usize,
+  pub sample_rate: f32,
+  pub channels: usize,
+}
+
+#[tauri::command]
+pub fn get_sample_info(path: String) -> Result<SampleInfo, String> {
+  let documents_dir = dirs::document_dir()
+    .ok_or("Could not find documents directory")?;
+  let sample_path = documents_dir.join("subsamples").join(&path);
+  if !sample_path.exists() {
+    return Err(format!("Sample file not found: {}", path));
+  }
+  use crate::engine::modules::sampler::Sampler;
+  let mut sampler = Sampler::new(44100.0);
+  sampler.load_sample(&sample_path.to_string_lossy());
+  let (length_samples, sample_rate, channels) = sampler.get_sample_info();
+  Ok(SampleInfo { length_samples, sample_rate, channels })
+}

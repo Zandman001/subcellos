@@ -315,6 +315,32 @@ body {
 .waveform-svg-wrap { width:100%; height:100%; position:relative; }
 .sampler-waveform-svg { width:100%; height:100%; display:block; }
 
+/* Timebar HTML overlay */
+.timebar-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  background: transparent;
+  font-family: 'Press Start 2P', monospace;
+  line-height: 1;
+  overflow: hidden; /* prevent labels from spilling out */
+}
+.timebar-label {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  color: #fff;
+  opacity: 0.9;
+  font-size: 10px; /* matches rest of UI scale better in taller bar */
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.6);
+}
+.timebar-label.align-left { left: 0 !important; transform: translateX(2px); text-align: left; }
+.timebar-label.align-right { left: 100% !important; transform: translateX(calc(-100% - 2px)); text-align: right; }
+.timebar-label.align-center { text-align: center; }
+
 /* ===== Circular Knob Styles ===== */
 .knob-shell { position: relative; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; outline: none; }
 .knob-face { position: relative; width: 48px; height: 48px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #222 0%, #111 60%, #080808 100%); border: 1px solid var(--line); box-shadow: inset 0 2px 4px rgba(255,255,255,0.05), 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,0.6); }

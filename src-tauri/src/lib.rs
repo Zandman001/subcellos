@@ -51,6 +51,7 @@ pub fn run() {
       stop_preview,
       get_sample_waveform,
   get_sampler_playhead,
+  get_sample_info,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

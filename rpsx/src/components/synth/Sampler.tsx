@@ -18,6 +18,8 @@ export default function Sampler() {
       if (moduleKind !== 'sampler') {
         s.setSynthParam(`part/${part}/module_kind`, 4, 'I32'); 
       }
+  // Ensure pages reflect current playback mode
+  s.refreshSynthPages?.();
     } catch {} 
   }, [part, selectedSoundId, moduleKindById, s.setSynthParam]);
 
@@ -35,7 +37,6 @@ export default function Sampler() {
     decay: 0.3,
     sustain: 0.7,
     release: 0.5,
-    gain: 0.8,
   };
 
   const setParam = (key: string, value: number) => {
@@ -60,19 +61,21 @@ export default function Sampler() {
         s.setSynthParam(`part/${part}/sampler/pitch_cents`, value);
         break;
       case 'playback_mode':
-        s.setSynthParam(`part/${part}/sampler/playback_mode`, Math.round(value), 'I32');
+  s.setSynthParam(`part/${part}/sampler/playback_mode`, Math.round(value), 'I32');
+  // Recompute pages so LOOP tab toggles visibility when not in Loop mode
+  try { s.refreshSynthPages?.(); } catch {}
         break;
-      case 'gain':
-        s.setSynthParam(`part/${part}/sampler/gain`, value);
-        break;
+  // no default
     }
   };
 
   // Convert pitch coarse to semitones display (-48 to +48)
   const safeSemi = Number.isFinite(sampler.pitch_semitones) ? sampler.pitch_semitones : 0;
   const safeCents = Number.isFinite(sampler.pitch_cents) ? sampler.pitch_cents : 0;
-  const pitchCoarseDisplay = safeSemi.toString();
-  const pitchFineDisplay = (safeCents).toFixed(0);
+  // Universal pitch knob: map current semitones+cents to a single 0..1 value across ±49 st (±4900 cents)
+  const totalCents = (Number.isFinite(safeSemi) ? safeSemi : 0) * 100 + (Number.isFinite(safeCents) ? safeCents : 0);
+  const totalCentsClamped = Math.max(-4900, Math.min(4900, totalCents));
+  const unifiedPitchNorm = (totalCentsClamped / 4900 + 1) / 2; // 0..1
 
   // Playback mode display
   const playbackModes = ['One-Shot', 'Loop', 'Keytrack'];
@@ -85,6 +88,43 @@ export default function Sampler() {
   const selectionSpan = Math.max(0.00001, sampler.sample_end - sampler.sample_start);
   const dragScaleForSelection = selectionSpan; // smaller selection => smaller scale -> finer control
 
+  // Engine-synced playhead inside selection region (0..1 of sample_start..sample_end)
+  const [playheadRel, setPlayheadRel] = useState(0);
+  const [playheadActive, setPlayheadActive] = useState(false);
+  // Sample info for time ruler
+  const [sampleInfo, setSampleInfo] = useState<{ length_samples: number; sample_rate: number; channels: number } | null>(null);
+  // Poll engine for playhead; hide when not playing; no local simulation
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const st = await rpc.getSamplerPlayhead(part);
+        if (st && typeof st.position_rel === 'number' && st.playing) {
+          setPlayheadRel(Math.max(0, Math.min(1, st.position_rel)));
+          setPlayheadActive(true);
+        } else {
+          setPlayheadActive(false);
+        }
+      } catch {
+        setPlayheadActive(false);
+      }
+      if (!cancelled) setTimeout(poll, 16); // ~60 FPS for smoother motion
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [part]);
+
+  // Fetch sample info for time ruler
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentSamplePath) { setSampleInfo(null); return; }
+    rpc.getSampleInfo(currentSamplePath)
+      .then(info => { if (!cancelled) setSampleInfo(info); })
+      .catch(() => { if (!cancelled) setSampleInfo(null); });
+    return () => { cancelled = true; };
+  }, [currentSamplePath]);
+
   // --- Derived selection + zoom target (computed each render) ---
   // Determine which selection to zoom: prefer loop if it's significantly narrower than sample region
   const sampleSelStart = sampler.sample_start;
@@ -92,14 +132,12 @@ export default function Sampler() {
   const sampleSelWidth = Math.max(0.000001, sampleSelEnd - sampleSelStart);
   const loopStartRaw = sampler.loop_start ?? sampleSelStart;
   const loopEndRaw = sampler.loop_end ?? sampleSelEnd;
-  // Clamp loop inside sample selection
+  // Clamp loop inside sample selection (display only)
   const loopStart = Math.min(Math.max(loopStartRaw, sampleSelStart), sampleSelEnd);
   const loopEnd = Math.min(Math.max(loopEndRaw, loopStart + 0.000001), sampleSelEnd);
-  const loopWidth = Math.max(0.000001, loopEnd - loopStart);
-  const useLoop = loopWidth < sampleSelWidth * 0.98; // loop is a tighter selection
-  const selStart = useLoop ? loopStart : sampleSelStart;
-  const selEnd = useLoop ? loopEnd : sampleSelEnd;
-  const selWidth = useLoop ? loopWidth : sampleSelWidth;
+  const selStart = sampleSelStart;
+  const selEnd = sampleSelEnd;
+  const selWidth = sampleSelWidth;
   let targetDisplayStart = 0;
   let targetDisplayEnd = 1;
   if (selWidth < 0.995) {
@@ -147,14 +185,21 @@ export default function Sampler() {
     if (!currentSamplePath) return <div className="waveform-text">No sample</div>;
     if (!waveform) return <div className="waveform-text">Loading...</div>;
     if (waveform.length === 0) return <div className="waveform-text">No waveform</div>;
+    // Reserve a top bar for the time ruler and loop indicator so text doesn't overlap the waveform
+  const topBarH = 26; // percent of SVG height (taller for proper proportions)
+    const waveTop = topBarH;
+    const waveBottom = 100;
+    const waveH = waveBottom - waveTop;
+    const centerY = waveTop + waveH * 0.5;
+    const ampY = waveH * 0.45;
     const max = Math.max(0.00001, ...waveform.map(v => Math.abs(v)));
     const top: string[] = [];
     const bottom: string[] = [];
     for (let i = 0; i < waveform.length; i++) {
       const x = (i / (waveform.length - 1)) * 100;
       const a = waveform[i] / max;
-      const yT = 50 - a * 45;
-      const yB = 50 + a * 45;
+      const yT = centerY - a * ampY;
+      const yB = centerY + a * ampY;
       top.push(`${x},${yT}`);
       bottom.push(`${x},${yB}`);
     }
@@ -163,7 +208,7 @@ export default function Sampler() {
     let croppedPath = pathD;
     let showRangeStart = 0;
     let showRangeEnd = 1;
-    if (zoomActive) {
+  if (zoomActive) {
       showRangeStart = targetDisplayStart;
       showRangeEnd = targetDisplayEnd;
       const total = waveform.length - 1;
@@ -177,8 +222,8 @@ export default function Sampler() {
         for (let i = 0; i < region.length; i++) {
           const x = (i / (region.length - 1)) * 100;
           const a = region[i] / maxAmp;
-          const yT = 50 - a * 45;
-          const yB = 50 + a * 45;
+          const yT = centerY - a * ampY;
+          const yB = centerY + a * ampY;
           topZ.push(`${x},${yT}`);
           botZ.push(`${x},${yB}`);
         }
@@ -190,35 +235,107 @@ export default function Sampler() {
     // Map selection (selStart/selEnd) to local cropped space
     const localSelStart = ((selStart - showRangeStart) / (showRangeEnd - showRangeStart)) * 100;
     const localSelEnd = ((selEnd - showRangeStart) / (showRangeEnd - showRangeStart)) * 100;
+
+    // Compute playhead x in local cropped space from engine-reported region-relative position
+  const regionWidth = Math.max(1e-9, sampleSelEnd - sampleSelStart);
+  const playheadAbs = sampleSelStart + playheadRel * regionWidth; // absolute in 0..1 of whole sample
+  const localPlayhead = ((playheadAbs - showRangeStart) / (showRangeEnd - showRangeStart)) * 100;
+  const showPlayhead = playheadActive && Number.isFinite(localPlayhead) && localPlayhead >= 0 && localPlayhead <= 100;
+    
+  // Time ruler ticks (seconds)
+    const totalSeconds = sampleInfo && sampleInfo.length_samples > 0 ? (sampleInfo.length_samples / (sampleInfo.sample_rate || 44100)) : 0;
+    const viewStartSec = totalSeconds * showRangeStart;
+    const viewEndSec = totalSeconds * showRangeEnd;
+    const visibleSec = Math.max(0, viewEndSec - viewStartSec);
+    const tickSteps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+    const step = tickSteps.find(s => visibleSec / s <= 10) || tickSteps[tickSteps.length - 1];
+    const ticks: number[] = [];
+    if (totalSeconds > 0 && step > 0) {
+      let t = Math.ceil(viewStartSec / step) * step;
+      const end = viewEndSec + 1e-6;
+      for (; t <= end; t += step) ticks.push(t);
+    }
+    const fmtTime = (t: number) => {
+      if (t >= 60) {
+        const m = Math.floor(t / 60);
+        const s = Math.floor(t % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
+      }
+      if (step < 1) return t.toFixed(1) + 's';
+      return Math.floor(t).toString() + 's';
+    };
+  // Font + layout tuned to fit inside the top bar and match UI font (SVG units)
+  // Use a fraction of the top bar height so text remains readable regardless of container pixels
+  const labelFont = Math.min(topBarH - 2, Math.max(3, topBarH * 0.65));
+  const tickH = Math.max(2, Math.min(topBarH - 2, topBarH - labelFont - 1));
+  const labelY = Math.min(topBarH - 1, tickH + labelFont * 0.8);
+    
+    // Loop bar positions in local space
+    const lStartLocal = ((loopStart - showRangeStart) / (showRangeEnd - showRangeStart)) * 100;
+    const lEndLocal = ((loopEnd - showRangeStart) / (showRangeEnd - showRangeStart)) * 100;
+    const loopBarX = Math.max(0, Math.min(100, lStartLocal));
+    const loopBarW = Math.max(0, Math.min(100, lEndLocal) - loopBarX);
     return (
+      <>
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="sampler-waveform-svg">
         <rect x={0} y={0} width={100} height={100} fill="#222" />
-        <path d={croppedPath} fill="#ffffff" fillOpacity={0.85} stroke="#ffffff" strokeWidth={0.25} />
-        <line x1="0" y1="50" x2="100" y2="50" stroke="#555" strokeWidth={0.4} strokeDasharray="2 2" />
-        {/* Selection highlight */}
-        <rect x={localSelStart} y={0} width={Math.max(0.5, localSelEnd - localSelStart)} height={100} fill="#ffffff" fillOpacity={0.06} />
-        <line x1={localSelStart} y1={0} x2={localSelStart} y2={100} stroke="#ffffff" strokeOpacity={0.6} strokeWidth={0.6} />
-        <line x1={localSelEnd} y1={0} x2={localSelEnd} y2={100} stroke="#ffffff" strokeOpacity={0.6} strokeWidth={0.6} />
-        {/* Loop markers if loop used and distinct */}
-        {useLoop && (
-          (() => {
-            const lStartLocal = ((loopStart - showRangeStart) / (showRangeEnd - showRangeStart)) * 100;
-            const lEndLocal = ((loopEnd - showRangeStart) / (showRangeEnd - showRangeStart)) * 100;
+        {/* Top bar background */}
+        <rect x={0} y={0} width={100} height={topBarH} fill="#1a1a1a" />
+        {/* Top time ruler and loop bar (within top bar) */}
+  <g fontFamily="'Press Start 2P', monospace">
+          {/* Loop bar above waveform; only show in Loop playback mode */}
+          {playbackModeIndex === 1 && loopBarW > 0 && (
+            <rect x={loopBarX} y={0} width={loopBarW} height={Math.min(4, topBarH)} fill="#ffb300" fillOpacity={0.95} />
+          )}
+          {/* Tick marks */}
+          {totalSeconds > 0 && ticks.map((t, i) => {
+            const x = ((t / totalSeconds - showRangeStart) / (showRangeEnd - showRangeStart)) * 100;
+            if (!Number.isFinite(x)) return null;
             return (
-              <g>
-                <rect x={lStartLocal} y={0} width={Math.max(0.3, lEndLocal - lStartLocal)} height={100} fill="#ffffff" fillOpacity={0.08} />
-                <rect x={lStartLocal - 0.9} y={0} width={1.8} height={100} fill="#fff" fillOpacity={0.9} />
-                <rect x={lEndLocal - 0.9} y={0} width={1.8} height={100} fill="#fff" fillOpacity={0.9} />
+              <g key={i}>
+                <line x1={x} y1={0} x2={x} y2={tickH} stroke="#fff" strokeOpacity={0.7} strokeWidth={0.4} />
               </g>
             );
-          })()
+          })}
+        </g>
+        {/* Waveform and overlays below the top bar */}
+        <path d={croppedPath} fill="#ffffff" fillOpacity={0.85} stroke="#ffffff" strokeWidth={0.25} />
+        <line x1="0" y1={centerY} x2="100" y2={centerY} stroke="#555" strokeWidth={0.4} strokeDasharray="2 2" />
+        {/* Selection highlight */}
+        <rect x={localSelStart} y={waveTop} width={Math.max(0.5, localSelEnd - localSelStart)} height={waveH} fill="#ffffff" fillOpacity={0.06} />
+        <line x1={localSelStart} y1={waveTop} x2={localSelStart} y2={waveBottom} stroke="#ffffff" strokeOpacity={0.6} strokeWidth={0.6} />
+        <line x1={localSelEnd} y1={waveTop} x2={localSelEnd} y2={waveBottom} stroke="#ffffff" strokeOpacity={0.6} strokeWidth={0.6} />
+        {/* Engine-synced playhead */}
+        {showPlayhead && (
+          <line x1={localPlayhead} y1={waveTop} x2={localPlayhead} y2={waveBottom} stroke="#fffb" strokeWidth={0.7} />
         )}
         {zoomActive && (
-          <text x={2} y={8} fontSize={5} fill="#fff8" style={{userSelect:'none'}}>
-            {useLoop ? 'LOOP' : 'REG'} ZOOM {Math.round((selWidth)*100)}%
+          <text x={2} y={waveTop + 8} fontSize={5} fill="#fff8" style={{userSelect:'none'}}>
+            ZOOM {Math.round((selWidth)*100)}%
           </text>
         )}
       </svg>
+      {/* HTML overlay for labels to avoid SVG squish */}
+      {totalSeconds > 0 && (
+        <div className="timebar-overlay" style={{ height: `${topBarH}%` }}>
+          {(ticks || []).map((t, i) => {
+            const x = ((t / totalSeconds - showRangeStart) / (showRangeEnd - showRangeStart)) * 100;
+            if (!Number.isFinite(x)) return null;
+            if (!(visibleSec / step <= 8 || (i % 2 === 0))) return null;
+            const align = x < 2 ? 'left' : x > 98 ? 'right' : 'center';
+            return (
+              <span
+                key={i}
+                className={`timebar-label align-${align}`}
+                style={{ left: `${Math.max(0, Math.min(100, x))}%` }}
+              >
+                {fmtTime(t)}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      </>
     );
   };
 
@@ -247,8 +364,8 @@ export default function Sampler() {
         </div>
       </div>
 
-      {/* Main sampler knobs */}
-      <div className="knob-grid sampler-knobs">
+  {/* Main sampler knobs: 4 in one row */}
+  <div className="knob-grid sampler-knobs">
         <div className="knob-group">
           <Knob
             value={sampler.sample_start}
@@ -279,56 +396,44 @@ export default function Sampler() {
 
         <div className="knob-group">
           <Knob
-            value={((Number.isFinite(safeSemi)? safeSemi:0) + 48) / 96}
+            value={unifiedPitchNorm}
             onChange={(v: number) => {
-              const semi = Math.round(v * 96 - 48);
-              setParam('pitch_semitones', semi);
+              // Map 0..1 to total cents in [-4900, +4900]
+              const totalCents = (v * 2 - 1) * 4900;
+              // Drive engine with cents only for continuous control; zero out semitone param to avoid double counting
+              s.updateSynthUI((ui: any) => ({
+                ...ui,
+                sampler: { ...ui.sampler, pitch_semitones: 0, pitch_cents: totalCents }
+              }));
+              const part = s.selectedSoundPart ?? 0;
+              s.setSynthParam(`part/${part}/sampler/pitch_semitones`, 0, 'F32');
+              s.setSynthParam(`part/${part}/sampler/pitch_cents`, totalCents);
             }}
-            label="Pitch (Semi)"
-            format={(v: number) => (Math.round(v * 96 - 48)).toString() + ' st'}
+            label="Pitch"
+            format={(v: number) => {
+              const cents = (v * 2 - 1) * 4900;
+              const st = cents / 100;
+              return (st >= 0 ? '+' : '') + st.toFixed(1) + ' st';
+            }}
           />
         </div>
 
-        <div className="knob-group">
-          <Knob
-            value={((Number.isFinite(safeCents)? safeCents:0) + 100) / 200}
-            onChange={(v: number) => {
-              const cents = (v * 200 - 100);
-              setParam('pitch_cents', cents);
-            }}
-            label="Pitch (Fine)"
-            format={(v: number) => (Math.round(v * 200 - 100)).toString() + ' ct'}
-          />
-        </div>
-      </div>
-
-      <div className="knob-grid sampler-knobs-row2">
         <div className="knob-group">
           <Knob
             value={playbackModeIndex / 2} // discrete 0,0.5,1 for 3 states
             onChange={(v: number) => {
-              // v already quantized via step prop
               const idx = Math.round(v * 2);
               setParam('playback_mode', idx);
             }}
             step={3}
-            label="Playback Type"
+            label="Playback"
             format={(v: number) => {
               const idx = Math.round(v * 2);
               return playbackModes[idx] || 'One-Shot';
             }}
           />
         </div>
-
-        <div className="knob-group">
-          <Knob
-            value={sampler.gain}
-            onChange={(v: number) => setParam('gain', v)}
-            label="Gain"
-            format={(v: number) => (v * 100).toFixed(0) + '%'}
-          />
-        </div>
       </div>
-    </div>
+  </div>
   );
 }
