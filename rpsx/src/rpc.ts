@@ -33,5 +33,6 @@ export const rpc = {
   previewSample: (path: string) => safeInvoke<void>("preview_sample", { path }),
   stopPreview: () => safeInvoke<void>("stop_preview"),
   getSampleWaveform: (path: string) => safeInvoke<number[]>("get_sample_waveform", { path }, []),
+  getSamplerPlayhead: (part: number) => safeInvoke<any>("get_sampler_playhead", { part }, null),
   deleteSubsample: (path: string) => safeInvoke<void>("delete_subsample", { path }),
 };

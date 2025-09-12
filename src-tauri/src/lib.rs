@@ -5,6 +5,7 @@ mod engine {
   pub mod audio;
   pub mod dsp;
   pub mod modules;
+  pub mod state;
 }
 mod commands;
 use commands::*;
@@ -49,6 +50,7 @@ pub fn run() {
       preview_sample,
       stop_preview,
       get_sample_waveform,
+  get_sampler_playhead,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

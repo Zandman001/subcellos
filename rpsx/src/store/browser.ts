@@ -804,8 +804,8 @@ export type SynthUI = {
   sampler?: {
     sample_start: number;
     sample_end: number;
-    pitch_semitones: number;
-    pitch_cents: number;
+  pitch_semitones: number; // coarse semitones -48..+48
+  pitch_cents: number;     // fine cents -100..+100
     playback_mode: number;
     loop_start: number;
     loop_end: number;
@@ -880,8 +880,8 @@ function defaultSynthUI(): SynthUI {
     sampler: {
       sample_start: 0.0,
       sample_end: 1.0,
-      pitch_semitones: 0.0,
-      pitch_cents: 0.0,
+  pitch_semitones: 0.0,
+  pitch_cents: 0.0,
       playback_mode: 0, // OneShot
       loop_start: 0.0,
       loop_end: 1.0,
@@ -1582,6 +1582,14 @@ const loadSelectedSample = async () => {
   try {
     // Load the sample into the current sampler part
     await rpc.loadSample(part, selectedSample);
+    // Stash current sample path into synth UI state for waveform components
+    if (state.selectedSoundId) {
+      const uiMap = state.synthUIById || {};
+      const ui = uiMap[state.selectedSoundId] ? { ...uiMap[state.selectedSoundId] } : defaultSynthUI();
+      (ui as any).sampler = { ...(ui as any).sampler, current_sample: selectedSample };
+      uiMap[state.selectedSoundId] = ui;
+      set({ synthUIById: { ...uiMap }, synthUIVersion: (state.synthUIVersion||0)+1 });
+    }
     closeSampleBrowser();
   } catch (e) {
     console.error('Failed to load sample:', e);

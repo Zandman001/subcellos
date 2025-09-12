@@ -7,9 +7,10 @@ type KnobProps = {
   step?: number; // e.g., 4 for shapes
   format?: (v: number) => string;
   disabled?: boolean;
+  dragScale?: number; // optional scaling of drag sensitivity (multiplies baseline)
 };
 
-export default function Knob({ label, value, onChange, step, format, disabled }: KnobProps) {
+export default function Knob({ label, value, onChange, step, format, disabled, dragScale }: KnobProps) {
   // Round knob with radial ticks & pointer
   const [v, setV] = useState<number>(clamp01(value));
   useEffect(() => setV(clamp01(value)), [value]);
@@ -42,7 +43,9 @@ export default function Knob({ label, value, onChange, step, format, disabled }:
   const onMouseMove = (e: MouseEvent) => {
     if (!dragging.current) return;
     const dy = startY.current - e.clientY;
-    const sensitivity = e.shiftKey ? 0.001 : 0.003;
+    const base = e.shiftKey ? 0.001 : 0.003;
+    const scale = (dragScale === undefined ? 1 : dragScale);
+    const sensitivity = base * scale;
     const nv = startV.current + dy * sensitivity;
     commit(nv);
   };

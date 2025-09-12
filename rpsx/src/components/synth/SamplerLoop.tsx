@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useBrowser } from '../../store/browser';
 import Knob from './Knob';
+import { rpc } from '../../rpc';
 
 export default function SamplerLoop() {
   const s = useBrowser() as any;
@@ -9,6 +10,196 @@ export default function SamplerLoop() {
     loop_mode: 0,
     loop_start: 0.2,
     loop_end: 0.8,
+    sample_start: 0.0,
+    sample_end: 1.0,
+    pitch_semitones: 0,
+    pitch_cents: 0,
+    current_sample: undefined as string | undefined,
+  };
+  const safeLoopMode = Number.isFinite(sampler.loop_mode) ? Math.max(0, Math.min(1, Math.round(sampler.loop_mode))) : 0; // 0=Forward,1=PingPong
+  const sampleStart = Math.max(0, Math.min(1, sampler.sample_start ?? 0));
+  const sampleEnd = Math.max(sampleStart + 0.0005, Math.min(1, sampler.sample_end ?? 1));
+  const span = sampleEnd - sampleStart;
+
+  const currentSamplePath = sampler.current_sample as string | undefined;
+  const [waveform, setWaveform] = useState<number[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentSamplePath) { setWaveform(null); return; }
+    rpc.getSampleWaveform(currentSamplePath)
+      .then(w => { if (!cancelled) setWaveform(w); })
+      .catch(()=> { if (!cancelled) setWaveform(null); });
+    return () => { cancelled = true; };
+  }, [currentSamplePath]);
+  // Region (selection) waveform path: only sample_start..sample_end stretched to full width
+  let regionPath = '';
+  if (waveform && waveform.length > 1) {
+    const total = waveform.length - 1;
+    const startIdx = Math.max(0, Math.min(total, Math.floor(sampleStart * total)));
+    const endIdx = Math.max(startIdx + 1, Math.min(total, Math.ceil(sampleEnd * total)));
+    const region = waveform.slice(startIdx, endIdx + 1);
+    if (region.length > 1) {
+      const maxAmp = Math.max(0.00001, ...region.map(v => Math.abs(v)));
+      const top: string[] = [];
+      const bottom: string[] = [];
+      for (let i = 0; i < region.length; i++) {
+        const x = (i / (region.length - 1)) * 100;
+        const a = region[i] / maxAmp;
+        const yT = 50 - a * 45;
+        const yB = 50 + a * 45;
+        top.push(`${x},${yT}`);
+        bottom.push(`${x},${yB}`);
+      }
+      regionPath = `M ${top[0]} L ${top.slice(1).join(' ')} L ${bottom.reverse().join(' ')} Z`;
+    }
+  }
+
+  // Playhead: prefer engine-reported position; fallback to local simulation
+  const [playhead, setPlayhead] = useState(0); // relative (0..1) inside loop region
+  const [playheadActive, setPlayheadActive] = useState(false);
+  const [engineFollow, setEngineFollow] = useState(true); // switch to true once backend supports
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.repeat) return; // avoid reset while holding
+      // Treat any key as a trigger to show playhead
+      if (!currentSamplePath) return;
+  // Start at beginning of loop (relative inside loop)
+  setPlayhead(0);
+      setPlayheadActive(true);
+      setEngineFollow(true); // try backend follow after key trigger
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [currentSamplePath, sampler.loop_mode, sampler.loop_start, sampler.loop_end, sampleStart, span]);
+
+  // Backend polling loop
+  useEffect(() => {
+    if (!playheadActive || !engineFollow) return;
+    let cancelled = false;
+    const part = s.selectedSoundPart ?? 0;
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const st = await rpc.getSamplerPlayhead(part);
+        if (st && typeof st.position_rel === 'number') { // engine provides position 0..1 inside trimmed region (sample_start..sample_end)
+          // Map engine region-relative position to loop-relative [0..1] for our UI
+          const ls = Math.max(0, Math.min(1, (sampler.loop_start - sampleStart) / span));
+          const le = Math.max(ls + 1e-6, Math.min(1, (sampler.loop_end - sampleStart) / span));
+          const loopW = Math.max(1e-6, le - ls);
+          let rel = (st.position_rel - ls) / loopW;
+          // For forward mode clamp 0..1; for ping-pong we still clamp since UI line only sweeps loop area
+          if (!Number.isFinite(rel)) rel = 0;
+          setPlayhead(Math.max(0, Math.min(1, rel)));
+        } else {
+          setEngineFollow(false);
+        }
+      } catch { setEngineFollow(false); }
+      if (!cancelled && playheadActive) setTimeout(poll, 60);
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [playheadActive, engineFollow, s.selectedSoundPart, sampler.loop_start, sampler.loop_end, sampleStart, span]);
+
+  // Local simulation fallback
+  useEffect(() => {
+    if (!playheadActive || engineFollow) return;
+    let frame: number;
+    let direction = 1;
+    let last = performance.now();
+    const pitchRatio = Math.pow(2, (((sampler.pitch_semitones||0) + (sampler.pitch_cents||0)/100) / 12));
+    // Make base speed independent of selection span to avoid visual jitter when region changes
+    const baseSpeed = pitchRatio * 0.3; // fraction of loop per second
+  const loopSpan = Math.max(0.000001, sampler.loop_end - sampler.loop_start);
+  const loopMode = Math.max(0, Math.min(1, Math.round(sampler.loop_mode||0)));
+    const step = (now: number) => {
+      const dt = (now - last) / 1000; last = now;
+      setPlayhead(prev => {
+  let p = prev + direction * baseSpeed * dt; // 0..1 inside loop span
+  if (loopMode === 0) { // forward
+          if (p >= 1) { p = p - 1; }
+          else if (p < 0) { p = 1 + p; }
+          return p;
+        }
+        if (p >= 1) { p = 1 - (p - 1); direction = -1; }
+        else if (p <= 0) { p = -p; direction = 1; }
+        return p;
+      });
+      if (playheadActive && !engineFollow) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [playheadActive, engineFollow, sampler.loop_mode, sampler.loop_start, sampler.loop_end, sampleStart, span, sampler.pitch_semitones, sampler.pitch_cents]);
+
+  // --- Loop editing state & handlers (restored) ---
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [editing, setEditing] = useState<null | 'start' | 'end'>(null);
+  const minSpan = 0.0015;
+  const handleGrabRadius = 0.02;
+  const lsRel = (sampler.loop_start - sampleStart) / span; // relative inside displayed region (0..1)
+  const leRel = (sampler.loop_end - sampleStart) / span;
+
+  // Keep loop within selection whenever selection changes
+  useEffect(() => {
+    let changed = false;
+    let newStart = sampler.loop_start;
+    let newEnd = sampler.loop_end;
+    if (newStart < sampleStart) { newStart = sampleStart; changed = true; }
+    if (newEnd > sampleEnd) { newEnd = sampleEnd; changed = true; }
+    if (newEnd - newStart < minSpan) {
+      newEnd = Math.min(sampleEnd, newStart + minSpan);
+      if (newEnd - newStart < minSpan) {
+        newStart = Math.max(sampleStart, newEnd - minSpan);
+      }
+      changed = true;
+    }
+    if (changed) {
+      setParam('loop_start', newStart);
+      setParam('loop_end', newEnd);
+    }
+  }, [sampleStart, sampleEnd]);
+
+  // (Zoom removed for loop tab; full region shown for consistent loop editing)
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!editing || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const relView = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const abs = sampleStart + relView * span; // absolute sample position
+      if (editing === 'start') {
+        const newStart = Math.min(Math.max(sampleStart, abs), sampler.loop_end - minSpan);
+        setParam('loop_start', newStart);
+      } else if (editing === 'end') {
+        const newEnd = Math.max(Math.min(sampleEnd, abs), sampler.loop_start + minSpan);
+        setParam('loop_end', newEnd);
+      }
+    };
+    const onUp = () => setEditing(null);
+    if (editing) {
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    }
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [editing, sampleStart, span, sampler.loop_end, sampler.loop_start]);
+
+  const onMouseDownRegion = (e: React.MouseEvent) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+  const relView = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  if (Math.abs(relView - lsRel) <= handleGrabRadius) { setEditing('start'); return; }
+  if (Math.abs(relView - leRel) <= handleGrabRadius) { setEditing('end'); return; }
+  const defaultRelSpan = Math.min(0.1, 1);
+  let half = (defaultRelSpan / 2) * span;
+    if (half < minSpan * 4) half = minSpan * 4;
+  const abs = sampleStart + relView * span;
+    let newStart = abs - half;
+    let newEnd = abs + half;
+    if (newStart < sampleStart) { const diff = sampleStart - newStart; newStart += diff; newEnd += diff; }
+    if (newEnd > sampleEnd) { const diff = newEnd - sampleEnd; newStart -= diff; newEnd -= diff; }
+    newStart = Math.max(sampleStart, Math.min(sampleEnd - minSpan, newStart));
+    newEnd = Math.max(newStart + minSpan, Math.min(sampleEnd, newEnd));
+    setParam('loop_start', newStart);
+    setParam('loop_end', newEnd);
+  setEditing(Math.abs(relView - ((newStart - sampleStart)/span)) < Math.abs(relView - ((newEnd - sampleStart)/span)) ? 'start' : 'end');
   };
 
   const setParam = (key: string, value: number) => {
@@ -24,16 +215,29 @@ export default function SamplerLoop() {
         s.setSynthParam(`part/${part}/sampler/loop_mode`, Math.round(value), 'I32');
         break;
       case 'loop_start':
-        s.setSynthParam(`part/${part}/sampler/loop_start`, value);
+        {
+          // Engine expects loop positions relative to the trimmed region [sample_start..sample_end]
+          const rel = (value - sampleStart) / span;
+          s.setSynthParam(`part/${part}/sampler/loop_start`, Math.max(0, Math.min(1, rel)));
+        }
         break;
       case 'loop_end':
-        s.setSynthParam(`part/${part}/sampler/loop_end`, value);
+        {
+          const rel = (value - sampleStart) / span;
+          s.setSynthParam(`part/${part}/sampler/loop_end`, Math.max(0, Math.min(1, rel)));
+        }
         break;
     }
   };
 
   // Loop mode display
-  const loopModes = ['Off', 'Forward', 'Ping-Pong'];
+  const loopModes = ['Forward', 'Ping-Pong'];
+  // Relative loop knob values (inside selection region)
+  const loopStartRel = (sampler.loop_start - sampleStart) / span;
+  const loopEndRel = (sampler.loop_end - sampleStart) / span;
+  const safeLoopStartRel = Math.max(0, Math.min(1, loopStartRel));
+  const safeLoopEndRel = Math.max(0, Math.min(1, loopEndRel));
+  const minLoopRel = 0.0015 / span; // relative min
   
   return (
     <div className="synth-page">
@@ -41,27 +245,36 @@ export default function SamplerLoop() {
         <h2>LOOP</h2>
       </div>
 
-      {/* Waveform display with loop markers */}
-      <div className="waveform-container">
+      {/* Waveform of trimmed sample region with loop markers relative to region */}
+  <div className="waveform-container" ref={containerRef} onMouseDown={onMouseDownRegion} style={{ cursor: editing ? 'ew-resize' : 'crosshair' }}>
         <div className="waveform-display">
           <div className="waveform-placeholder">
-            <div className="waveform-text">Sample waveform</div>
-            <div className="loop-markers">
-              <div 
-                className="loop-start-marker" 
-                style={{ left: `${sampler.loop_start * 100}%` }}
-              />
-              <div 
-                className="loop-end-marker" 
-                style={{ left: `${sampler.loop_end * 100}%` }}
-              />
-              <div 
-                className="loop-region"
-                style={{ 
-                  left: `${sampler.loop_start * 100}%`,
-                  width: `${(sampler.loop_end - sampler.loop_start) * 100}%`
-                }}
-              />
+            <div className="waveform-svg-wrap">
+              {!currentSamplePath && <div className="waveform-text">No sample</div>}
+              {currentSamplePath && !waveform && <div className="waveform-text">Loading...</div>}
+              {regionPath && (
+                <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="sampler-waveform-svg">
+                  <rect x={0} y={0} width={100} height={100} fill="#222" />
+                  <path d={regionPath} fill="#ffffff" fillOpacity={0.85} stroke="#ffffff" strokeWidth={0.25} />
+                  <line x1="0" y1="50" x2="100" y2="50" stroke="#555" strokeWidth={0.4} strokeDasharray="2 2" />
+                  {(() => {
+                    const ls = Math.max(0, Math.min(1, lsRel));
+                    const le = Math.max(ls + 0.0005, Math.min(1, leRel));
+                    const loopWidth = le - ls;
+                    const loopPlayheadX = ls + loopWidth * playhead; // relative 0..1 in region
+                    return (
+                      <g>
+                        <rect x={ls * 100} y={0} width={loopWidth * 100} height={100} fill="#ffffff" fillOpacity={0.08} />
+                        <line x1={ls * 100} y1={0} x2={ls * 100} y2={100} stroke="#ffffff" strokeOpacity={0.55} strokeWidth={0.6} />
+                        <line x1={le * 100} y1={0} x2={le * 100} y2={100} stroke="#ffffff" strokeOpacity={0.55} strokeWidth={0.6} />
+                        <rect x={ls*100 - 1.5} y={0} width={3} height={100} fill={editing==='start'? '#fff' : '#fff8'} />
+                        <rect x={le*100 - 1.5} y={0} width={3} height={100} fill={editing==='end'? '#fff' : '#fff8'} />
+                        <line x1={loopPlayheadX * 100} y1={0} x2={loopPlayheadX * 100} y2={100} stroke="#fffb" strokeWidth={0.7} />
+                      </g>
+                    );
+                  })()}
+                </svg>
+              )}
             </div>
           </div>
         </div>
@@ -71,36 +284,54 @@ export default function SamplerLoop() {
       <div className="knob-grid loop-knobs">
         <div className="knob-group">
           <Knob
-            value={sampler.loop_mode / 2} // Normalize 0-2 into 0-1
-            onChange={(v: number) => setParam('loop_mode', Math.round(v * 2))}
-            label="Loop Mode"
-            format={(v: number) => loopModes[Math.round(v * 2)] || 'Off'}
+            value={safeLoopMode}
+            onChange={(v: number) => {
+              const idx = v < 0.5 ? 0 : 1;
+              setParam('loop_mode', idx);
+            }}
+            step={2}
+            label="Loop Type"
+            format={(v: number) => (v < 0.5 ? 'Forward' : 'Ping-Pong')}
           />
         </div>
 
         <div className="knob-group">
           <Knob
-            value={sampler.loop_start}
-            onChange={(v: number) => setParam('loop_start', v)}
+            value={safeLoopStartRel}
+            dragScale={span} /* smaller selection -> finer movement */
+            onChange={(v: number) => {
+              const rel = Math.max(0, Math.min(1, v));
+              let abs = sampleStart + rel * span;
+              if (abs > sampler.loop_end - minSpan) abs = sampler.loop_end - minSpan;
+              if (abs < sampleStart) abs = sampleStart;
+              setParam('loop_start', abs);
+            }}
             label="Loop Start"
-            format={(v: number) => (v * 100).toFixed(1) + '%'}
+            format={(v: number) => ((sampleStart + v * span) * 100).toFixed(1) + '%'}
           />
         </div>
 
         <div className="knob-group">
           <Knob
-            value={sampler.loop_end}
-            onChange={(v: number) => setParam('loop_end', v)}
+            value={safeLoopEndRel}
+            dragScale={span}
+            onChange={(v: number) => {
+              const rel = Math.max(0, Math.min(1, v));
+              let abs = sampleStart + rel * span;
+              if (abs < sampler.loop_start + minSpan) abs = sampler.loop_start + minSpan;
+              if (abs > sampleEnd) abs = sampleEnd;
+              setParam('loop_end', abs);
+            }}
             label="Loop End"
-            format={(v: number) => (v * 100).toFixed(1) + '%'}
+            format={(v: number) => ((sampleStart + v * span) * 100).toFixed(1) + '%'}
           />
         </div>
       </div>
 
       <div className="loop-info">
-        <div className="info-text">
-          Loop region: {(sampler.loop_start * 100).toFixed(1)}% - {(sampler.loop_end * 100).toFixed(1)}%
-        </div>
+  <div className="info-text">Region: {(sampleStart * 100).toFixed(1)}% - {(sampleEnd * 100).toFixed(1)}%</div>
+  <div className="info-text">Loop (abs): {(sampler.loop_start * 100).toFixed(1)}% - {(sampler.loop_end * 100).toFixed(1)}%</div>
+  <div className="info-text">Loop (rel): {(((sampler.loop_start - sampleStart)/span)*100).toFixed(1)}% - {(((sampler.loop_end - sampleStart)/span)*100).toFixed(1)}%</div>
         <div className="info-text">
           Mode: {loopModes[sampler.loop_mode] || 'Off'}
         </div>

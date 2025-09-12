@@ -2,59 +2,70 @@ import React, { useEffect, useState } from 'react'
 import { useBrowser, sampleBrowser } from '../store/browser'
 import { rpc } from '../rpc'
 
-interface SampleWaveformProps {
-  samplePath: string;
-}
-
-function SampleWaveform({ samplePath }: SampleWaveformProps) {
-  const [waveform, setWaveform] = useState<number[]>([])
-  
+interface SampleWaveformProps { samplePath: string; selectionStart?: number; selectionEnd?: number; }
+function SampleWaveform({ samplePath, selectionStart = 0, selectionEnd = 1 }: SampleWaveformProps) {
+  const [waveform, setWaveform] = useState<number[] | null>(null);
   useEffect(() => {
-    if (!samplePath) return
-    
+    if (!samplePath) return;
+    setWaveform(null);
     rpc.getSampleWaveform(samplePath)
       .then(setWaveform)
-      .catch(err => console.error('Failed to load waveform:', err))
-  }, [samplePath])
+      .catch(err => { console.error('Failed to load waveform:', err); setWaveform([]); });
+  }, [samplePath]);
 
-  if (waveform.length === 0) {
-    return (
-      <div className="h-16 bg-gray-900 border border-gray-600 rounded mb-3 flex items-center justify-center">
-        <span className="text-gray-500 text-sm">Loading waveform...</span>
-      </div>
-    )
+  const empty = !samplePath;
+  const loading = samplePath && waveform === null;
+  const noData = waveform !== null && waveform.length === 0;
+
+  let pathD = '';
+  if (waveform && waveform.length > 0) {
+    const max = Math.max(0.00001, ...waveform.map(v => Math.abs(v)));
+    const top: string[] = [];
+    const bottom: string[] = [];
+    for (let i = 0; i < waveform.length; i++) {
+      const x = (i / (waveform.length - 1)) * 100;
+      const amp = waveform[i] / max;
+      const yTop = 50 - amp * 45;
+      const yBot = 50 + amp * 45;
+      top.push(`${x},${yTop}`);
+      bottom.push(`${x},${yBot}`);
+    }
+    pathD = `M ${top[0]} L ${top.slice(1).join(' ')} L ${bottom.reverse().join(' ')} Z`;
   }
 
-  const max = Math.max(...waveform.map(Math.abs))
-  const normalizedWaveform = waveform.map(sample => sample / max)
-
   return (
-    <div className="h-16 bg-gray-900 border border-gray-600 rounded mb-3 p-1">
-      <svg className="w-full h-full">
-        <polyline
-          fill="none"
-          stroke="#06b6d4"
-          strokeWidth="1"
-          points={normalizedWaveform
-            .map((sample, i) => {
-              const x = (i / (normalizedWaveform.length - 1)) * 100
-              const y = 50 - (sample * 45) // Center line at 50%, scale to ±45%
-              return `${x},${y}`
-            })
-            .join(' ')}
-        />
-        {/* Center line */}
-        <line x1="0" y1="50%" x2="100%" y2="50%" stroke="#374151" strokeWidth="1" strokeDasharray="2,2" />
-      </svg>
+    <div style={{ position:'relative', height:72, background:'#161b1e', border:'1px solid #302c30', margin:'6px 8px 4px', borderRadius:2, overflow:'hidden' }}>
+      {empty && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#555' }}>No sample</div>}
+      {loading && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#555' }}>Loading…</div>}
+      {noData && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#555' }}>No waveform</div>}
+      {pathD && (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width:'100%', height:'100%' }}>
+          <rect x={0} y={0} width={100} height={100} fill="#222" />
+            <path d={pathD} fill="#ffffff" fillOpacity={0.85} stroke="#ffffff" strokeWidth={0.2} />
+            <line x1="0" y1="50" x2="100" y2="50" stroke="#555" strokeWidth={0.4} strokeDasharray="2 2" />
+            {selectionEnd > selectionStart && (
+              <g>
+                <rect x={selectionStart * 100} y={0} width={(selectionEnd - selectionStart) * 100} height={100} fill="#ffffff" fillOpacity={0.06} />
+                <line x1={selectionStart * 100} y1={0} x2={selectionStart * 100} y2={100} stroke="#ffffff" strokeOpacity={0.5} strokeWidth={0.5} />
+                <line x1={selectionEnd * 100} y1={0} x2={selectionEnd * 100} y2={100} stroke="#ffffff" strokeOpacity={0.5} strokeWidth={0.5} />
+              </g>
+            )}
+        </svg>
+      )}
     </div>
-  )
+  );
 }
 
 export default function SampleBrowser() {
-  const { sampleBrowserOpen, sampleBrowserItems, sampleBrowserSelected, isRecording } = useBrowser() as any;
+  const browser = useBrowser() as any;
+  const { sampleBrowserOpen, sampleBrowserItems, sampleBrowserSelected, isRecording } = browser;
   const { sampleBrowserMoveUp, sampleBrowserMoveDown, loadSelectedSample, closeSampleBrowser } = sampleBrowser;
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const currentSample = sampleBrowserItems[sampleBrowserSelected];
+  // pull current sampler UI for selection overlay (if existing)
+  const ui = browser.getSynthUI ? browser.getSynthUI() : undefined;
+  const selStart = ui?.sampler?.sample_start ?? 0;
+  const selEnd = ui?.sampler?.sample_end ?? 1;
 
   const deleteCurrent = async () => {
     if (!currentSample) return;
@@ -132,6 +143,9 @@ export default function SampleBrowser() {
           <span style={{ fontSize:11, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'70%' }}>{currentSample}</span>
           <button onClick={togglePreview} style={{ fontSize:10, padding:'2px 6px', cursor:'pointer', background:isPreviewPlaying? 'var(--accent)' : 'transparent', color:isPreviewPlaying? 'var(--bg)' : 'var(--text)', border:'1px solid var(--line)' }}>{isPreviewPlaying? 'Stop' : 'Preview'}</button>
         </div>
+      )}
+      {currentSample && (
+        <SampleWaveform samplePath={currentSample} selectionStart={selStart} selectionEnd={selEnd} />
       )}
       <div style={{ maxHeight:240, overflowY:'auto' }}>
         {sampleBrowserItems.length === 0 && (

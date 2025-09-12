@@ -311,6 +311,10 @@ body {
   margin: 2px 0;
 }
 
+/* Waveform shared styles */
+.waveform-svg-wrap { width:100%; height:100%; position:relative; }
+.sampler-waveform-svg { width:100%; height:100%; display:block; }
+
 /* ===== Circular Knob Styles ===== */
 .knob-shell { position: relative; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; outline: none; }
 .knob-face { position: relative; width: 48px; height: 48px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #222 0%, #111 60%, #080808 100%); border: 1px solid var(--line); box-shadow: inset 0 2px 4px rgba(255,255,255,0.05), 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,0.6); }

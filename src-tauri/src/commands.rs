@@ -4,6 +4,8 @@ use crossbeam_channel::Sender;
 use once_cell::sync::OnceCell;
 
 use crate::engine::{audio::AudioEngine, messages::{EngineMsg, ParamValue}};
+use crate::engine::modules::sampler::PlayheadState;
+use crate::engine::state::get_playhead_state;
 use crossbeam_channel::{unbounded as chan, Receiver};
 use tauri::Emitter;
 
@@ -253,4 +255,9 @@ pub fn get_sample_waveform(path: String) -> Result<Vec<f32>, String> {
   
   let waveform = sampler.get_waveform_overview(512); // 512 points for display
   Ok(waveform)
+}
+
+#[tauri::command]
+pub fn get_sampler_playhead(_part: usize) -> Result<Option<PlayheadState>, String> {
+  Ok(get_playhead_state(_part))
 }

@@ -60,7 +60,6 @@ impl PlaybackMode {
 pub enum LoopMode {
     Forward,
     PingPong,
-    ShortXfade,
 }
 
 impl LoopMode {
@@ -68,7 +67,6 @@ impl LoopMode {
         match index {
             0 => LoopMode::Forward,
             1 => LoopMode::PingPong,
-            2 => LoopMode::ShortXfade,
             _ => LoopMode::Forward,
         }
     }
@@ -393,23 +391,7 @@ impl SamplerVoice {
                                 self.position = loop_start_pos + (loop_start_pos - self.position);
                             }
                         },
-                        LoopMode::ShortXfade => {
-                            self.position += self.pitch_ratio * self.direction;
-                            if self.position >= loop_end_pos {
-                                // Micro crossfade for click suppression
-                                let xfade_samples = (self.sr * 0.005).min(loop_end_pos - loop_start_pos); // 5ms max
-                                let wrap_pos = loop_start_pos + (self.position - loop_end_pos);
-                                let blend_factor = ((self.position - loop_end_pos) / xfade_samples).min(1.0);
-                                
-                                let current_sample = buffer.get_sample_interpolated(self.position, 0);
-                                let wrap_sample = buffer.get_sample_interpolated(wrap_pos, 0);
-                                output = lerp(current_sample, wrap_sample, blend_factor);
-                                
-                                if blend_factor >= 1.0 {
-                                    self.position = wrap_pos;
-                                }
-                            }
-                        },
+                        // No ShortXfade mode; only Forward and PingPong are supported.
                     }
                 } else {
                     // Outside loop region, play normally
@@ -445,6 +427,9 @@ impl SamplerVoice {
     pub fn is_active(&self) -> bool {
         self.envelope.is_active()
     }
+
+    pub fn position(&self) -> f32 { self.position }
+    pub fn direction(&self) -> f32 { self.direction }
 }
 
 // Parameter keys for the sampler
@@ -478,6 +463,16 @@ pub struct Sampler {
     sample_buffer: Arc<Mutex<SampleBuffer>>,
     recording: bool,
     record_buffer: Vec<f32>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct PlayheadState {
+    pub position_rel: f32,      // 0..1 inside trimmed sample region
+    pub loop_start_rel: f32,     // 0..1 relative to trimmed region
+    pub loop_end_rel: f32,       // 0..1 relative to trimmed region
+    pub loop_mode: i32,          // 0 forward, 1 pingpong
+    pub direction: f32,          // 1 or -1 (current traversal)
+    pub playing: bool,
 }
 
 impl Sampler {
@@ -926,5 +921,43 @@ impl Sampler {
     pub fn get_sample_info(&self) -> (usize, f32, usize) {
         let buffer = self.sample_buffer.lock().unwrap();
         (buffer.length_samples, buffer.sample_rate, buffer.channels)
+    }
+
+    // Compute current playhead state from first active voice.
+    pub fn compute_playhead_state(&self, params: &ParamStore, keys: &SamplerParamKeys) -> Option<PlayheadState> {
+        // Find first active voice
+        let voice = self.voices.iter().find(|v| v.is_active())?; // if none active return None
+        let buffer = self.sample_buffer.lock().ok()?;
+        if buffer.is_empty() { return None; }
+
+        // Fetch parameters (same normalization as render)
+        let sample_start = params.get_f32_h(keys.sample_start, 0.0).clamp(0.0, 1.0);
+        let sample_end = params.get_f32_h(keys.sample_end, 1.0).clamp(0.0, 1.0);
+        let region_span = (sample_end - sample_start).max(0.00001);
+        let loop_start = params.get_f32_h(keys.loop_start, 0.0).clamp(0.0, 1.0);
+        let loop_end = params.get_f32_h(keys.loop_end, 1.0).clamp(0.0, 1.0);
+        let loop_mode = params.get_i32_h(keys.loop_mode, 0);
+
+        // Absolute sample positions
+        let start_pos = sample_start * buffer.length_samples as f32;
+        let end_pos = sample_end * buffer.length_samples as f32;
+        let loop_start_pos = start_pos + loop_start * (end_pos - start_pos);
+        let loop_end_pos = start_pos + loop_end * (end_pos - start_pos);
+
+        let pos = voice.position();
+        // Normalize inside trimmed region
+        let clamped = pos.clamp(start_pos, end_pos);
+        let rel = (clamped - start_pos) / (end_pos - start_pos + 1e-9);
+
+        let loop_start_rel = (loop_start_pos - start_pos) / (end_pos - start_pos + 1e-9);
+        let loop_end_rel = (loop_end_pos - start_pos) / (end_pos - start_pos + 1e-9);
+        Some(PlayheadState {
+            position_rel: rel.max(0.0).min(1.0),
+            loop_start_rel: loop_start_rel.max(0.0).min(1.0),
+            loop_end_rel: loop_end_rel.max(0.0).min(1.0),
+            loop_mode,
+            direction: voice.direction(),
+            playing: true,
+        })
     }
 }

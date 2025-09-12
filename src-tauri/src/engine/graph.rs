@@ -6,6 +6,7 @@ use crate::engine::modules::acid303::{Acid303, AcidParamKeys};
 use crate::engine::modules::karplus_strong::{KarplusStrong, KSParamKeys};
 use crate::engine::modules::resonator_bank::{ResonatorBank, ResonatorParamKeys};
 use crate::engine::modules::sampler::{Sampler, SamplerParamKeys};
+use crate::engine::state::{init_playhead_states, set_playhead_state};
 use freeverb::Freeverb;
 
 #[inline]
@@ -1972,6 +1973,7 @@ impl EngineGraph {
     let mut parts = Vec::with_capacity(6);
     // 6-voice polyphony per part
     for i in 0..6 { parts.push(Part::new(sr, 6, i)); }
+  init_playhead_states(parts.len());
     Self { 
       parts, 
       mixer: Mixer::new(sr), 
@@ -1996,6 +1998,18 @@ impl EngineGraph {
   
   pub fn render_frame(&mut self, params: &ParamStore) -> (f32, f32) { 
     let mut result = self.mixer.mix(&mut self.parts, params);
+
+    // Update playhead states for any parts using sampler module (kind == 4)
+    for (i, part) in self.parts.iter().enumerate() {
+      let module = params.get_i32_h(part.paths.module_kind, 0);
+      if module == 4 { // Sampler
+        if let Some(state) = part.sampler.compute_playhead_state(params, &part.sampler_keys) {
+          set_playhead_state(i, Some(state));
+        } else {
+          set_playhead_state(i, None);
+        }
+      }
+    }
     
     // Add preview sample if playing
     if self.preview_playing {
