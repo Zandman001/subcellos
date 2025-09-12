@@ -197,12 +197,14 @@ fn apply_msg(graph: &mut EngineGraph, params: &mut ParamStore, msg: EngineMsg, p
   match msg {
     EngineMsg::SetParam { path, value } => { params.set(path, value) },
     EngineMsg::NoteOn { part, note, vel } => {
-      if part < graph.parts.len() { graph.parts[part].note_on(note, vel); }
+      if part < graph.parts.len() { graph.parts[part].note_on(&params, note, vel); }
     }
     EngineMsg::NoteOff { part, note } => {
       if part < graph.parts.len() { graph.parts[part].note_off(note); }
     }
-    EngineMsg::SetTempo { .. } => {}
+    EngineMsg::SetTempo { bpm } => {
+      graph.set_tempo(bpm);
+    }
     EngineMsg::Transport { playing: p } => { *playing = p; }
     EngineMsg::StartRecording => {
       *recording = true;

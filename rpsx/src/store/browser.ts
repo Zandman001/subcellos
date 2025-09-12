@@ -830,7 +830,7 @@ export type SynthUI = {
     loop_start: number;
     loop_end: number;
     loop_mode: number;
-    smoothness: number;
+  retrig_mode?: number; // 0=Immediate; 1..7 = tempo divisions 1/1..1/64
     attack: number;
     decay: number;
     sustain: number;
@@ -899,14 +899,14 @@ function defaultSynthUI(): SynthUI {
     // Add default Sampler parameters
     sampler: {
       sample_start: 0.0,
-      sample_end: 1.0,
+  sample_end: 1.0,
   pitch_semitones: 0.0,
   pitch_cents: 0.0,
       playback_mode: 0, // OneShot
       loop_start: 0.0,
       loop_end: 1.0,
       loop_mode: 0, // Forward
-      smoothness: 0.0,
+  retrig_mode: 0,
       attack: 10.0,
       decay: 100.0,
       sustain: 0.7,
@@ -1050,12 +1050,13 @@ function uiToSchema(ui: SynthUI) {
       sampler: (ui as any).sampler ? {
         sample_start: (ui as any).sampler.sample_start ?? 0.0,
         sample_end: (ui as any).sampler.sample_end ?? 1.0,
-        pitch_coarse: Math.round((ui as any).sampler.pitch_coarse ?? 0),
-        pitch_fine: (ui as any).sampler.pitch_fine ?? 0.0,
+        pitch_semitones: Math.round((ui as any).sampler.pitch_semitones ?? 0),
+        pitch_cents: (ui as any).sampler.pitch_cents ?? 0.0,
         playback_mode: Math.round((ui as any).sampler.playback_mode ?? 0),
         loop_mode: Math.round((ui as any).sampler.loop_mode ?? 0),
         loop_start: (ui as any).sampler.loop_start ?? 0.2,
         loop_end: (ui as any).sampler.loop_end ?? 0.8,
+        retrig_mode: Math.round((ui as any).sampler.retrig_mode ?? 0),
         attack: (ui as any).sampler.attack ?? 0.01,
         decay: (ui as any).sampler.decay ?? 0.3,
         sustain: (ui as any).sampler.sustain ?? 0.7,
@@ -1177,12 +1178,13 @@ async function applyPreset(preset: any) {
     sampler: {
       sample_start: p.sampler?.sample_start ?? 0.0,
       sample_end: p.sampler?.sample_end ?? 1.0,
-      pitch_coarse: p.sampler?.pitch_coarse ?? 0,
-      pitch_fine: p.sampler?.pitch_fine ?? 0.0,
+  pitch_semitones: p.sampler?.pitch_semitones ?? 0,
+  pitch_cents: p.sampler?.pitch_cents ?? 0.0,
       playback_mode: p.sampler?.playback_mode ?? 0,
       loop_mode: p.sampler?.loop_mode ?? 0,
       loop_start: p.sampler?.loop_start ?? 0.2,
       loop_end: p.sampler?.loop_end ?? 0.8,
+  retrig_mode: p.sampler?.retrig_mode ?? 0,
       attack: p.sampler?.attack ?? 0.01,
       decay: p.sampler?.decay ?? 0.3,
       sustain: p.sampler?.sustain ?? 0.7,
@@ -1328,12 +1330,15 @@ async function applyPreset(preset: any) {
   if (p.sampler) {
     send(`sampler/sample_start`, { F32: p.sampler.sample_start ?? 0.0 });
     send(`sampler/sample_end`, { F32: p.sampler.sample_end ?? 1.0 });
-    send(`sampler/pitch_coarse`, { I32: Math.round(p.sampler.pitch_coarse ?? 0) });
-    send(`sampler/pitch_fine`, { F32: p.sampler.pitch_fine ?? 0.0 });
+    send(`sampler/pitch_semitones`, { F32: (p.sampler.pitch_semitones ?? 0) as number });
+    send(`sampler/pitch_cents`, { F32: p.sampler.pitch_cents ?? 0.0 });
     send(`sampler/playback_mode`, { I32: Math.round(p.sampler.playback_mode ?? 0) });
     send(`sampler/loop_mode`, { I32: Math.round(p.sampler.loop_mode ?? 0) });
     send(`sampler/loop_start`, { F32: p.sampler.loop_start ?? 0.2 });
     send(`sampler/loop_end`, { F32: p.sampler.loop_end ?? 0.8 });
+    if (typeof p.sampler.retrig_mode === 'number') {
+      send(`sampler/retrig_mode`, { I32: Math.round(p.sampler.retrig_mode) });
+    }
     send(`sampler/attack`, { F32: p.sampler.attack ?? 0.01 });
     send(`sampler/decay`, { F32: p.sampler.decay ?? 0.3 });
     send(`sampler/sustain`, { F32: p.sampler.sustain ?? 0.7 });
@@ -1486,12 +1491,15 @@ async function preloadAndReplayProjectPresets(project: string) {
       if (p.sampler) {
         await set(`sampler/sample_start`, { F32: p.sampler.sample_start ?? 0.0 });
         await set(`sampler/sample_end`, { F32: p.sampler.sample_end ?? 1.0 });
-        await set(`sampler/pitch_coarse`, { I32: Math.round(p.sampler.pitch_coarse ?? 0) });
-        await set(`sampler/pitch_fine`, { F32: p.sampler.pitch_fine ?? 0.0 });
+        await set(`sampler/pitch_semitones`, { F32: (p.sampler.pitch_semitones ?? 0) as number });
+        await set(`sampler/pitch_cents`, { F32: p.sampler.pitch_cents ?? 0.0 });
         await set(`sampler/playback_mode`, { I32: Math.round(p.sampler.playback_mode ?? 0) });
         await set(`sampler/loop_mode`, { I32: Math.round(p.sampler.loop_mode ?? 0) });
         await set(`sampler/loop_start`, { F32: p.sampler.loop_start ?? 0.2 });
         await set(`sampler/loop_end`, { F32: p.sampler.loop_end ?? 0.8 });
+        if (typeof p.sampler.retrig_mode === 'number') {
+          await set(`sampler/retrig_mode`, { I32: Math.round(p.sampler.retrig_mode) });
+        }
         await set(`sampler/attack`, { F32: p.sampler.attack ?? 0.01 });
         await set(`sampler/decay`, { F32: p.sampler.decay ?? 0.3 });
         await set(`sampler/sustain`, { F32: p.sampler.sustain ?? 0.7 });

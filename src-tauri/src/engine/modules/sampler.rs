@@ -72,6 +72,23 @@ impl LoopMode {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum RetrigMode {
+    Immediate,
+    End,
+    Sync,
+}
+
+impl RetrigMode {
+    pub fn from_index(index: i32) -> Self {
+        match index {
+            1 => RetrigMode::End,
+            2 => RetrigMode::Sync,
+            _ => RetrigMode::Immediate,
+        }
+    }
+}
+
 // Sample buffer with metadata
 #[derive(Clone)]
 pub struct SampleBuffer {
@@ -273,6 +290,22 @@ pub struct SamplerVoice {
     declick_ramp: f32,
     declick_target: f32,
     declick_rate: f32,
+    // Retrigger scheduling
+    retrig_pending: bool,
+    retrig_mode: RetrigMode,
+    retrig_note: u8,
+    retrig_vel: f32,
+    last_beat_phase: f32,
+    // Tempo-sync retrigger helpers
+    beat_counter: u64,
+    last_step_idx: i32,
+    // Local clock (in beats) that starts on note_on; driven by global BPM but not phase-synced
+    local_beats: f32,
+    next_trig_beats: f32, // next trigger time in local beats (>0 when armed)
+    last_interval_beats: f32,
+    // When following tempo, if the loop finishes before the next grid tick,
+    // stall playback (silence) until the scheduled retrigger.
+    stall_until_retrig: bool,
 }
 
 impl SamplerVoice {
@@ -290,6 +323,17 @@ impl SamplerVoice {
             declick_ramp: 1.0,
             declick_target: 1.0,
             declick_rate: 0.0,
+            retrig_pending: false,
+            retrig_mode: RetrigMode::Immediate,
+            retrig_note: 60,
+            retrig_vel: 0.8,
+            last_beat_phase: 0.0,
+            beat_counter: 0,
+            last_step_idx: -1,
+            local_beats: 0.0,
+            next_trig_beats: 0.0,
+            last_interval_beats: 0.0,
+            stall_until_retrig: false,
         }
     }
 
@@ -302,6 +346,11 @@ impl SamplerVoice {
         self.position = 0.0;
         self.direction = 1.0;
         self.envelope.note_on();
+    self.stall_until_retrig = false;
+    // Reset local, note-anchored tempo clock
+    self.local_beats = 0.0;
+    self.next_trig_beats = 0.0; // arm scheduling on first render
+    self.last_interval_beats = 0.0;
     }
 
     pub fn note_off(&mut self, _note: u8) {
@@ -310,7 +359,38 @@ impl SamplerVoice {
         self.gate = false;
     }
 
-    pub fn render(&mut self, buffer: &SampleBuffer, params: &ParamStore, param_keys: &SamplerParamKeys) -> f32 {
+    pub fn request_retrig(&mut self, mode: RetrigMode, note: u8, vel: f32) {
+        match mode {
+            RetrigMode::Immediate => {
+                // Immediate restart handled by caller by resetting state instantly
+                self.note = note;
+                self.velocity = vel.clamp(0.0, 1.0);
+                self.just_triggered = true; // will reset position in render
+                self.direction = 1.0;
+                self.envelope.note_on();
+                self.retrig_pending = false;
+            }
+            _ => {
+                // Schedule for boundary or beat
+                self.retrig_mode = mode;
+                self.retrig_note = note;
+                self.retrig_vel = vel.clamp(0.0, 1.0);
+                self.retrig_pending = true;
+            }
+        }
+    }
+
+    fn apply_retrig_now(&mut self, start_pos: f32) {
+        self.note = self.retrig_note;
+        self.velocity = self.retrig_vel;
+        self.position = start_pos;
+        self.direction = 1.0;
+        self.envelope.note_on();
+        self.retrig_pending = false;
+    self.stall_until_retrig = false;
+    }
+
+    pub fn render(&mut self, buffer: &SampleBuffer, params: &ParamStore, param_keys: &SamplerParamKeys, beat_phase: f32) -> f32 {
         if buffer.is_empty() {
             return 0.0;
         }
@@ -322,9 +402,11 @@ impl SamplerVoice {
         let pitch_cents = params.get_f32_h(param_keys.pitch_cents, 0.0);
         let playback_mode = PlaybackMode::from_index(params.get_i32_h(param_keys.playback_mode, 0));
         
-        let loop_start = params.get_f32_h(param_keys.loop_start, 0.0).clamp(0.0, 1.0);
-        let loop_end = params.get_f32_h(param_keys.loop_end, 1.0).clamp(0.0, 1.0);
-        let loop_mode = LoopMode::from_index(params.get_i32_h(param_keys.loop_mode, 0));
+    let loop_start = params.get_f32_h(param_keys.loop_start, 0.0).clamp(0.0, 1.0);
+    let loop_end = params.get_f32_h(param_keys.loop_end, 1.0).clamp(0.0, 1.0);
+    let loop_mode = LoopMode::from_index(params.get_i32_h(param_keys.loop_mode, 0));
+    // Retrigger selector: 0=Immediate, 1=Follow(default whole note), then 1/2,1/4,1/8,1/16,1/32,1/64
+    let retrig_sel = params.get_i32_h(param_keys.retrig_mode, 0).max(0);
     // Crossfade smoothing window length (ms), clamped to 0..50ms
     let smoothness_ms = params.get_f32_h(param_keys.smoothness, 0.0).clamp(0.0, 50.0);
         
@@ -357,7 +439,69 @@ impl SamplerVoice {
         if self.just_triggered {
             self.position = start_pos;
             self.just_triggered = false;
+            // Re-anchor local tempo clock to this retrigger
+            self.local_beats = 0.0;
+            self.next_trig_beats = 0.0;
+            self.last_interval_beats = 0.0;
+            self.stall_until_retrig = false;
+            self.last_beat_phase = beat_phase;
         }
+
+        // Tempo-synced periodic retriggering should only affect Loop mode.
+        // In One-Shot/Keytrack, ignore tempo retrig to avoid unintended looping.
+        let mut retrig_now = false;
+        if matches!(playback_mode, PlaybackMode::Loop) {
+            // Advance a local beat clock using the delta in global beat phase.
+            let mut dbeat = beat_phase - self.last_beat_phase;
+            if dbeat < 0.0 { dbeat += 1.0; }
+            // Avoid NaNs
+            if dbeat.is_finite() && dbeat >= 0.0 { self.local_beats += dbeat; }
+
+            if retrig_sel >= 1 {
+                // Map selection to interval in beats: interval = 4.0 / denom
+                let denom_table: [f32; 8] = [0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0];
+                let idx = (retrig_sel as usize).min(7);
+                let denom = denom_table[idx].max(1.0);
+                let interval_beats = 4.0 / denom; // 1/1=4 beats, 1/4=1 beat, 1/8=0.5 beats, etc.
+
+                // If interval changed (e.g., knob moved), re-align next trigger to next multiple
+                if (self.last_interval_beats - interval_beats).abs() > 1e-6 {
+                    if interval_beats > 0.0 {
+                        let n = (self.local_beats / interval_beats).ceil();
+                        self.next_trig_beats = n * interval_beats;
+                    } else {
+                        self.next_trig_beats = 0.0;
+                    }
+                    self.last_interval_beats = interval_beats;
+                }
+
+                // Initialize next trigger on first arm
+                if self.next_trig_beats <= 0.0 && interval_beats > 0.0 {
+                    self.next_trig_beats = interval_beats;
+                    self.last_interval_beats = interval_beats;
+                }
+
+                // Fire when we pass the scheduled beat
+                if interval_beats > 0.0 && self.local_beats + 1e-9 >= self.next_trig_beats {
+                    retrig_now = true;
+                    // Schedule subsequent trigger(s); protect against large jumps
+                    let mut next = self.next_trig_beats;
+                    while self.local_beats + 1e-9 >= next { next += interval_beats; }
+                    self.next_trig_beats = next;
+                }
+            } else {
+                // Immediate mode: disable periodic retrig schedule
+                self.next_trig_beats = 0.0;
+                self.last_interval_beats = 0.0;
+            }
+        } else {
+            // Not in Loop mode: clear scheduling so next loop starts fresh
+            self.last_step_idx = -1;
+            self.local_beats = 0.0;
+            self.next_trig_beats = 0.0;
+            self.last_interval_beats = 0.0;
+        }
+        self.last_beat_phase = beat_phase;
 
         // For Loop/Keytrack modes, start envelope release if key was lifted
         if !self.gate && matches!(playback_mode, PlaybackMode::Loop | PlaybackMode::Keytrack) {
@@ -374,6 +518,11 @@ impl SamplerVoice {
         
         match playback_mode {
             PlaybackMode::OneShot => {
+                if retrig_now {
+                    // Restart from sample start; keep envelope continuous to reduce clicks
+                    self.position = start_pos;
+                    self.direction = 1.0;
+                }
                 if self.position < end_pos {
                     output = buffer.get_sample_interpolated(self.position, 0);
                     self.position += self.pitch_ratio;
@@ -388,8 +537,28 @@ impl SamplerVoice {
                 // Convert smoothing from ms to samples and clamp to half the loop length
                 let mut smooth_samps = (smoothness_ms * 0.001 * self.sr).max(0.0);
                 if smooth_samps > loop_len * 0.5 { smooth_samps = loop_len * 0.5; }
-                
-                if self.position >= loop_start_pos && self.position <= loop_end_pos {
+                // Follow-tempo quantization active when retrig_sel >= 1
+                let tempo_quantized = retrig_sel >= 1;
+                if retrig_now {
+                    // Restart at loop start on scheduled retrig, regardless of current position
+                    self.position = loop_start_pos;
+                    self.direction = 1.0;
+                    self.stall_until_retrig = false;
+                    // Re-anchor local tempo clock to this retrigger so future ticks are relative to it
+                    self.local_beats = 0.0;
+                    // Compute current interval to arm next tick precisely one interval ahead
+                    let denom_table: [f32; 8] = [0.0, 1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0];
+                    let idx = (retrig_sel as usize).min(7);
+                    let denom = denom_table[idx].max(1.0);
+                    let interval_beats = 4.0 / denom;
+                    self.next_trig_beats = if interval_beats > 0.0 { interval_beats } else { 0.0 };
+                    self.last_interval_beats = interval_beats;
+                    self.last_beat_phase = beat_phase;
+                }
+                // If we're waiting for the next tempo note, output silence until retrig
+                if tempo_quantized && self.stall_until_retrig && !retrig_now {
+                    output = 0.0;
+                } else if self.position >= loop_start_pos && self.position <= loop_end_pos {
                     // Base sample at current position
                     let base = buffer.get_sample_interpolated(self.position, 0);
                     output = base;
@@ -397,7 +566,7 @@ impl SamplerVoice {
                     match loop_mode {
                         LoopMode::Forward => {
                             // Linear overlap crossfade near loop end
-                            if smooth_samps >= 1.0 {
+                            if !tempo_quantized && smooth_samps >= 1.0 {
                                 let window_start = loop_end_pos - smooth_samps;
                                 if self.position >= window_start && self.position <= loop_end_pos {
                                     let t = ((self.position - window_start) / smooth_samps).clamp(0.0, 1.0);
@@ -411,24 +580,45 @@ impl SamplerVoice {
 
                             self.position += self.pitch_ratio * self.direction;
                             if self.position >= loop_end_pos {
-                                self.position = loop_start_pos + (self.position - loop_end_pos);
+                                if tempo_quantized {
+                                    // Stop advancing and wait for next retrig
+                                    self.position = loop_end_pos;
+                                    self.stall_until_retrig = true;
+                                } else {
+                                    // Wrapped
+                                    self.position = loop_start_pos + (self.position - loop_end_pos);
+                                }
                             }
                         },
                         LoopMode::PingPong => {
-                            // No smoothing at bounce by default; rely on reverse motion to reduce discontinuities
-                            self.position += self.pitch_ratio * self.direction;
-                            if self.position >= loop_end_pos {
-                                self.direction = -1.0;
-                                self.position = loop_end_pos - (self.position - loop_end_pos);
-                            } else if self.position <= loop_start_pos {
-                                self.direction = 1.0;
-                                self.position = loop_start_pos + (loop_start_pos - self.position);
+                            if tempo_quantized {
+                                // Treat as forward-only until loop end, then stall
+                                self.position += self.pitch_ratio;
+                                if self.position >= loop_end_pos {
+                                    self.position = loop_end_pos;
+                                    self.stall_until_retrig = true;
+                                }
+                            } else {
+                                // No smoothing at bounce by default; rely on reverse motion to reduce discontinuities
+                                self.position += self.pitch_ratio * self.direction;
+                                if self.position >= loop_end_pos {
+                                    self.direction = -1.0;
+                                    self.position = loop_end_pos - (self.position - loop_end_pos);
+                                } else if self.position <= loop_start_pos {
+                                    self.direction = 1.0;
+                                    self.position = loop_start_pos + (loop_start_pos - self.position);
+                                }
                             }
                         },
                         // No ShortXfade mode; only Forward and PingPong are supported.
                     }
                 } else {
-                    // Outside loop region, play normally
+                    // Outside loop region, play normally unless a retrig just occurred
+                    if retrig_now {
+                        self.position = loop_start_pos;
+                        self.direction = 1.0;
+                        self.stall_until_retrig = false;
+                    }
                     if self.position < end_pos {
                         output = buffer.get_sample_interpolated(self.position, 0);
                         self.position += self.pitch_ratio;
@@ -438,6 +628,10 @@ impl SamplerVoice {
                 }
             },
             PlaybackMode::Keytrack => {
+                if retrig_now {
+                    self.position = start_pos;
+                    self.direction = 1.0;
+                }
                 if self.position < end_pos {
                     output = buffer.get_sample_interpolated(self.position, 0);
                     self.position += self.pitch_ratio;
@@ -480,7 +674,8 @@ pub struct SamplerParamKeys {
     pub loop_start: u64,
     pub loop_end: u64,
     pub loop_mode: u64,
-    pub smoothness: u64,
+    pub smoothness: u64, // still used for loop wrap crossfade (ms)
+    pub retrig_mode: u64, // 0=Immediate; 1..7 = tempo-synced: 1/1,1/2,1/4,1/8,1/16,1/32,1/64
     // Envelope parameters
     pub attack: u64,
     pub decay: u64,
@@ -522,10 +717,16 @@ impl Sampler {
         }
     }
 
-    pub fn note_on(&mut self, note: u8, velocity: f32) {
-        // Find available voice or steal oldest
-        let voice_idx = self.find_available_voice();
-        self.voices[voice_idx].note_on(note, velocity);
+    pub fn note_on(&mut self, note: u8, velocity: f32, retrig_mode: RetrigMode) {
+        // Try to find an active voice to retrigger for mono-style behavior
+        if let Some(idx) = self.voices.iter().position(|v| v.is_active()) {
+            // Schedule retrigger according to current mode
+            self.voices[idx].request_retrig(retrig_mode, note, velocity);
+        } else {
+            // Find available voice or steal oldest
+            let voice_idx = self.find_available_voice();
+            self.voices[voice_idx].note_on(note, velocity);
+        }
     }
 
     pub fn note_off(&mut self, note: u8) {
@@ -551,14 +752,15 @@ impl Sampler {
         idx
     }
 
-    pub fn render_one(&mut self, params: &ParamStore, param_keys: &SamplerParamKeys) -> f32 {
+    pub fn render_one(&mut self, params: &ParamStore, param_keys: &SamplerParamKeys, beat_phase: f32) -> f32 {
         let buffer = self.sample_buffer.lock().unwrap();
         let mut output = 0.0;
 
         // Sum all active voices
         for voice in &mut self.voices {
             if voice.is_active() {
-                output += voice.render(&buffer, params, param_keys);
+                // Pass beat phase for sync retrig detection
+                output += voice.render(&buffer, params, param_keys, beat_phase);
             }
         }
 
@@ -653,9 +855,8 @@ impl Sampler {
         // Store the track identifier, it will be used to filter packets
         let track_id = track.id;
 
-        let mut sample_buf: Vec<f32> = Vec::new();
-        let mut sample_rate = 44100.0;
-        let mut channels = 1;
+    let mut sample_buf: Vec<f32> = Vec::new();
+    let mut sample_rate = 44100.0;
 
         // The decode loop
         loop {
@@ -694,7 +895,7 @@ impl Sampler {
             match decoder.decode(&packet)? {
                 AudioBufferRef::F32(buf) => {
                     sample_rate = buf.spec().rate as f32;
-                    channels = buf.spec().channels.count();
+                    let channels = buf.spec().channels.count();
                     
                     // Convert to mono if stereo
                     if channels == 1 {
@@ -714,7 +915,7 @@ impl Sampler {
                 }
                 AudioBufferRef::U8(buf) => {
                     sample_rate = buf.spec().rate as f32;
-                    channels = buf.spec().channels.count();
+                    let channels = buf.spec().channels.count();
                     
                     if channels == 1 {
                         for &sample in buf.chan(0) {
@@ -736,7 +937,7 @@ impl Sampler {
                 }
                 AudioBufferRef::U16(buf) => {
                     sample_rate = buf.spec().rate as f32;
-                    channels = buf.spec().channels.count();
+                    let channels = buf.spec().channels.count();
                     
                     if channels == 1 {
                         for &sample in buf.chan(0) {
@@ -758,7 +959,7 @@ impl Sampler {
                 }
                 AudioBufferRef::U24(buf) => {
                     sample_rate = buf.spec().rate as f32;
-                    channels = buf.spec().channels.count();
+                    let channels = buf.spec().channels.count();
                     
                     if channels == 1 {
                         for &sample in buf.chan(0) {
@@ -784,7 +985,7 @@ impl Sampler {
                 }
                 AudioBufferRef::U32(buf) => {
                     sample_rate = buf.spec().rate as f32;
-                    channels = buf.spec().channels.count();
+                    let channels = buf.spec().channels.count();
                     
                     if channels == 1 {
                         for &sample in buf.chan(0) {
@@ -806,7 +1007,7 @@ impl Sampler {
                 }
                 AudioBufferRef::S8(buf) => {
                     sample_rate = buf.spec().rate as f32;
-                    channels = buf.spec().channels.count();
+                    let channels = buf.spec().channels.count();
                     
                     if channels == 1 {
                         for &sample in buf.chan(0) {
@@ -828,7 +1029,7 @@ impl Sampler {
                 }
                 AudioBufferRef::S16(buf) => {
                     sample_rate = buf.spec().rate as f32;
-                    channels = buf.spec().channels.count();
+                    let channels = buf.spec().channels.count();
                     
                     if channels == 1 {
                         for &sample in buf.chan(0) {
@@ -850,7 +1051,7 @@ impl Sampler {
                 }
                 AudioBufferRef::S24(buf) => {
                     sample_rate = buf.spec().rate as f32;
-                    channels = buf.spec().channels.count();
+                    let channels = buf.spec().channels.count();
                     
                     if channels == 1 {
                         for &sample in buf.chan(0) {
@@ -876,7 +1077,7 @@ impl Sampler {
                 }
                 AudioBufferRef::S32(buf) => {
                     sample_rate = buf.spec().rate as f32;
-                    channels = buf.spec().channels.count();
+                    let channels = buf.spec().channels.count();
                     
                     if channels == 1 {
                         for &sample in buf.chan(0) {
@@ -898,7 +1099,7 @@ impl Sampler {
                 }
                 AudioBufferRef::F64(buf) => {
                     sample_rate = buf.spec().rate as f32;
-                    channels = buf.spec().channels.count();
+                    let channels = buf.spec().channels.count();
                     
                     if channels == 1 {
                         for &sample in buf.chan(0) {
@@ -967,7 +1168,7 @@ impl Sampler {
         // Fetch parameters (same normalization as render)
         let sample_start = params.get_f32_h(keys.sample_start, 0.0).clamp(0.0, 1.0);
         let sample_end = params.get_f32_h(keys.sample_end, 1.0).clamp(0.0, 1.0);
-        let region_span = (sample_end - sample_start).max(0.00001);
+    let _region_span = (sample_end - sample_start).max(0.00001);
         let loop_start = params.get_f32_h(keys.loop_start, 0.0).clamp(0.0, 1.0);
         let loop_end = params.get_f32_h(keys.loop_end, 1.0).clamp(0.0, 1.0);
         let loop_mode = params.get_i32_h(keys.loop_mode, 0);

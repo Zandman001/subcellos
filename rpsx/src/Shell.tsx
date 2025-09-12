@@ -26,6 +26,18 @@ export default function Shell() {
         case '2': setView('Sequencer'); break
         case '3': setView('Arrangement'); break
         case '4': setView('Perform'); break
+        case 't':
+        case 'T': {
+          // Quick tempo toggle example: cycle between a few tempos
+          const s = useBrowserStore.getState();
+          const cur = (s as any)._lastTempo ?? 120;
+          const next = cur >= 140 ? 100 : cur >= 120 ? 140 : 120;
+          (s as any)._lastTempo = next;
+          rpc.setTempo(next);
+          // Notify UI
+          try { window.dispatchEvent(new CustomEvent('tempo-change', { detail: { bpm: next } })); } catch {}
+          break;
+        }
         case 'r':
         case 'R': {
           // Start recording only if in Sounds view AND current module is sampler

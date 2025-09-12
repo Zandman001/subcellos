@@ -184,7 +184,7 @@ struct ModFrame { cents_a: f32, cents_b: f32, lvl_a: f32, lvl_b: f32, filt1: f32
 impl Voice {
   pub fn new(sr: f32) -> Self { Self { active: false, note: 0, age: 0, base_freq: 0.0, vel: 0.0, osc_a: Osc::new(sr), osc_b: Osc::new(sr), env_amp: Adsr::new(sr), env_mod: Adsr::new(sr), filt1: Svf::new(), filt2: Svf::new(), last_fa_fc: -1.0, last_fa_q: -1.0, last_fb_fc: -1.0, last_fb_q: -1.0, last_a: 0.0, last_b: 0.0, filt_upd_phase: 0, rng: 0x12345678, pink: 0.0, brown: 0.0 } }
   pub fn is_active(&self) -> bool { self.active || self.env_amp.env > 1e-4 }
-  pub fn note_on(&mut self, note: u8, vel: f32) {
+  pub fn note_on(&mut self, _params: &ParamStore, note: u8, vel: f32) {
     self.active = true; self.note = note; self.base_freq = midi_to_freq(note); self.vel = vel; self.env_amp.gate_on(); self.env_mod.gate_on();
     // Reseed noise states per note for stability
     self.rng = (note as u32).wrapping_mul(747796405).wrapping_add(2891336453);
@@ -462,6 +462,8 @@ struct ParamPaths {
   sampler_loop_end: u64,
   sampler_loop_mode: u64,
   sampler_smoothness: u64,
+  // retrigger mode (0=Immediate,1=End,2=Sync)
+  // Note: sampler uses its own SamplerParamKeys for render; this field is kept for completeness if needed elsewhere
   sampler_attack: u64,
   sampler_decay: u64,
   sampler_sustain: u64,
@@ -608,6 +610,7 @@ impl Part {
         loop_end: hash_path(&format!("part/{}/sampler/loop_end", idx)),
         loop_mode: hash_path(&format!("part/{}/sampler/loop_mode", idx)),
         smoothness: hash_path(&format!("part/{}/sampler/smoothness", idx)),
+  retrig_mode: hash_path(&format!("part/{}/sampler/retrig_mode", idx)),
         attack: hash_path(&format!("part/{}/sampler/attack", idx)),
         decay: hash_path(&format!("part/{}/sampler/decay", idx)),
         sustain: hash_path(&format!("part/{}/sampler/sustain", idx)),
@@ -641,21 +644,24 @@ impl Part {
     p.haas_d = d_samp;
     p
   }
-  pub fn note_on(&mut self, note: u8, vel: f32) {
+  pub fn note_on(&mut self, params: &ParamStore, note: u8, vel: f32) {
     // Prevent stacking the same note: stop any existing voices with this note first
     for v in &mut self.voices { if v.note == note && v.is_active() { v.note_off(); } }
     let mut idx = None;
     for (i, v) in self.voices.iter().enumerate() { if !v.is_active() { idx = Some(i); break; } }
-    let i = idx.unwrap_or_else(|| { let i = self.next_voice; self.next_voice = (self.next_voice + 1) % self.voices.len(); i });
-    self.voices[i].note_on(note, vel);
+  let i = idx.unwrap_or_else(|| { let i = self.next_voice; self.next_voice = (self.next_voice + 1) % self.voices.len(); i });
+  self.voices[i].note_on(params, note, vel);
     // Also feed mono Acid engine (render path will choose active module)
     self.acid.note_on(note, vel);
     // Also feed mono Karplus-Strong engine
     self.karplus.note_on(note, vel);
     // Also feed mono Resonator Bank engine
     self.resonator.note_on(note, vel);
-    // Also feed mono Sampler engine
-    self.sampler.note_on(note, vel);
+  // Also feed mono Sampler engine
+  // Read retrigger mode for this part at note-on time (0=Immediate,1=End,2=Sync)
+  let retrig_i = params.get_i32_h(self.sampler_keys.retrig_mode, 0);
+  let retrig_mode = crate::engine::modules::sampler::RetrigMode::from_index(retrig_i);
+  self.sampler.note_on(note, vel, retrig_mode);
   }
   pub fn note_off(&mut self, note: u8) {
     // Stop all voices with this note to guarantee preview stops fully
@@ -671,7 +677,7 @@ impl Part {
     Ok(())
   }
 
-  pub fn render(&mut self, params: &ParamStore, _part_idx: usize) -> (f32, f32) {
+  pub fn render(&mut self, params: &ParamStore, _part_idx: usize, beat_phase: f32) -> (f32, f32) {
     // Module dispatch (0 = Analog, 1 = Acid303, 2 = KarplusStrong, 3 = ResonatorBank, 4 = Sampler)
     let module = params.get_i32_h(self.paths.module_kind, 0);
     
@@ -1383,7 +1389,7 @@ impl Part {
       return (l, r);
     } else if module == 4 {
       // Sampler mono voice sample
-      let s = self.sampler.render_one(params, &self.sampler_keys);
+      let s = self.sampler.render_one(params, &self.sampler_keys, beat_phase);
       // Early-out if dry is silent and all FX mixes are ~zero (no tails needed)
       let fx1_t_peek = params.get_i32_h(self.paths.fx1_type, 0);
       let fx1_mix_peek = params.get_f32_h(self.paths.fx1_p3, 0.0).clamp(0.0, 1.0);
@@ -1944,10 +1950,10 @@ pub struct Mixer {
 impl Mixer {
   pub fn new(sr: f32) -> Self { Self { sr, part_gains: [0.0; 6] } }
   pub fn set_gain_db(&mut self, idx: usize, db: f32) { if idx < 6 { self.part_gains[idx] = db_to_gain(db.clamp(-12.0, 12.0)); } }
-  pub fn mix(&self, parts: &mut [Part], params: &ParamStore) -> (f32, f32) {
+  pub fn mix(&self, parts: &mut [Part], params: &ParamStore, beat_phase: f32) -> (f32, f32) {
     let mut l = 0.0f32; let mut r = 0.0f32;
     for i in 0..parts.len().min(6) {
-      let (pl, pr) = parts[i].render(params, i);
+      let (pl, pr) = parts[i].render(params, i, beat_phase);
       let g = self.part_gains[i].max(0.0) + db_to_gain(params.get_f32_h(parts[i].paths.mixer_gain_db, 0.0));
       l += pl * g; r += pr * g;
     }
@@ -1966,6 +1972,9 @@ pub struct EngineGraph {
   pub sr: f32,
   preview_sampler: Sampler,
   preview_playing: bool,
+  // tempo/transport
+  bpm: f32,
+  beat_phase: f32,
 }
 
 impl EngineGraph {
@@ -1980,13 +1989,15 @@ impl EngineGraph {
       sr,
       preview_sampler: Sampler::new(sr),
       preview_playing: false,
+      bpm: 120.0,
+      beat_phase: 0.0,
     }
   }
   
   pub fn load_preview_sample(&mut self, path: &str) -> Result<(), String> {
     self.preview_sampler.load_sample(path);
   // Use normalized velocity (0..1) now that sampler clamps internally; 0.85 gives headroom
-  self.preview_sampler.note_on(60, 0.85); // Trigger preview playback at moderate level
+  self.preview_sampler.note_on(60, 0.85, crate::engine::modules::sampler::RetrigMode::Immediate); // Trigger preview playback at moderate level
     self.preview_playing = true;
     Ok(())
   }
@@ -1997,7 +2008,13 @@ impl EngineGraph {
   }
   
   pub fn render_frame(&mut self, params: &ParamStore) -> (f32, f32) { 
-    let mut result = self.mixer.mix(&mut self.parts, params);
+    // advance beat phase based on current bpm and sample rate (seconds per sample = 1/sr)
+    let spb = 60.0f32 / self.bpm.max(1.0);
+    // beats per sample
+    let bps = (1.0 / self.sr) / spb;
+    self.beat_phase = (self.beat_phase + bps).fract();
+
+    let mut result = self.mixer.mix(&mut self.parts, params, self.beat_phase);
 
     // Update playhead states for any parts using sampler module (kind == 4)
     for (i, part) in self.parts.iter().enumerate() {
@@ -2024,12 +2041,13 @@ impl EngineGraph {
         loop_end: 0,
         loop_mode: 0,
         smoothness: 0,
+        retrig_mode: 0,
         attack: 0,
         decay: 0,
         sustain: 0,
         release: 0,
       };
-      let preview_out = self.preview_sampler.render_one(params, &preview_keys);
+  let preview_out = self.preview_sampler.render_one(params, &preview_keys, self.beat_phase);
       result.0 += preview_out * 0.3; // Lower volume for preview
       result.1 += preview_out * 0.3;
       
@@ -2040,5 +2058,10 @@ impl EngineGraph {
     }
     
     result
+  }
+
+  pub fn set_tempo(&mut self, bpm: f32) {
+    let clamped = bpm.clamp(40.0, 300.0);
+    self.bpm = clamped;
   }
 }

@@ -36,4 +36,5 @@ export const rpc = {
   getSampleInfo: (path: string) => safeInvoke<{ length_samples: number; sample_rate: number; channels: number }>("get_sample_info", { path }, { length_samples: 0, sample_rate: 44100, channels: 1 }),
   getSamplerPlayhead: (part: number) => safeInvoke<any>("get_sampler_playhead", { part }, null),
   deleteSubsample: (path: string) => safeInvoke<void>("delete_subsample", { path }),
+  setTempo: (bpm: number) => safeInvoke<void>("set_tempo", { bpm }),
 };

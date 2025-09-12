@@ -15,7 +15,7 @@ export default function SamplerLoop() {
     pitch_semitones: 0,
     pitch_cents: 0,
     current_sample: undefined as string | undefined,
-  smoothness: 0, // milliseconds
+  retrig_mode: 0, // 0=Immediate; 1..7 = Follow tempo divisions (1/1..1/64)
   };
   const safeLoopMode = Number.isFinite(sampler.loop_mode) ? Math.max(0, Math.min(1, Math.round(sampler.loop_mode))) : 0; // 0=Forward,1=PingPong
   const sampleStart = Math.max(0, Math.min(1, sampler.sample_start ?? 0));
@@ -183,9 +183,8 @@ export default function SamplerLoop() {
           s.setSynthParam(`part/${part}/sampler/loop_end`, Math.max(0, Math.min(1, rel)));
         }
         break;
-      case 'smoothness':
-        // value is milliseconds 0..50
-        s.setSynthParam(`part/${part}/sampler/smoothness`, value);
+      case 'retrig_mode':
+        s.setSynthParam(`part/${part}/sampler/retrig_mode`, Math.round(value), 'I32');
         break;
     }
   };
@@ -291,10 +290,18 @@ export default function SamplerLoop() {
 
         <div className="knob-group">
           <Knob
-            value={Math.max(0, Math.min(1, ((sampler.smoothness ?? 0) as number) / 50))}
-            onChange={(v: number) => setParam('smoothness', Math.max(0, Math.min(50, v * 50)))}
-            label="Smoothing"
-            format={(v: number) => `${Math.round(v * 50)} ms`}
+            value={(Math.max(0, Math.min(7, (sampler.retrig_mode ?? 0) as number))) / 7}
+            onChange={(v: number) => {
+              const idx = Math.round(Math.max(0, Math.min(1, v)) * 7);
+              setParam('retrig_mode', idx);
+            }}
+            step={8}
+            label="Retrig"
+            format={(v: number) => {
+              const labels = ['Immediate','1/1','1/2','1/4','1/8','1/16','1/32','1/64'];
+              const idx = Math.round(Math.max(0, Math.min(1, v)) * 7);
+              return labels[idx] ?? 'Immediate';
+            }}
           />
         </div>
       </div>
