@@ -679,13 +679,19 @@ function computeSynthPagesForCurrent(): readonly string[] {
   } else if (moduleKind === 3) { // ResonatorBank
     return ["RESONATOR", "FX", "MIXER", "EQ"] as const;
   } else if (moduleKind === 4) { // Sampler
-    // Hide LOOP tab unless playback mode is Loop (index 1)
+    // Pages depend on playback mode: show ENVELOPE only in Loop/Keytrack; LOOP tab only in Loop
     const ui = state.getSynthUI() as any;
     const pmode = Math.round(ui?.sampler?.playback_mode ?? 0);
-    if (pmode === 1) {
+    if (pmode === 0) {
+      // One-Shot: hide ENVELOPE and LOOP
+      return ["SAMPLER", "MIXER", "FX", "EQ"] as const;
+    } else if (pmode === 1) {
+      // Loop: show LOOP and ENVELOPE
       return ["SAMPLER", "LOOP", "ENVELOPE", "MIXER", "FX", "EQ"] as const;
+    } else {
+      // Keytrack: show ENVELOPE, no LOOP
+      return ["SAMPLER", "ENVELOPE", "MIXER", "FX", "EQ"] as const;
     }
-    return ["SAMPLER", "ENVELOPE", "MIXER", "FX", "EQ"] as const;
   }
   // Analog synth (default)
   return ["OSC","ENV","FILTER","LFO","MOD","FX","MIXER","EQ"] as const;
@@ -831,6 +837,8 @@ export type SynthUI = {
     loop_end: number;
     loop_mode: number;
   retrig_mode?: number; // 0=Immediate; 1..7 = tempo divisions 1/1..1/64
+  // persisted filename from Documents/subsamples, if any
+  current_sample?: string;
     attack: number;
     decay: number;
     sustain: number;
@@ -907,10 +915,12 @@ function defaultSynthUI(): SynthUI {
       loop_end: 1.0,
       loop_mode: 0, // Forward
   retrig_mode: 0,
-      attack: 10.0,
-      decay: 100.0,
+  current_sample: undefined,
+  // Normalized ADSR values (same scale as AMP env)
+  attack: 0.02,
+  decay: 0.2,
       sustain: 0.7,
-      release: 200.0,
+  release: 0.25,
     },
   };
 }
@@ -1057,10 +1067,12 @@ function uiToSchema(ui: SynthUI) {
         loop_start: (ui as any).sampler.loop_start ?? 0.2,
         loop_end: (ui as any).sampler.loop_end ?? 0.8,
         retrig_mode: Math.round((ui as any).sampler.retrig_mode ?? 0),
-        attack: (ui as any).sampler.attack ?? 0.01,
-        decay: (ui as any).sampler.decay ?? 0.3,
+  current_sample: (ui as any).sampler.current_sample,
+        // Convert normalized UI times (seconds mapper) to milliseconds for engine preset
+        attack: mapTime((ui as any).sampler.attack ?? 0.02) * 1000.0,
+        decay: mapTime((ui as any).sampler.decay ?? 0.2) * 1000.0,
         sustain: (ui as any).sampler.sustain ?? 0.7,
-        release: (ui as any).sampler.release ?? 0.5,
+        release: mapTime((ui as any).sampler.release ?? 0.25) * 1000.0,
         gain: (ui as any).sampler.gain ?? 0.8,
       } : undefined,
     }
@@ -1073,6 +1085,13 @@ function mapTime(v: number): number {
   const min = 0.001;
   const max = 4.0;
   return min * Math.pow(max/min, v);
+}
+
+// Convert milliseconds (preferred) or seconds (legacy) to normalized [0..1]
+function invMapTimeMs(msOrSec: number): number {
+  const v = (typeof msOrSec === 'number' && !Number.isNaN(msOrSec)) ? msOrSec : 100.0; // default ~100ms
+  const sec = v > 8.0 ? (v / 1000.0) : v; // heuristics: values >8 are likely ms
+  return invMapTime(sec);
 }
 
 function serializeCurrentPreset(): any {
@@ -1185,10 +1204,12 @@ async function applyPreset(preset: any) {
       loop_start: p.sampler?.loop_start ?? 0.2,
       loop_end: p.sampler?.loop_end ?? 0.8,
   retrig_mode: p.sampler?.retrig_mode ?? 0,
-      attack: p.sampler?.attack ?? 0.01,
-      decay: p.sampler?.decay ?? 0.3,
+  current_sample: p.sampler?.current_sample,
+      // Convert ms back to normalized UI via inverse of mapTime
+      attack: invMapTimeMs(p.sampler?.attack ?? 10.0),
+      decay: invMapTimeMs(p.sampler?.decay ?? 100.0),
       sustain: p.sampler?.sustain ?? 0.7,
-      release: p.sampler?.release ?? 0.5,
+      release: invMapTimeMs(p.sampler?.release ?? 200.0),
       gain: p.sampler?.gain ?? 0.8,
     },
   }));
@@ -1328,6 +1349,10 @@ async function applyPreset(preset: any) {
   }
   // Sampler parameters
   if (p.sampler) {
+    // Ensure the sample file is loaded first so params apply to correct buffer
+    if (typeof p.sampler.current_sample === 'string' && p.sampler.current_sample.length > 0) {
+      try { await rpc.loadSample(part, p.sampler.current_sample); } catch (e) { console.error('loadSample from preset failed', e); }
+    }
     send(`sampler/sample_start`, { F32: p.sampler.sample_start ?? 0.0 });
     send(`sampler/sample_end`, { F32: p.sampler.sample_end ?? 1.0 });
     send(`sampler/pitch_semitones`, { F32: (p.sampler.pitch_semitones ?? 0) as number });
@@ -1336,13 +1361,13 @@ async function applyPreset(preset: any) {
     send(`sampler/loop_mode`, { I32: Math.round(p.sampler.loop_mode ?? 0) });
     send(`sampler/loop_start`, { F32: p.sampler.loop_start ?? 0.2 });
     send(`sampler/loop_end`, { F32: p.sampler.loop_end ?? 0.8 });
-    if (typeof p.sampler.retrig_mode === 'number') {
+  if (typeof p.sampler.retrig_mode === 'number') {
       send(`sampler/retrig_mode`, { I32: Math.round(p.sampler.retrig_mode) });
     }
-    send(`sampler/attack`, { F32: p.sampler.attack ?? 0.01 });
-    send(`sampler/decay`, { F32: p.sampler.decay ?? 0.3 });
+  send(`sampler/attack`, { F32: p.sampler.attack ?? 10.0 });
+  send(`sampler/decay`, { F32: p.sampler.decay ?? 100.0 });
     send(`sampler/sustain`, { F32: p.sampler.sustain ?? 0.7 });
-    send(`sampler/release`, { F32: p.sampler.release ?? 0.5 });
+  send(`sampler/release`, { F32: p.sampler.release ?? 200.0 });
     send(`sampler/gain`, { F32: p.sampler.gain ?? 0.8 });
   }
   // Throttle slightly to avoid spamming
@@ -1376,7 +1401,9 @@ async function preloadAndReplayProjectPresets(project: string) {
   const pj = await fsClient.readProject(project);
   const sounds = pj.sounds || [];
   for (const s of sounds) {
-    if ((s as any).type !== 'Synth' && (s as any).kind !== 'Synth') continue;
+    // Apply for Synth and Sampler kinds
+    const kind = (s as any).type || (s as any).kind;
+    if (kind !== 'Synth' && kind !== 'Sampler') continue;
     const id = s.id; const part = (s as any).part_index ?? 0;
     const preset = await fsClient.loadSoundPreset(project, id);
     if (!preset || preset.schema !== 1) continue;
@@ -1385,10 +1412,14 @@ async function preloadAndReplayProjectPresets(project: string) {
     try { await rpc.startAudio(); } catch {}
     const pf = `part/${part}/`;
     const p = preset.params || {};
-    const set = (path: string, v: any) => rpc.setParam(pf + path, v);
+  const set = (path: string, v: any) => rpc.setParam(pf + path, v);
     
     try {
       if (typeof p.module_kind === 'number') { await set(`module_kind`, { I32: p.module_kind }); }
+      // If sampler with a saved file, load it first
+      if (p.sampler && typeof p.sampler.current_sample === 'string' && p.sampler.current_sample.length > 0) {
+        try { await rpc.loadSample(part, p.sampler.current_sample); } catch (e) { console.error('preload sampler file failed', e); }
+      }
       await set(`oscA/shape`, { I32: p.oscA?.shape ?? 0 });
       await set(`oscB/shape`, { I32: p.oscB?.shape ?? 0 });
       await set(`oscA/detune_cents`, { F32: p.oscA?.detune_cents ?? 0 });
@@ -1500,10 +1531,10 @@ async function preloadAndReplayProjectPresets(project: string) {
         if (typeof p.sampler.retrig_mode === 'number') {
           await set(`sampler/retrig_mode`, { I32: Math.round(p.sampler.retrig_mode) });
         }
-        await set(`sampler/attack`, { F32: p.sampler.attack ?? 0.01 });
-        await set(`sampler/decay`, { F32: p.sampler.decay ?? 0.3 });
+  await set(`sampler/attack`, { F32: p.sampler.attack ?? 10.0 });
+  await set(`sampler/decay`, { F32: p.sampler.decay ?? 100.0 });
         await set(`sampler/sustain`, { F32: p.sampler.sustain ?? 0.7 });
-        await set(`sampler/release`, { F32: p.sampler.release ?? 0.5 });
+  await set(`sampler/release`, { F32: p.sampler.release ?? 200.0 });
         await set(`sampler/gain`, { F32: p.sampler.gain ?? 0.8 });
       }
     } catch (e) { console.error('replay preset failed', e); }
@@ -1619,6 +1650,12 @@ const loadSelectedSample = async () => {
       (ui as any).sampler = { ...(ui as any).sampler, current_sample: selectedSample };
       uiMap[state.selectedSoundId] = ui;
       set({ synthUIById: { ...uiMap }, synthUIVersion: (state.synthUIVersion||0)+1 });
+      // Save preset immediately so the sample persists between sessions
+      try {
+        const preset = uiToSchema(ui as any);
+        const proj = state.projectName; const id = state.selectedSoundId;
+        if (proj && id) { await fsClient.saveSoundPreset(proj, id, preset); }
+      } catch (e) { console.error('save preset with current_sample failed', e); }
     }
     closeSampleBrowser();
   } catch (e) {

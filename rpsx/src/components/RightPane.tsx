@@ -57,8 +57,8 @@ export default function RightPane({ view }: { view: ViewName }) {
       borderColor: focused ? 'var(--accent)' : 'var(--line)',
       boxSizing: 'border-box',
       color: 'var(--text)',
-      background: 'var(--bg)',
-      fontFamily: 'monospace',
+  background: 'var(--bg)',
+  fontFamily: "'Press Start 2P', monospace",
       height: '100%',
       padding: 0,
       position: 'relative',
@@ -74,7 +74,7 @@ export default function RightPane({ view }: { view: ViewName }) {
         level === 'synth'
           ? (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: 12, paddingBottom: 8 }}>
+              <div style={{ fontSize: 12, padding: '8px 10px', borderBottom: '1px solid var(--line)' }}>
                 editing {s.selectedSoundName ? extractName(s.selectedSoundName) : ''} 
                 · {s.synthPages[s.synthPageIndex]}
               </div>

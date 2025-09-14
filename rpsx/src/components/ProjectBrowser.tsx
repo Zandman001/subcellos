@@ -8,20 +8,20 @@ export default function ProjectBrowser() {
     <div
       style={{
         width: "25%",
-        border: "1px solid",
-        borderColor: focused ? "var(--accent)" : "var(--line)",
+  border: "1px solid",
+  borderColor: focused ? "var(--accent)" : "var(--line)",
         boxSizing: "border-box",
         color: "var(--text)",
-        background: "var(--neutral-1)",
-        fontFamily: "monospace",
+  background: "var(--bg)",
+  fontFamily: "'Press Start 2P', monospace",
         height: "100%",
         position: "relative",
       }}
    >
       <div style={{ 
-        padding: 10, 
-        borderBottom: "1px solid var(--line)",
-        background: "var(--neutral-2)"
+  padding: 10,
+  borderBottom: "1px solid var(--line)",
+  background: "transparent"
       }}>
         <div>Level: {state.level}</div>
         {state.projectName && <div>Project: {state.projectName}</div>}
@@ -46,7 +46,7 @@ export default function ProjectBrowser() {
           <div style={{ padding: 8, color: "var(--text-soft)" }}>(empty)</div>
         )}
       </div>
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, borderTop: '1px solid var(--line)', padding: '8px 10px', color: 'var(--text-soft)', background: 'var(--neutral-2)', fontSize: '10px' }}>
+  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, borderTop: '1px solid var(--line)', padding: '8px 10px', color: 'var(--text-soft)', background: 'transparent', fontSize: '10px' }}>
         <span>E↑ D↓ S← F→</span>
         <span style={{ margin: '0 8px' }}>·</span>
         <span>W◀ R▶</span>
@@ -69,7 +69,7 @@ export default function ProjectBrowser() {
               padding: '6px 8px',
               borderBottom: '1px solid var(--line)',
               background: i === state.modulePickerIndex ? 'rgba(var(--accent-rgb), 0.14)' : 'transparent',
-              color: i === state.modulePickerIndex ? 'var(--text)' : 'var(--text)',
+              color: i === state.modulePickerIndex ? 'var(--bg)' : 'var(--text)',
             }}>
               {name}
             </div>
@@ -81,7 +81,7 @@ export default function ProjectBrowser() {
       )}
 
       {state.confirmOpen && (
-        <div style={{
+  <div style={{
           position: 'absolute',
           top: 80,
           left: '10%',

@@ -345,7 +345,7 @@ impl SamplerVoice {
         self.just_triggered = true;
         self.position = 0.0;
         self.direction = 1.0;
-        self.envelope.note_on();
+        // Envelope will be engaged conditionally in render based on playback mode
     self.stall_until_retrig = false;
     // Reset local, note-anchored tempo clock
     self.local_beats = 0.0;
@@ -385,7 +385,7 @@ impl SamplerVoice {
         self.velocity = self.retrig_vel;
         self.position = start_pos;
         self.direction = 1.0;
-        self.envelope.note_on();
+            // Envelope will be engaged conditionally in render
         self.retrig_pending = false;
     self.stall_until_retrig = false;
     }
@@ -445,6 +445,13 @@ impl SamplerVoice {
             self.last_interval_beats = 0.0;
             self.stall_until_retrig = false;
             self.last_beat_phase = beat_phase;
+            // Start envelope on trigger only for Loop/Keytrack; One-Shot uses full-level gate
+            if matches!(playback_mode, PlaybackMode::Loop | PlaybackMode::Keytrack) {
+                self.envelope.note_on();
+            } else {
+                self.envelope.stage = EnvelopeStage::Sustain;
+                self.envelope.level = 1.0;
+            }
         }
 
         // Tempo-synced periodic retriggering should only affect Loop mode.
@@ -641,8 +648,15 @@ impl SamplerVoice {
             },
         }
 
-        // Apply envelope
-        let env_level = self.envelope.process();
+        // Apply envelope only in Loop/Keytrack; in One-Shot keep envelope fully open to avoid cropping
+        let env_level = if matches!(playback_mode, PlaybackMode::Loop | PlaybackMode::Keytrack) {
+            self.envelope.process()
+        } else {
+            // One-Shot: force envelope to fully open while playing, and reset when finished
+            if output != 0.0 { self.envelope.level = 1.0; self.envelope.stage = EnvelopeStage::Sustain; }
+            else { self.envelope.stage = EnvelopeStage::Idle; self.envelope.level = 0.0; }
+            1.0
+        };
         output *= env_level * self.velocity;
 
         // Apply de-click ramp if parameters changed

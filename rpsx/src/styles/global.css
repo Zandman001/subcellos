@@ -1,18 +1,18 @@
 :root {
-  /* High-contrast monochrome palette with fun elements */
+  /* Pure black & white, moody monochrome (no gray hexes; use white alpha when needed) */
   --bg: #000000;           /* pure black */
   --text: #ffffff;         /* pure white text */
-  --text-soft: #b0b0b0;    /* light gray for labels */
-  --accent: #ffffff;       /* white accent for highlights */
-  --accent-2: #666666;     /* medium gray for secondary elements */
+  --text-soft: rgba(255,255,255,0.72);  /* softer white via alpha */
+  --accent: #ffffff;       /* white accent */
+  --accent-2: rgba(255,255,255,0.45);   /* secondary via alpha */
   --accent-rgb: 255, 255, 255;
-  --accent2-rgb: 102, 102, 102;
-  --neutral-1: #1a1a1a;    /* dark gray panels */
-  --neutral-2: #2a2a2a;    /* lighter gray panels */
-  --line: #444444;         /* medium gray divider lines */
-  --warn: #cccccc;         /* light gray for warnings */
-  --over: #ffffff;         /* white for success */
-  --glow: #ffffff;         /* white glow color */
+  --accent2-rgb: 255, 255, 255;
+  --neutral-1: #000000;    /* panels = black */
+  --neutral-2: #000000;    /* panels alt = black */
+  --line: rgba(255,255,255,0.16);       /* dividers via white alpha */
+  --warn: #ffffff;         /* warnings use white */
+  --over: #ffffff;
+  --glow: #ffffff;
   --topbar-h: 32px;
 }
 
@@ -34,6 +34,38 @@ body {
   flex-direction: column;
   background: var(--bg);
   color: var(--text);
+}
+
+/* subtle pixel grid + scanlines to make it more pixel-art and moody */
+.app::before,
+.app::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.app::before {
+  /* checkerboard dither */
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.03) 75%),
+    linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.03) 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 2px 2px;
+  image-rendering: pixelated;
+}
+.app::after {
+  /* scanline layer */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(255,255,255,0.04) 0px,
+    rgba(255,255,255,0.04) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  opacity: 0.06;
+  mix-blend-mode: normal;
+  image-rendering: pixelated;
 }
 
 .topbar {
@@ -79,6 +111,12 @@ body {
   min-height: 0;
   display: flex;
   background: var(--bg);
+  /* subtle dither on main area too */
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,0.02) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.02) 75%),
+    linear-gradient(45deg, rgba(255,255,255,0.02) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.02) 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 2px 2px;
   color: var(--text);
 }
 
@@ -141,18 +179,7 @@ body {
 }
 
 /* Low-contrast theme overrides */
-:root[data-theme='low'] {
-  --bg: #111111;
-  --text: #dddddd;
-  --text-soft: #999999;
-  --accent: #cccccc;
-  --accent-2: #777777;
-  --accent-rgb: 204, 204, 204;
-  --accent2-rgb: 119, 119, 119;
-  --line: #333333;
-  --neutral-1: #1a1a1a;
-  --neutral-2: #222222;
-}
+/* low theme removed to keep strict monochrome */
 
 /* Sampler Component Styles */
 .synth-page {
@@ -186,7 +213,7 @@ body {
 }
 
 .record-btn, .load-btn {
-  background: var(--neutral-1);
+  background: var(--bg);
   border: 1px solid var(--line);
   color: var(--text);
   padding: 4px 8px;
@@ -196,7 +223,7 @@ body {
 }
 
 .record-btn:hover, .load-btn:hover {
-  background: var(--neutral-2);
+  background: rgba(255,255,255,0.06);
   border-color: var(--accent);
 }
 
@@ -209,7 +236,12 @@ body {
 .waveform-display {
   width: 100%;
   height: 100%;
-  background: var(--neutral-1);
+  background: var(--bg);
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.03) 75%),
+    linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.03) 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 2px 2px;
   border: 1px solid var(--line);
   position: relative;
   display: flex;
@@ -283,7 +315,12 @@ body {
 .envelope-preview {
   width: 100%;
   height: 100%;
-  background: var(--neutral-1);
+  background: var(--bg);
+  background-image:
+    linear-gradient(45deg, rgba(255,255,255,0.02) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.02) 75%),
+    linear-gradient(45deg, rgba(255,255,255,0.02) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.02) 75%);
+  background-size: 4px 4px;
+  background-position: 0 0, 2px 2px;
   border: 1px solid var(--line);
   display: flex;
   align-items: center;
@@ -343,14 +380,14 @@ body {
 
 /* ===== Circular Knob Styles ===== */
 .knob-shell { position: relative; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; outline: none; }
-.knob-face { position: relative; width: 48px; height: 48px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #222 0%, #111 60%, #080808 100%); border: 1px solid var(--line); box-shadow: inset 0 2px 4px rgba(255,255,255,0.05), 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,0.6); }
+.knob-face { position: relative; width: 48px; height: 48px; border-radius: 50%; background: #000; border: 1px solid var(--line); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,0.6); }
 .knob-face:active { filter: brightness(1.2); }
 .knob-ticks { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
-.knob-tick { position: absolute; top: 50%; left: 50%; width: 2px; height: 6px; margin: -3px 0 0 -1px; background: var(--accent); border-radius: 1px; box-shadow: 0 0 2px rgba(255,255,255,0.4); }
+.knob-tick { position: absolute; top: 50%; left: 50%; width: 2px; height: 6px; margin: -3px 0 0 -1px; background: var(--accent); border-radius: 0; box-shadow: none; }
 /* Step markers slightly longer; center them properly (remove large negative margins) */
-.knob-step { position: absolute; top: 50%; left: 50%; width: 3px; height: 9px; margin: -5px 0 0 -1.5px; background: var(--accent-2); opacity: 0.9; border-radius: 1px; }
-.knob-pointer { position: absolute; top: 50%; left: 50%; width: 4px; height: 18px; margin: -18px 0 0 -2px; background: linear-gradient(#fff,#bbb); border-radius: 2px; box-shadow: 0 0 4px rgba(255,255,255,0.6), 0 0 1px #000 inset; transform-origin: 50% 16px; }
-.knob-center { position: absolute; top: 50%; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #333 0%, #222 40%, #111 100%); box-shadow: inset 0 1px 2px rgba(255,255,255,0.12), 0 1px 2px rgba(0,0,0,0.8); }
+.knob-step { position: absolute; top: 50%; left: 50%; width: 3px; height: 9px; margin: -5px 0 0 -1.5px; background: var(--accent-2); opacity: 0.9; border-radius: 0; }
+.knob-pointer { position: absolute; top: 50%; left: 50%; width: 4px; height: 18px; margin: -18px 0 0 -2px; background: #fff; border-radius: 0; box-shadow: none; transform-origin: 50% 16px; }
+.knob-center { position: absolute; top: 50%; left: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 0; background: #000; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.15); }
 .knob-shell:focus-visible .knob-face { outline: 1px dashed var(--accent); outline-offset: 2px; }
 .knob-shell:hover .knob-face { box-shadow: inset 0 2px 4px rgba(255,255,255,0.15), 0 0 0 1px #000, 0 3px 6px rgba(0,0,0,0.7); }
 .knob-shell:active .knob-pointer { filter: brightness(1.3); }

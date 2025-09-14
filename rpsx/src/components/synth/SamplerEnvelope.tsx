@@ -1,16 +1,15 @@
 import React from 'react';
 import { useBrowser } from '../../store/browser';
 import Knob from './Knob';
+import EnvelopePreview from './EnvelopePreview';
 
 export default function SamplerEnvelope() {
   const s = useBrowser() as any;
   const ui = s.getSynthUI();
-  const sampler = ui.sampler || {
-    attack: 0.01,
-    decay: 0.3,
-    sustain: 0.7,
-    release: 0.5,
-  };
+  // Sampler envelope in UI uses normalized [0..1] like analog AMP env
+  const sampler = ui.sampler || { attack: 0.02, decay: 0.2, sustain: 0.7, release: 0.25 };
+  const pmode = Math.round(sampler.playback_mode ?? 0); // 0=OneShot,1=Loop,2=Keytrack
+  const disabled = !(pmode === 1 || pmode === 2);
 
   const setParam = (key: string, value: number) => {
     s.updateSynthUI((ui: any) => ({
@@ -22,120 +21,57 @@ export default function SamplerEnvelope() {
     const part = s.selectedSoundPart ?? 0;
     switch (key) {
       case 'attack':
-        s.setSynthParam(`part/${part}/sampler/attack`, value);
+    s.setSynthParam(`part/${part}/sampler/attack`, mapTimeMs(value));
         break;
       case 'decay':
-        s.setSynthParam(`part/${part}/sampler/decay`, value);
+    s.setSynthParam(`part/${part}/sampler/decay`, mapTimeMs(value));
         break;
       case 'sustain':
         s.setSynthParam(`part/${part}/sampler/sustain`, value);
         break;
       case 'release':
-        s.setSynthParam(`part/${part}/sampler/release`, value);
+    s.setSynthParam(`part/${part}/sampler/release`, mapTimeMs(value));
         break;
     }
   };
 
-  // Convert time values to display format (similar to EnvelopePreview)
-  const formatTime = (v: number): string => {
-    const sec = v * 4.0; // 0..1 -> 0..4 seconds approximately
-    if (sec < 0.1) return (sec * 1000).toFixed(0) + 'ms';
-    return sec.toFixed(2) + 's';
-  };
+  // Same mapping/formatting style as analog AMP env, but send ms to sampler engine
+  function mapTime(v: number): number { return 0.001 + Math.pow(v, 2) * 5.0; } // seconds
+  function mapTimeMs(v: number): number { return mapTime(v) * 1000.0; }
+  function fmtTime(sec: number): string { return sec < 0.1 ? `${Math.round(sec*1000)}ms` : `${sec.toFixed(2)}s`; }
 
-  const formatPercent = (v: number): string => {
-    return (v * 100).toFixed(0) + '%';
-  };
+  const formatPercent = (v: number): string => (v * 100).toFixed(0) + '%';
 
   return (
     <div className="synth-page">
-      <div className="page-header">
-        <h2>ENVELOPE</h2>
-      </div>
-
-      {/* Envelope preview visualization */}
-      <div className="envelope-container">
-        <div className="envelope-preview">
-          <div className="envelope-curve">
-            {/* Simple ADSR visualization */}
-            <svg viewBox="0 0 200 100" className="envelope-svg">
-              {/* Attack */}
-              <line 
-                x1="10" y1="90" 
-                x2={10 + sampler.attack * 40} y2="10" 
-                stroke="var(--accent)" strokeWidth="2"
-              />
-              {/* Decay */}
-              <line 
-                x1={10 + sampler.attack * 40} y1="10" 
-                x2={10 + sampler.attack * 40 + sampler.decay * 40} y2={10 + (1 - sampler.sustain) * 80} 
-                stroke="var(--accent)" strokeWidth="2"
-              />
-              {/* Sustain */}
-              <line 
-                x1={10 + sampler.attack * 40 + sampler.decay * 40} y1={10 + (1 - sampler.sustain) * 80} 
-                x2="150" y2={10 + (1 - sampler.sustain) * 80} 
-                stroke="var(--accent)" strokeWidth="2"
-              />
-              {/* Release */}
-              <line 
-                x1="150" y1={10 + (1 - sampler.sustain) * 80} 
-                x2={150 + sampler.release * 40} y2="90" 
-                stroke="var(--accent)" strokeWidth="2"
-              />
-              
-              {/* Labels */}
-              <text x="25" y="95" fill="var(--text)" fontSize="8">A</text>
-              <text x="55" y="95" fill="var(--text)" fontSize="8">D</text>
-              <text x="100" y="95" fill="var(--text)" fontSize="8">S</text>
-              <text x="160" y="95" fill="var(--text)" fontSize="8">R</text>
-            </svg>
-          </div>
-        </div>
-      </div>
+      <div className="page-header"><h2>ENVELOPE</h2></div>
+      <EnvelopePreview a={sampler.attack ?? 0} d={sampler.decay ?? 0} s={sampler.sustain ?? 0.7} r={sampler.release ?? 0} />
+      {disabled && (
+        <div className="info-text" style={{opacity:0.7, marginTop: 8}}>Envelope is only active in Loop or Keytrack modes.</div>
+      )}
 
       {/* ADSR knobs */}
       <div className="knob-grid envelope-knobs">
         <div className="knob-group">
-          <Knob
-            value={sampler.attack}
-            onChange={(v: number) => setParam('attack', v)}
-            label="Attack"
-            format={formatTime}
-          />
+          <Knob label="Attack" value={sampler.attack ?? 0} onChange={(v)=> setParam('attack', v)} format={(v)=>fmtTime(mapTime(v))} disabled={disabled} />
         </div>
 
         <div className="knob-group">
-          <Knob
-            value={sampler.decay}
-            onChange={(v: number) => setParam('decay', v)}
-            label="Decay"
-            format={formatTime}
-          />
+          <Knob label="Decay" value={sampler.decay ?? 0} onChange={(v)=> setParam('decay', v)} format={(v)=>fmtTime(mapTime(v))} disabled={disabled} />
         </div>
 
         <div className="knob-group">
-          <Knob
-            value={sampler.sustain}
-            onChange={(v: number) => setParam('sustain', v)}
-            label="Sustain"
-            format={formatPercent}
-          />
+          <Knob label="Sustain" value={sampler.sustain ?? 0.7} onChange={(v)=> setParam('sustain', v)} format={formatPercent} disabled={disabled} />
         </div>
 
         <div className="knob-group">
-          <Knob
-            value={sampler.release}
-            onChange={(v: number) => setParam('release', v)}
-            label="Release"
-            format={formatTime}
-          />
+          <Knob label="Release" value={sampler.release ?? 0} onChange={(v)=> setParam('release', v)} format={(v)=>fmtTime(mapTime(v))} disabled={disabled} />
         </div>
       </div>
 
       <div className="envelope-info">
         <div className="info-text">
-          Total envelope time: {formatTime(sampler.attack + sampler.decay + sampler.release)}
+          Total envelope time: {fmtTime(mapTime(sampler.attack ?? 0) + mapTime(sampler.decay ?? 0) + mapTime(sampler.release ?? 0))}
         </div>
         <div className="info-text">
           Sustain level: {formatPercent(sampler.sustain)}

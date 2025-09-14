@@ -103,7 +103,7 @@ export default function Shell() {
   return (
     <div className="app" style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--text)' }}>
       <TopBar active={view} onSelect={setView} />
-      <div style={{ display: 'flex', flex: 1, gap: 6, padding: 6, boxSizing: 'border-box' }}>
+      <div style={{ display: 'flex', flex: 1, gap: 4, padding: 4, boxSizing: 'border-box' }}>
         <ProjectBrowser />
         <RightPane view={view} />
       </div>
