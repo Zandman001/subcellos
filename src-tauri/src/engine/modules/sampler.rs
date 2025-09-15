@@ -770,12 +770,11 @@ impl Sampler {
         let buffer = self.sample_buffer.lock().unwrap();
         let mut output = 0.0;
 
-        // Sum all active voices
+        // Sum all voices; each voice will early-out when fully idle.
+        // This ensures One-Shot (ADSR bypass) still renders after note_on.
         for voice in &mut self.voices {
-            if voice.is_active() {
-                // Pass beat phase for sync retrig detection
-                output += voice.render(&buffer, params, param_keys, beat_phase);
-            }
+            // Pass beat phase for sync retrig detection
+            output += voice.render(&buffer, params, param_keys, beat_phase);
         }
 
         // Soft limiting to prevent clipping
