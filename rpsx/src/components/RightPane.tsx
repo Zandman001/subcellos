@@ -15,40 +15,17 @@ import ResonatorBank from "./synth/ResonatorBank";
 import Sampler from "./synth/Sampler";
 import SamplerLoop from "./synth/SamplerLoop";
 import SamplerEnvelope from "./synth/SamplerEnvelope";
-import WaterDroplets from "./effects/WaterDroplets";
+// WaterDroplets removed
 
 export default function RightPane({ view }: { view: ViewName }) {
   const s = useBrowser();
   const { focus, level, items, selected, selectedSoundId } = s as any;
   const focused = focus === 'right';
-  const [dropletTriggerCount, setDropletTriggerCount] = React.useState(0);
+  // Droplets removed
 
-  // Check if we're in the Acid303 tab
-  const isAcid303Tab = view === 'Sounds' && 
-                      level === 'synth' && 
-                      s.synthPages[s.synthPageIndex] === 'ACID303';
+  // Droplets removed: no special Acid303 overlay
 
-  // Listen for note events to trigger droplets
-  React.useEffect(() => {
-    if (!isAcid303Tab) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Only trigger for preview keys when in synth level
-      if (s.level === 'synth' && (e.key === 'q' || e.key === 'a')) {
-        // Ignore repeated keydown events when holding the key
-        if (e.repeat) return;
-        
-        const count = 2 + Math.floor(Math.random() * 3);
-        setDropletTriggerCount(prev => prev + count);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isAcid303Tab, s.level]);
+  // Droplets removed: no overlay triggers
 
   return (
     <div style={{
@@ -64,11 +41,7 @@ export default function RightPane({ view }: { view: ViewName }) {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Water droplets effect - only visible in Acid303 tab */}
-      <WaterDroplets 
-        isActive={isAcid303Tab} 
-        triggerCount={dropletTriggerCount}
-      />
+  {/* Droplets removed */}
       
       {view === 'Sounds' && (
         level === 'synth'

@@ -367,7 +367,6 @@ impl SamplerVoice {
                 self.velocity = vel.clamp(0.0, 1.0);
                 self.just_triggered = true; // will reset position in render
                 self.direction = 1.0;
-                self.envelope.note_on();
                 self.retrig_pending = false;
             }
             _ => {
@@ -516,7 +515,8 @@ impl SamplerVoice {
         }
 
         // Check if voice should be active (envelope finished and key is up)
-        if !self.envelope.is_active() && !self.gate {
+        // For One-Shot we must not early-out based on ADSR; it plays to the end regardless of gate.
+        if !self.envelope.is_active() && !self.gate && !matches!(playback_mode, PlaybackMode::OneShot) {
             return 0.0;
         }
 
@@ -534,7 +534,9 @@ impl SamplerVoice {
                     output = buffer.get_sample_interpolated(self.position, 0);
                     self.position += self.pitch_ratio;
                 } else {
-                    self.envelope.note_off();
+                    // One-Shot: mark envelope idle only once the sample region finished
+                    self.envelope.stage = EnvelopeStage::Idle;
+                    self.envelope.level = 0.0;
                 }
             },
             PlaybackMode::Loop => {
@@ -652,9 +654,9 @@ impl SamplerVoice {
         let env_level = if matches!(playback_mode, PlaybackMode::Loop | PlaybackMode::Keytrack) {
             self.envelope.process()
         } else {
-            // One-Shot: force envelope to fully open while playing, and reset when finished
-            if output != 0.0 { self.envelope.level = 1.0; self.envelope.stage = EnvelopeStage::Sustain; }
-            else { self.envelope.stage = EnvelopeStage::Idle; self.envelope.level = 0.0; }
+            // One-Shot: keep envelope fully open during playback; Idle is set when region completes
+            self.envelope.level = 1.0;
+            self.envelope.stage = EnvelopeStage::Sustain;
             1.0
         };
         output *= env_level * self.velocity;
@@ -720,7 +722,7 @@ pub struct PlayheadState {
 
 impl Sampler {
     pub fn new(sr: f32) -> Self {
-        let max_voices = 8;
+    let max_voices = 6;
         Self {
             sr,
             voices: (0..max_voices).map(|_| SamplerVoice::new(sr)).collect(),
@@ -731,16 +733,10 @@ impl Sampler {
         }
     }
 
-    pub fn note_on(&mut self, note: u8, velocity: f32, retrig_mode: RetrigMode) {
-        // Try to find an active voice to retrigger for mono-style behavior
-        if let Some(idx) = self.voices.iter().position(|v| v.is_active()) {
-            // Schedule retrigger according to current mode
-            self.voices[idx].request_retrig(retrig_mode, note, velocity);
-        } else {
-            // Find available voice or steal oldest
-            let voice_idx = self.find_available_voice();
-            self.voices[voice_idx].note_on(note, velocity);
-        }
+    pub fn note_on(&mut self, note: u8, velocity: f32, _retrig_mode: RetrigMode) {
+    // Allocate a voice (polyphonic). If all are active, steal one via round-robin.
+    let voice_idx = self.find_available_voice();
+    self.voices[voice_idx].note_on(note, velocity);
     }
 
     pub fn note_off(&mut self, note: u8) {

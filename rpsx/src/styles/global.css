@@ -164,19 +164,7 @@ body {
   filter: invert(1);
 }
 
-/* Neon droplets effect */
-.neon-droplets {
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
-}
-
-/* Water simulation */
-.water-simulation {
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
-}
+/* Droplets/water simulation removed */
 
 /* Low-contrast theme overrides */
 /* low theme removed to keep strict monochrome */
