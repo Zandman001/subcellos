@@ -12,6 +12,11 @@ export default function Shell() {
   const [view, setView] = useState<ViewName>('Sounds')
   const viewOrder: ViewName[] = useMemo(() => ['Sounds', 'Sequencer', 'Arrangement', 'Perform'], [])
 
+  useEffect(() => {
+    const store = useBrowserStore.getState()
+    store.setActiveView?.(view)
+  }, [view])
+
   const moveView = useCallback((delta: number) => {
     setView(prev => {
       const idx = viewOrder.indexOf(prev)

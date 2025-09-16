@@ -2,12 +2,14 @@ import { useEffect, useSyncExternalStore } from "react";
 import { fsClient, Pattern, Project, Sound } from "../fsClient";
 import { rpc } from "../rpc";
 import { envTimeFromNorm, envTimeMsFromNorm, envTimeNormFromMilliseconds, envTimeNormFromSeconds } from "../utils/envTime";
+import type { ViewName } from "../types/ui";
 
 export type Level = "projects" | "project" | "patterns" | "pattern" | "synth";
 
 export interface BrowserState {
   focus: "browser" | "right";
   level: Level;
+  currentView: ViewName;
   projectName?: string;
   patternName?: string;
   items: string[];
@@ -88,6 +90,7 @@ export interface BrowserState {
   moduleKindById?: Record<string, 'acid' | 'analog' | 'karplus' | 'resonator' | 'sampler'>;
   // recompute pages when conditions change (e.g., sampler playback type toggles LOOP availability)
   refreshSynthPages?: () => void;
+  setActiveView?: (view: ViewName) => void;
 }
 
 // Simple no-deps store with subscribe/get/set
@@ -106,6 +109,7 @@ type InternalState = BrowserState & {
 const state: InternalState = {
   focus: "browser",
   level: "projects",
+  currentView: 'Sounds',
   items: [],
   selected: 0,
   soundIdsAtLevel: undefined,
@@ -168,6 +172,7 @@ const state: InternalState = {
   scheduleSavePreset: () => {},
   _presetApplied: {},
   moduleKindById: {},
+  setActiveView: () => {},
 };
 
 function set(partial: Partial<InternalState>) {
@@ -344,6 +349,9 @@ state.goRight = async () => {
       break;
     }
     case "pattern": {
+      if (state.currentView !== 'Sounds') {
+        break;
+      }
       if (state.selectedSoundId && (state.currentSoundType === "synth" || state.currentSoundType === "sampler")) {
         set({ level: "synth", synthPageIndex: 0, selected: 0 });
         await state.loadLevel();
@@ -529,6 +537,20 @@ state.remove = async () => {
 
 state.toggleFocus = () => {
   set({ focus: state.focus === "browser" ? "right" : "browser" });
+};
+
+state.setActiveView = (view: ViewName) => {
+  if (state.currentView === view) return;
+  const wasSynth = state.level === 'synth';
+  set({ currentView: view });
+  if (wasSynth && view !== 'Sounds') {
+    try { state.forceStopPreview?.(); } catch {}
+    set({ level: 'pattern', synthPageIndex: 0, selected: 0 });
+    (async () => {
+      try { await state.loadLevel(); }
+      catch (e) { console.error('sync view change level load failed', e); }
+    })();
+  }
 };
 
 // Public helper to recompute pages and keep selection in bounds
