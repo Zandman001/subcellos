@@ -1,4 +1,4 @@
-use std::{thread, time::Duration, path::PathBuf, fs};
+ use std::{thread, time::Duration, path::PathBuf, fs};
 
 use crossbeam_channel::Sender;
 use once_cell::sync::OnceCell;
@@ -111,21 +111,6 @@ pub fn set_transport(playing: bool) -> Result<(), String> {
   } else { Err("engine not started".into()) }
 }
 
-#[tauri::command]
-pub fn get_audio_levels(part: usize) -> Result<AudioLevels, String> {
-  // For now, return mock data since implementing real-time level monitoring
-  // would require significant changes to the audio engine
-  Ok(AudioLevels {
-    left: 0.0,
-    right: 0.0,
-  })
-}
-
-#[derive(serde::Serialize)]
-pub struct AudioLevels {
-  pub left: f32,
-  pub right: f32,
-}
 
 #[tauri::command]
 pub fn debug_ping() -> Result<(), String> {

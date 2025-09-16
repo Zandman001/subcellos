@@ -25,7 +25,6 @@ export const rpc = {
   noteOn: (part: number, note: number, vel: number) => safeInvoke<void>("note_on", { part, note, vel }),
   noteOff: (part: number, note: number) => safeInvoke<void>("note_off", { part, note }),
   setParam: (path: string, value: any) => safeInvoke<void>("set_param", { path, value }),
-  getAudioLevels: (part: number) => safeInvoke<{ left: number; right: number }>("get_audio_levels", { part }, { left: 0, right: 0 }),
   startRecording: () => safeInvoke<void>("start_recording", undefined),
   stopRecording: () => safeInvoke<void>("stop_recording", undefined),
   listSubsamples: () => safeInvoke<string[]>("list_subsamples", undefined, []),

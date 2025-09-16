@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { fsClient, Pattern, Project, Sound } from "../fsClient";
 import { rpc } from "../rpc";
+import { envTimeFromNorm, envTimeMsFromNorm, envTimeNormFromMilliseconds, envTimeNormFromSeconds } from "../utils/envTime";
 
 export type Level = "projects" | "project" | "patterns" | "pattern" | "synth";
 
@@ -999,8 +1000,8 @@ function uiToSchema(ui: SynthUI) {
       module_kind: getCurrentModuleKind(),
       oscA: { shape: Math.round(ui.oscA.shape*7), detune_cents: detuneCents(ui.oscA.detune), fm_to_B: ui.oscA.fm, level: ui.oscA.level },
       oscB: { shape: Math.round(ui.oscB.shape*7), detune_cents: detuneCents(ui.oscB.detune), fm_to_A: ui.oscB.fm, level: ui.oscB.level },
-      amp_env: { attack: mapTime(ui.ampEnv.a), decay: mapTime(ui.ampEnv.d), sustain: ui.ampEnv.s, release: mapTime(ui.ampEnv.r) },
-      mod_env: { attack: mapTime(ui.modEnv.a), decay: mapTime(ui.modEnv.d), sustain: ui.modEnv.s, release: mapTime(ui.modEnv.r) },
+      amp_env: { attack: envTimeFromNorm(ui.ampEnv.a), decay: envTimeFromNorm(ui.ampEnv.d), sustain: ui.ampEnv.s, release: envTimeFromNorm(ui.ampEnv.r) },
+      mod_env: { attack: envTimeFromNorm(ui.modEnv.a), decay: envTimeFromNorm(ui.modEnv.d), sustain: ui.modEnv.s, release: envTimeFromNorm(ui.modEnv.r) },
       filter1: { type: Math.round(ui.filter1.type*3), cutoff_hz: mapCutoff(ui.filter1.cutoff), q: mapQ(ui.filter1.res), assign: ui.filter1.assign },
       filter2: { type: Math.round(ui.filter2.type*3), cutoff_hz: mapCutoff(ui.filter2.cutoff), q: mapQ(ui.filter2.res), assign: ui.filter2.assign },
       lfo: { shape: Math.round(ui.lfo.shape*3), rate_hz: mapRate(ui.lfo.rate), amount: ui.lfo.amount, drive: ui.lfo.drive },
@@ -1069,29 +1070,19 @@ function uiToSchema(ui: SynthUI) {
         retrig_mode: Math.round((ui as any).sampler.retrig_mode ?? 0),
   current_sample: (ui as any).sampler.current_sample,
         // Convert normalized UI times (seconds mapper) to milliseconds for engine preset
-        attack: mapTime((ui as any).sampler.attack ?? 0.02) * 1000.0,
-        decay: mapTime((ui as any).sampler.decay ?? 0.2) * 1000.0,
+        attack: envTimeMsFromNorm((ui as any).sampler.attack ?? 0.02),
+        decay: envTimeMsFromNorm((ui as any).sampler.decay ?? 0.2),
         sustain: (ui as any).sampler.sustain ?? 0.7,
-        release: mapTime((ui as any).sampler.release ?? 0.25) * 1000.0,
+        release: envTimeMsFromNorm((ui as any).sampler.release ?? 0.25),
         gain: (ui as any).sampler.gain ?? 0.8,
       } : undefined,
     }
   };
 }
 
-function mapTime(v: number): number {
-  // Same mapping used for ENV knobs formatting
-  // 1ms..4s approximately
-  const min = 0.001;
-  const max = 4.0;
-  return min * Math.pow(max/min, v);
-}
-
 // Convert milliseconds (preferred) or seconds (legacy) to normalized [0..1]
 function invMapTimeMs(msOrSec: number): number {
-  const v = (typeof msOrSec === 'number' && !Number.isNaN(msOrSec)) ? msOrSec : 100.0; // default ~100ms
-  const sec = v > 8.0 ? (v / 1000.0) : v; // heuristics: values >8 are likely ms
-  return invMapTime(sec);
+  return envTimeNormFromMilliseconds(msOrSec);
 }
 
 function serializeCurrentPreset(): any {
@@ -1205,7 +1196,7 @@ async function applyPreset(preset: any) {
       loop_end: p.sampler?.loop_end ?? 0.8,
   retrig_mode: p.sampler?.retrig_mode ?? 0,
   current_sample: p.sampler?.current_sample,
-      // Convert ms back to normalized UI via inverse of mapTime
+      // Convert ms back to normalized knob value via shared envTime mapping
       attack: invMapTimeMs(p.sampler?.attack ?? 10.0),
       decay: invMapTimeMs(p.sampler?.decay ?? 100.0),
       sustain: p.sampler?.sustain ?? 0.7,
@@ -1340,8 +1331,10 @@ async function applyPreset(preset: any) {
     send(`resonator/drive`, { F32: p.resonator.drive ?? 0.0 });
     send(`resonator/exciter_type`, { I32: Math.round(p.resonator.exciter_type ?? 0) });
     send(`resonator/exciter_amount`, { F32: p.resonator.exciter_amount ?? 0.5 });
-    send(`resonator/noise_color`, { F32: p.resonator.noise_color ?? 0.5 });
-    send(`resonator/strike_rate`, { F32: p.resonator.strike_rate ?? 0.0 });
+  // noise_color is stored UI 0..1; engine expects -1..+1
+  send(`resonator/noise_color`, { F32: ((p.resonator.noise_color ?? 0.5) as number) * 2 - 1 });
+  // strike_rate UI 0..1; engine maps to 0.5..10 Hz internally
+  send(`resonator/strike_rate`, { F32: p.resonator.strike_rate ?? 0.0 });
     send(`resonator/stereo_width`, { F32: p.resonator.stereo_width ?? 0.5 });
     send(`resonator/randomize`, { F32: p.resonator.randomize ?? 0.0 });
     send(`resonator/body_blend`, { F32: p.resonator.body_blend ?? 0.4 });
@@ -1382,7 +1375,7 @@ async function applyPreset(preset: any) {
 function invMapCutoff(hz: number): number { const min=20, max=18000; return Math.log10((hz/min)) / Math.log10(max/min); }
 function invMapQ(q: number): number { return (q - 0.5) / (12 - 0.5); }
 function invMapRate(hz: number): number { return (hz - 0.05) / (20 - 0.05); }
-function invMapTime(sec: number): number { const min=0.001, max=4.0; return Math.log(sec/min)/Math.log(max/min); }
+function invMapTime(sec: number): number { return envTimeNormFromSeconds(sec); }
 
 async function loadAndApplyCurrentPreset() {
   const proj = state.projectName; const id = state.selectedSoundId; if (!proj || !id) return;
@@ -1512,8 +1505,8 @@ async function preloadAndReplayProjectPresets(project: string) {
         await set(`resonator/drive`, { F32: p.resonator.drive ?? 0.0 });
         await set(`resonator/exciter_type`, { I32: Math.round(p.resonator.exciter_type ?? 0) });
         await set(`resonator/exciter_amount`, { F32: p.resonator.exciter_amount ?? 0.5 });
-        await set(`resonator/noise_color`, { F32: p.resonator.noise_color ?? 0.5 });
-        await set(`resonator/strike_rate`, { F32: p.resonator.strike_rate ?? 0.0 });
+  await set(`resonator/noise_color`, { F32: ((p.resonator.noise_color ?? 0.5) as number) * 2 - 1 });
+  await set(`resonator/strike_rate`, { F32: p.resonator.strike_rate ?? 0.0 });
         await set(`resonator/stereo_width`, { F32: p.resonator.stereo_width ?? 0.5 });
         await set(`resonator/randomize`, { F32: p.resonator.randomize ?? 0.0 });
         await set(`resonator/body_blend`, { F32: p.resonator.body_blend ?? 0.4 });

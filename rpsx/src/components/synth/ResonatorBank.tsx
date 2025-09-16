@@ -42,7 +42,7 @@ export default function ResonatorBank() {
     pitch: typeof raw.pitch === 'number' && isFinite(raw.pitch) ? raw.pitch : 0.0,
     decay: typeof raw.decay === 'number' && isFinite(raw.decay) ? raw.decay : 0.5,
     brightness: typeof raw.brightness === 'number' && isFinite(raw.brightness) ? raw.brightness : 0.5,
-    bank_size: typeof raw.bank_size === 'number' && isFinite(raw.bank_size) ? raw.bank_size : 0.5,
+  bank_size: typeof raw.bank_size === 'number' && isFinite(raw.bank_size) ? raw.bank_size : 0.875, // ~8 default when mapped
     // Page 2 - Structure
     mode: typeof raw.mode === 'number' && isFinite(raw.mode) ? raw.mode : 0.0,
     inharmonicity: typeof raw.inharmonicity === 'number' && isFinite(raw.inharmonicity) ? raw.inharmonicity : 0.1,
@@ -62,10 +62,16 @@ export default function ResonatorBank() {
 
   const update = (patch: Partial<typeof resonator>) => s.updateSynthUI((u: any) => ({ ...u, resonator: { ...(u.resonator || {}), ...patch } }));
 
+  // Derived flags for inactive visuals
+  const modeI = resonator.mode < 0.5 ? 0 : 1; // 0 Modal, 1 Comb
+  const exciterEffective = true; // exciter always influences excitation
+  const noiseColorEffective = Math.floor((resonator.exciter_type || 0) * 3.99) === 1; // only for Noise
+  const bankSizeEffective = modeI === 0; // bank size only matters in Modal
+
   // Page 1 - Core
   const knobs0 = (
     <Row>
-      <Knob 
+  <Knob 
         label="Pitch" 
         value={resonator.pitch} 
         onChange={(v) => { 
@@ -74,7 +80,7 @@ export default function ResonatorBank() {
         }} 
         format={(v) => `${Math.round((v * 2 - 1) * 48)} st`} 
       />
-      <Knob 
+  <Knob 
         label="Decay" 
         value={resonator.decay} 
         onChange={(v) => { 
@@ -100,6 +106,7 @@ export default function ResonatorBank() {
           s.setSynthParam(`part/${part}/resonator/bank_size`, Math.round(1 + v * 15), 'I32'); 
         }} 
         format={(v) => `${Math.round(1 + v * 15)}`} 
+        inactive={!bankSizeEffective}
       />
     </Row>
   );
@@ -107,7 +114,7 @@ export default function ResonatorBank() {
   // Page 2 - Structure
   const knobs1 = (
     <Row>
-      <Knob 
+  <Knob 
         label="Mode" 
         value={resonator.mode} 
         onChange={(v) => { 
@@ -116,7 +123,7 @@ export default function ResonatorBank() {
         }} 
         format={(v) => v < 0.5 ? 'Modal' : 'Comb'} 
       />
-      <Knob 
+  <Knob 
         label="Spread" 
         value={resonator.inharmonicity} 
         onChange={(v) => { 
@@ -125,7 +132,7 @@ export default function ResonatorBank() {
         }} 
         format={(v) => `${Math.round(v * 200)} cents`} 
       />
-      <Knob 
+  <Knob 
         label="Feedback" 
         value={resonator.feedback} 
         onChange={(v) => { 
@@ -134,7 +141,7 @@ export default function ResonatorBank() {
         }} 
         format={(v) => `${Math.round(v * 100)}%`} 
       />
-      <Knob 
+  <Knob 
         label="Drive" 
         value={resonator.drive} 
         onChange={(v) => { 
@@ -161,6 +168,7 @@ export default function ResonatorBank() {
           const type = Math.floor(v * 3.99);
           return ['Impulse', 'Noise', 'Click', 'External'][type] || 'Impulse';
         }} 
+        inactive={!exciterEffective}
       />
       <Knob 
         label="Amount" 
@@ -170,6 +178,7 @@ export default function ResonatorBank() {
           s.setSynthParam(`part/${part}/resonator/exciter_amount`, v); 
         }} 
         format={(v) => `${Math.round(v * 100)}%`} 
+        inactive={!exciterEffective}
       />
       <Knob 
         label="Color" 
@@ -182,13 +191,14 @@ export default function ResonatorBank() {
           const mapped = v * 2 - 1;
           return mapped < 0 ? `HP ${Math.abs(mapped * 12).toFixed(1)}` : `LP ${(mapped * 12).toFixed(1)}`;
         }} 
+        inactive={!noiseColorEffective}
       />
       <Knob 
         label="Strike Rate" 
         value={resonator.strike_rate} 
         onChange={(v) => { 
           update({ strike_rate: v }); 
-          s.setSynthParam(`part/${part}/resonator/strike_rate`, v * 20); // 0-20 Hz
+          s.setSynthParam(`part/${part}/resonator/strike_rate`, v); // 0..1; engine maps 0.5..10Hz inside
         }} 
         format={(v) => v < 0.05 ? 'Off' : `${(v * 20).toFixed(1)} Hz`} 
       />
@@ -198,7 +208,7 @@ export default function ResonatorBank() {
   // Page 4 - Output
   const knobs3 = (
     <Row>
-      <Knob 
+  <Knob 
         label="Width" 
         value={resonator.stereo_width} 
         onChange={(v) => { 
@@ -207,7 +217,7 @@ export default function ResonatorBank() {
         }} 
         format={(v) => `${Math.round(v * 100)}%`} 
       />
-      <Knob 
+  <Knob 
         label="Randomize" 
         value={resonator.randomize} 
         onChange={(v) => { 
@@ -216,7 +226,7 @@ export default function ResonatorBank() {
         }} 
         format={(v) => `${Math.round(v * 100)}%`} 
       />
-      <Knob 
+  <Knob 
         label="Body Blend" 
         value={resonator.body_blend} 
         onChange={(v) => { 
@@ -225,7 +235,7 @@ export default function ResonatorBank() {
         }} 
         format={(v) => v < 0.5 ? `stringy ${((0.5-v)*2).toFixed(1)}` : `plate ${((v-0.5)*2).toFixed(1)}`} 
       />
-      <Knob 
+  <Knob 
         label="Gain" 
         value={resonator.output_gain} 
         onChange={(v) => { 

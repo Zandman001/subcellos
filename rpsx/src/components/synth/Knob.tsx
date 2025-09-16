@@ -8,9 +8,10 @@ type KnobProps = {
   format?: (v: number) => string;
   disabled?: boolean;
   dragScale?: number; // optional scaling of drag sensitivity (multiplies baseline)
+  inactive?: boolean; // visually dim, still interactive
 };
 
-export default function Knob({ label, value, onChange, step, format, disabled, dragScale }: KnobProps) {
+export default function Knob({ label, value, onChange, step, format, disabled, dragScale, inactive }: KnobProps) {
   // Round knob with radial ticks & pointer
   const [v, setV] = useState<number>(clamp01(value));
   useEffect(() => setV(clamp01(value)), [value]);
@@ -81,7 +82,7 @@ export default function Knob({ label, value, onChange, step, format, disabled, d
   const stepTicks = step ? Array.from({ length: step }, (_, i) => i / (step - 1)) : [];
 
   return (
-    <div className="ctrl" style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 72, opacity: disabled ? 0.5 : 1 }}>
+  <div className={`ctrl${inactive ? ' inactive' : ''}`} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 72, opacity: disabled ? 0.5 : 1 }}>
       <div
         className="knob-shell"
         tabIndex={disabled ? -1 : 0}

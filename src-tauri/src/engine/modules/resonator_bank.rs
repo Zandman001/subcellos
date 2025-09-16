@@ -314,13 +314,21 @@ impl ResonatorVoice {
             
             // Update resonator bank based on mode
             match mode {
-            0 => { // Modal mode - harmonic resonators
+            0 => { // Modal mode - harmonic resonators (Brightness = tonal tilt; dark adds undertones)
+                // Tone shaping
+                let tone = brightness.clamp(0.0, 1.0);
+                let dark = (0.5 - tone).max(0.0) * 2.0;   // 0..1 when darker
+                let bright = (tone - 0.5).max(0.0) * 2.0; // 0..1 when brighter
+                // Eased decay for more proportional knob feel
+                let decay_e = decay.clamp(0.0, 1.0).powf(1.35);
+                let q_min = 3.0; let q_max = 25.0;
+
                 for i in 0..bank_size {
                     let partial = i as f32 + 1.0;
-                    let harmonic_freq = base_freq * partial;
+                    let i_norm = (i as f32) / (bank_size as f32).max(1.0);
+                    let mut harmonic_freq = base_freq * partial;
                     
                     // Add inharmonicity (detunes higher harmonics)
-                    // inharmonicity comes as 0-2 range from UI, scale appropriately
                     let detune_cents = inharmonicity * partial * partial * 5.0; // Reduced scaling
                     
                     // Add randomization to frequency
@@ -329,33 +337,45 @@ impl ResonatorVoice {
                         let seed = (self.note as f32 * 17.0 + i as f32 * 23.0) % 1000.0;
                         let random_factor = (seed.sin() * 2.0 - 1.0) * randomize * 50.0; // ±50 cents max
                         random_factor
-                    } else {
-                        0.0
-                    };
-                    
+                    } else { 0.0 };
+
                     let freq = harmonic_freq * cents_to_ratio(detune_cents + random_detune);
-                    
-                    // Higher partials decay faster (brightness control)
-                    let decay_factor = 1.0 - brightness * 0.8 * (i as f32 / bank_size as f32);
-                    let q = 5.0 + decay * 45.0 * decay_factor;
-                    
+
+                    // Q shaped by decay and tone: brighten raises Q slightly on highs; dark raises Q on lows
+                    let q_tone = 1.0 - 0.5 * bright * i_norm + 0.3 * dark * (1.0 - i_norm);
+                    let q = (q_min + (q_max - q_min) * decay_e * q_tone).min(80.0);
                     self.resonators[i].set_bandpass(freq.min(self.sr * 0.45), q, self.sr);
-                    
-                    // Amplitude rolloff for higher partials
-                    let gain = (1.0 / (partial + brightness * partial * 2.0)).sqrt();
+
+                    // Amplitude tilt: dark boosts lows; bright emphasizes highs
+                    let tilt_low = 1.0 + dark * 0.6 * (1.0 - i_norm);
+                    let tilt_high = 1.0 + bright * 0.8 * i_norm;
+                    let base = 1.0 / partial.powf(0.9 + bright * 0.6);
+                    let gain = (base.sqrt()) * tilt_low * tilt_high;
                     self.resonator_gains[i] = gain;
                 }
             },
-            1 => { // Comb mode - single resonator with feedback
+            1 => { // Comb mode - tone shaping and optional undertone; no brightness->pitch coupling
                 if bank_size > 0 {
-                    let filter_freq = base_freq * (1.0 + brightness * 2.0);
-                    let q = 2.0 + decay * 8.0;
-                    self.resonators[0].set_bandpass(filter_freq.min(self.sr * 0.45), q, self.sr);
+                    let tone = brightness.clamp(0.0, 1.0);
+                    let dark = (0.5 - tone).max(0.0) * 2.0;
+                    let bright = (tone - 0.5).max(0.0) * 2.0;
+                    let decay_e = decay.clamp(0.0, 1.0).powf(1.35);
+                    let q_min = 1.5; let q_max = 12.0;
+                    let q = q_min + (q_max - q_min) * decay_e * (1.0 + 0.2 * bright - 0.15 * dark);
+                    // Main comb at base frequency
+                    self.resonators[0].set_bandpass(base_freq.min(self.sr * 0.45), q, self.sr);
                     self.resonator_gains[0] = 1.0;
-                    
-                    // Disable other resonators
-                    for i in 1..bank_size {
-                        self.resonator_gains[i] = 0.0;
+
+                    // Optional undertone for darker tones (uses second slot if available)
+                    if dark > 0.05 && bank_size >= 2 {
+                        let sub_q = (q * 0.85).max(1.2);
+                        let sub_f = (base_freq * 0.5).max(20.0);
+                        self.resonators[1].set_bandpass(sub_f.min(self.sr * 0.45), sub_q, self.sr);
+                        self.resonator_gains[1] = 0.5 * dark; // subtle undertone amount
+                        // Zero out remaining gains
+                        for i in 2..bank_size { self.resonator_gains[i] = 0.0; }
+                    } else {
+                        for i in 1..bank_size { self.resonator_gains[i] = 0.0; }
                     }
                 }
             },
@@ -363,7 +383,8 @@ impl ResonatorVoice {
                 for i in 0..bank_size {
                     let partial = i as f32 + 1.0;
                     let harmonic_freq = base_freq * partial;
-                    let q = 5.0 + decay * 45.0;
+                    let decay_e = decay.clamp(0.0, 1.0).powf(1.35);
+                    let q = 3.0 + decay_e * 22.0;
                     
                     self.resonators[i].set_bandpass(harmonic_freq.min(self.sr * 0.45), q, self.sr);
                     self.resonator_gains[i] = 1.0 / partial.sqrt();

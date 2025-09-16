@@ -24,7 +24,6 @@ pub fn run() {
       note_off,
       set_tempo,
       set_transport,
-      get_audio_levels,
       debug_ping,
       // FS API
       fs_list_projects,

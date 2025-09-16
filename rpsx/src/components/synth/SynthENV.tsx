@@ -2,6 +2,7 @@ import React from 'react'
 import Knob from './Knob'
 import { useBrowser } from '../../store/browser'
 import EnvelopePreview from './EnvelopePreview'
+import { envTimeFromNorm, formatEnvTime } from '../../utils/envTime'
 
 export default function SynthENV() {
   const s = useBrowser() as any;
@@ -14,10 +15,10 @@ export default function SynthENV() {
     <Page title={`ENV · ${which}`}>
       <EnvelopePreview a={env.a} d={env.d} s={env.s} r={env.r} />
       <Row>
-        <Knob label="Attack" value={env.a} onChange={(v)=> { updateEnv(s, which, { a: v }); s.setSynthParam(`part/${part}/${key}/attack`, mapTime(v)); }} format={(v)=>fmtTime(mapTime(v))} />
-        <Knob label="Decay" value={env.d} onChange={(v)=> { updateEnv(s, which, { d: v }); s.setSynthParam(`part/${part}/${key}/decay`, mapTime(v)); }} format={(v)=>fmtTime(mapTime(v))} />
+        <Knob label="Attack" value={env.a} onChange={(v)=> { updateEnv(s, which, { a: v }); s.setSynthParam(`part/${part}/${key}/attack`, envTimeFromNorm(v)); }} format={(v)=>fmtTime(envTimeFromNorm(v))} />
+        <Knob label="Decay" value={env.d} onChange={(v)=> { updateEnv(s, which, { d: v }); s.setSynthParam(`part/${part}/${key}/decay`, envTimeFromNorm(v)); }} format={(v)=>fmtTime(envTimeFromNorm(v))} />
         <Knob label="Sustain" value={env.s} onChange={(v)=> { updateEnv(s, which, { s: v }); s.setSynthParam(`part/${part}/${key}/sustain`, v); }} format={(v)=>`${Math.round(v*100)}%`} />
-        <Knob label="Release" value={env.r} onChange={(v)=> { updateEnv(s, which, { r: v }); s.setSynthParam(`part/${part}/${key}/release`, mapTime(v)); }} format={(v)=>fmtTime(mapTime(v))} />
+        <Knob label="Release" value={env.r} onChange={(v)=> { updateEnv(s, which, { r: v }); s.setSynthParam(`part/${part}/${key}/release`, envTimeFromNorm(v)); }} format={(v)=>fmtTime(envTimeFromNorm(v))} />
       </Row>
     </Page>
   );
@@ -39,8 +40,7 @@ function Row({ children }: { children: React.ReactNode }) {
   )
 }
 
-function mapTime(v: number): number { return 0.001 + Math.pow(v, 2) * 5.0; }
-function fmtTime(sec: number): string { return sec < 0.1 ? `${Math.round(sec*1000)}ms` : `${sec.toFixed(2)}s`; }
+function fmtTime(sec: number): string { return formatEnvTime(sec); }
 
 function updateEnv(s: any, which: 'AMP'|'MOD', patch: Partial<{a:number;d:number;s:number;r:number}>) {
   const key = which === 'AMP' ? 'ampEnv' : 'modEnv';

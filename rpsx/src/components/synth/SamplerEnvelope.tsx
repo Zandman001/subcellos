@@ -2,6 +2,7 @@ import React from 'react';
 import { useBrowser } from '../../store/browser';
 import Knob from './Knob';
 import EnvelopePreview from './EnvelopePreview';
+import { envTimeFromNorm, envTimeMsFromNorm, formatEnvTime } from '../../utils/envTime';
 
 export default function SamplerEnvelope() {
   const s = useBrowser() as any;
@@ -21,24 +22,22 @@ export default function SamplerEnvelope() {
     const part = s.selectedSoundPart ?? 0;
     switch (key) {
       case 'attack':
-    s.setSynthParam(`part/${part}/sampler/attack`, mapTimeMs(value));
+        s.setSynthParam(`part/${part}/sampler/attack`, envTimeMsFromNorm(value));
         break;
       case 'decay':
-    s.setSynthParam(`part/${part}/sampler/decay`, mapTimeMs(value));
+        s.setSynthParam(`part/${part}/sampler/decay`, envTimeMsFromNorm(value));
         break;
       case 'sustain':
         s.setSynthParam(`part/${part}/sampler/sustain`, value);
         break;
       case 'release':
-    s.setSynthParam(`part/${part}/sampler/release`, mapTimeMs(value));
+        s.setSynthParam(`part/${part}/sampler/release`, envTimeMsFromNorm(value));
         break;
     }
   };
 
-  // Same mapping/formatting style as analog AMP env, but send ms to sampler engine
-  function mapTime(v: number): number { return 0.001 + Math.pow(v, 2) * 5.0; } // seconds
-  function mapTimeMs(v: number): number { return mapTime(v) * 1000.0; }
-  function fmtTime(sec: number): string { return sec < 0.1 ? `${Math.round(sec*1000)}ms` : `${sec.toFixed(2)}s`; }
+  const mapTime = (v: number): number => envTimeFromNorm(v);
+  const fmtTime = (sec: number): string => formatEnvTime(sec);
 
   const formatPercent = (v: number): string => (v * 100).toFixed(0) + '%';
 

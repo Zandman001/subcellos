@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import TopBar from './components/TopBar'
 import ProjectBrowser from './components/ProjectBrowser'
 import RightPane from './components/RightPane'
@@ -10,6 +10,15 @@ import { sampleBrowser, useBrowserStore } from './store/browser'
 
 export default function Shell() {
   const [view, setView] = useState<ViewName>('Sounds')
+  const viewOrder: ViewName[] = useMemo(() => ['Sounds', 'Sequencer', 'Arrangement', 'Perform'], [])
+
+  const moveView = useCallback((delta: number) => {
+    setView(prev => {
+      const idx = viewOrder.indexOf(prev)
+      const next = (idx + delta + viewOrder.length) % viewOrder.length
+      return viewOrder[next]
+    })
+  }, [viewOrder])
 
   useEffect(() => {
     // Pre-warm audio engine to avoid first-note startup latency
@@ -22,10 +31,14 @@ export default function Shell() {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (target as any).isContentEditable) return
       }
       switch (e.key) {
-        case '1': setView('Sounds'); break
-        case '2': setView('Sequencer'); break
-        case '3': setView('Arrangement'); break
-        case '4': setView('Perform'); break
+        case '3':
+          e.preventDefault()
+          moveView(-1)
+          break
+        case '4':
+          e.preventDefault()
+          moveView(1)
+          break
         case 't':
         case 'T': {
           // Quick tempo toggle example: cycle between a few tempos
@@ -98,7 +111,7 @@ export default function Shell() {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [view])
+  }, [moveView, view])
 
   return (
     <div className="app" style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--text)' }}>

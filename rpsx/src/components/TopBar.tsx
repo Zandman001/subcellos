@@ -7,11 +7,12 @@ type Props = {
   onSelect: (v: ViewName) => void
 }
 
+const NAV_HINT = '3=Prev / 4=Next';
 const TABS: Array<{ key: ViewName; label: string; hotkey: string }> = [
-  { key: 'Sounds',     label: 'SOUNDS',      hotkey: '1' },
-  { key: 'Sequencer',  label: 'SEQUENCER',   hotkey: '2' },
-  { key: 'Arrangement',label: 'ARRANGEMENT', hotkey: '3' },
-  { key: 'Perform',    label: 'PERFORM',     hotkey: '4' },
+  { key: 'Sounds',     label: 'SOUNDS',      hotkey: NAV_HINT },
+  { key: 'Sequencer',  label: 'SEQUENCER',   hotkey: NAV_HINT },
+  { key: 'Arrangement',label: 'ARRANGEMENT', hotkey: NAV_HINT },
+  { key: 'Perform',    label: 'PERFORM',     hotkey: NAV_HINT },
 ]
 
 export default function TopBar({ active, onSelect }: Props) {
