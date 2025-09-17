@@ -8,16 +8,16 @@ export default function ProjectBrowser() {
     <div
       style={{
         width: "25%",
-  border: "1px solid",
-  borderColor: focused ? "var(--accent)" : "var(--line)",
+        border: "1px solid",
+        borderColor: focused ? "var(--accent)" : "var(--line)",
         boxSizing: "border-box",
         color: "var(--text)",
-  background: "var(--bg)",
-  fontFamily: "'Press Start 2P', monospace",
+        background: "var(--bg)",
+        fontFamily: "'Press Start 2P', monospace",
         height: "100%",
         position: "relative",
       }}
-   >
+    >
       <div style={{ 
   padding: 10,
   borderBottom: "1px solid var(--line)",
@@ -64,16 +64,24 @@ export default function ProjectBrowser() {
           color: 'var(--text)',
           boxShadow: '0 0 0 2px var(--bg)',
         }}>
-          {["Analog Synth", "Acid 303", "KarplusStrong", "ResonatorBank", "Sampler", "Drum"].map((name, i) => (
-            <div key={name} style={{
-              padding: '6px 8px',
-              borderBottom: '1px solid var(--line)',
-              background: i === state.modulePickerIndex ? 'rgba(var(--accent-rgb), 0.14)' : 'transparent',
-              color: i === state.modulePickerIndex ? 'var(--bg)' : 'var(--text)',
-            }}>
-              {name}
-            </div>
-          ))}
+          {["Analog Synth", "Acid 303", "KarplusStrong", "ResonatorBank", "Sampler", "Drum"].map((name, i) => {
+            const sel = i === state.modulePickerIndex;
+            return (
+              <div
+                key={name}
+                style={{
+                  padding: '6px 8px',
+                  borderBottom: '1px solid var(--line)',
+                  background: sel ? '#ffffff' : 'transparent',
+                  color: sel ? '#000000' : 'var(--text)',
+                  fontWeight: sel ? 'bold' : 'normal',
+                  transition: 'background 80ms linear, color 80ms linear'
+                }}
+              >
+                {name}
+              </div>
+            );
+          })}
           <div style={{ padding: 6, color: 'var(--text-soft)', borderTop: '1px solid var(--line)', textAlign: 'center' }}>
             Q to add · A to cancel
           </div>
