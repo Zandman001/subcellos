@@ -350,6 +350,18 @@ export default function Sampler() {
           <button className="load-btn">
             Press E to Load File
           </button>
+          <button
+            className="clear-btn"
+            disabled={!currentSamplePath}
+            onClick={async () => {
+              const partIdx = s.selectedSoundPart ?? 0;
+              try { await rpc.clearSample(partIdx); } catch(e) { console.warn('clearSample failed', e); }
+              // Update UI state
+              s.updateSynthUI((ui: any) => ({ ...ui, sampler: { ...ui.sampler, current_sample: undefined }}));
+              // Persist preset with cleared sample using existing scheduleSavePreset flow
+              try { s.scheduleSavePreset?.(s.serializeCurrentPreset?.()); } catch {}
+            }}
+          >Clear</button>
         </div>
       </div>
 

@@ -226,6 +226,11 @@ fn apply_msg(graph: &mut EngineGraph, params: &mut ParamStore, msg: EngineMsg, p
         }
       }
     }
+    EngineMsg::ClearSample { part } => {
+      if part < graph.parts.len() {
+        graph.parts[part].clear_sample();
+      }
+    }
     EngineMsg::PreviewSample { path } => {
       if let Err(e) = graph.load_preview_sample(&path) {
         eprintln!("Failed to load preview sample: {}", e);

@@ -197,6 +197,14 @@ pub fn load_sample(part: usize, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn clear_sample(part: usize) -> Result<(), String> {
+  if let Some(tx) = ENGINE_TX.get() {
+    let _ = tx.send(EngineMsg::ClearSample { part });
+    Ok(())
+  } else { Err("engine not started".into()) }
+}
+
+#[tauri::command]
 pub fn preview_sample(path: String) -> Result<(), String> {
   let documents_dir = dirs::document_dir()
     .ok_or("Could not find documents directory")?;

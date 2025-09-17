@@ -306,6 +306,8 @@ pub struct SamplerVoice {
     // When following tempo, if the loop finishes before the next grid tick,
     // stall playback (silence) until the scheduled retrigger.
     stall_until_retrig: bool,
+    // Monotonic serial so UI can pick newest active voice for playhead
+    trigger_serial: u64,
 }
 
 impl SamplerVoice {
@@ -334,6 +336,7 @@ impl SamplerVoice {
             next_trig_beats: 0.0,
             last_interval_beats: 0.0,
             stall_until_retrig: false,
+            trigger_serial: 0,
         }
     }
 
@@ -708,6 +711,7 @@ pub struct Sampler {
     sample_buffer: Arc<Mutex<SampleBuffer>>,
     recording: bool,
     record_buffer: Vec<f32>,
+    trigger_counter: u64,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -730,6 +734,7 @@ impl Sampler {
             sample_buffer: Arc::new(Mutex::new(SampleBuffer::new())),
             recording: false,
             record_buffer: Vec::new(),
+            trigger_counter: 1,
         }
     }
 
@@ -737,6 +742,9 @@ impl Sampler {
     // Allocate a voice (polyphonic). If all are active, steal one via round-robin.
     let voice_idx = self.find_available_voice();
     self.voices[voice_idx].note_on(note, velocity);
+    self.voices[voice_idx].trigger_serial = self.trigger_counter;
+    // Avoid zero so default-initialized voices are always older
+    self.trigger_counter = self.trigger_counter.wrapping_add(1).max(1);
     }
 
     pub fn note_off(&mut self, note: u8) {
@@ -822,6 +830,19 @@ impl Sampler {
                 println!("Successfully loaded sample: {}", file_path)
             },
             Err(e) => eprintln!("Failed to load sample {}: {}", file_path, e),
+        }
+    }
+
+    pub fn clear_sample(&mut self) {
+        if let Ok(mut buffer) = self.sample_buffer.lock() {
+            buffer.data.clear();
+            buffer.length_samples = 0;
+            buffer.channels = 1;
+        }
+        // Force all voices idle
+        for v in &mut self.voices {
+            v.envelope.stage = EnvelopeStage::Idle;
+            v.envelope.level = 0.0;
         }
     }
 
@@ -1169,8 +1190,11 @@ impl Sampler {
 
     // Compute current playhead state from first active voice.
     pub fn compute_playhead_state(&self, params: &ParamStore, keys: &SamplerParamKeys) -> Option<PlayheadState> {
-        // Find first active voice
-        let voice = self.voices.iter().find(|v| v.is_active())?; // if none active return None
+        // Choose the most recently triggered active voice so rapid re-triggers update playhead correctly
+        let voice = self.voices
+            .iter()
+            .filter(|v| v.is_active())
+            .max_by_key(|v| v.trigger_serial)?;
         let buffer = self.sample_buffer.lock().ok()?;
         if buffer.is_empty() { return None; }
 

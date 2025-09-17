@@ -18,6 +18,7 @@ pub enum EngineMsg {
   StartRecording,
   StopRecording,
   LoadSample { part: usize, path: String },
+  ClearSample { part: usize },
   PreviewSample { path: String },
   StopPreview,
   Quit,

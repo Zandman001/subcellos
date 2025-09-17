@@ -86,6 +86,7 @@ export interface BrowserState {
   // preset persistence
   pendingSaves?: Record<string, any>;
   scheduleSavePreset?: (preset: any) => void;
+  serializeCurrentPreset?: () => any;
   // per-sound module kind hint (UI-only). 'acid' constrains pages to 4.
   moduleKindById?: Record<string, 'acid' | 'analog' | 'karplus' | 'resonator' | 'sampler'>;
   // recompute pages when conditions change (e.g., sampler playback type toggles LOOP availability)
@@ -480,6 +481,12 @@ state.add = async () => {
           // Build and save default preset immediately, then replay
           const ui = defaultSynthUI();
           ui.oscB.level = 0.0; // default tweak
+          // If sampler: ensure no stale sample buffer by explicitly clearing engine state
+          if (t === 'sampler') {
+            try { await rpc.clearSample(part); } catch(e) { console.warn('clearSample on creation failed', e); }
+            // Ensure sampler section exists with current_sample undefined
+            (ui as any).sampler = { ...(ui as any).sampler, current_sample: undefined };
+          }
           
           // Update UI state for this new sound so knobs match audio
           const map = state.synthUIById || {};
@@ -940,10 +947,10 @@ function defaultSynthUI(): SynthUI {
   retrig_mode: 0,
   current_sample: undefined,
   // Normalized ADSR values (same scale as AMP env)
-  attack: 0.02,
-  decay: 0.2,
-      sustain: 0.7,
-  release: 0.25,
+  attack: 0.0,
+  decay: 0.0,
+      sustain: 1.0,
+  release: 0.0,
     },
   };
 }
@@ -965,8 +972,37 @@ function debounceInvokeSet(path: string, value: any) {
 state.getSynthUI = () => {
   const id = state.selectedSoundId || '_default_';
   const map = state.synthUIById || {};
-  if (!map[id]) map[id] = defaultSynthUI();
-  return map[id];
+  let ui = map[id];
+  if (!ui) {
+    // Instead of forcing a full default (which contains all module sections and can overwrite
+    // intent when switching from sampler -> analog), create a minimal structure and selectively
+    // add sections lazily when accessed or when module kind requires them.
+    const base = defaultSynthUI();
+    // Prune sampler section if current module isn't sampler to avoid pages logic mis-detecting
+    const kind = getCurrentModuleKind();
+    if (kind !== 4) {
+      delete (base as any).sampler;
+    }
+    if (kind !== 1) delete (base as any).acid;
+    if (kind !== 2) delete (base as any).karplus;
+    if (kind !== 3) delete (base as any).resonator;
+    ui = base as any;
+    map[id] = ui;
+    set({ synthUIById: { ...map } });
+  } else {
+    // If switching to a module that needs a section that was previously pruned, inject defaults now.
+    const kind = getCurrentModuleKind();
+    if (kind === 4 && !(ui as any).sampler) {
+      (ui as any).sampler = { ...defaultSynthUI().sampler };
+    } else if (kind === 1 && !(ui as any).acid) {
+      (ui as any).acid = { ...(defaultSynthUI() as any).acid };
+    } else if (kind === 2 && !(ui as any).karplus) {
+      (ui as any).karplus = { ...(defaultSynthUI() as any).karplus };
+    } else if (kind === 3 && !(ui as any).resonator) {
+      (ui as any).resonator = { ...(defaultSynthUI() as any).resonator };
+    }
+  }
+  return ui;
 };
 
 state.setSynthParam = (path: string, v: number, kind: 'F32'|'I32'|'Bool'|'Str' = 'F32') => {
@@ -1092,10 +1128,10 @@ function uiToSchema(ui: SynthUI) {
         retrig_mode: Math.round((ui as any).sampler.retrig_mode ?? 0),
   current_sample: (ui as any).sampler.current_sample,
         // Convert normalized UI times (seconds mapper) to milliseconds for engine preset
-        attack: envTimeMsFromNorm((ui as any).sampler.attack ?? 0.02),
-        decay: envTimeMsFromNorm((ui as any).sampler.decay ?? 0.2),
-        sustain: (ui as any).sampler.sustain ?? 0.7,
-        release: envTimeMsFromNorm((ui as any).sampler.release ?? 0.25),
+  attack: envTimeMsFromNorm((ui as any).sampler.attack ?? 0.0),
+  decay: envTimeMsFromNorm((ui as any).sampler.decay ?? 0.0),
+  sustain: (ui as any).sampler.sustain ?? 1.0,
+  release: envTimeMsFromNorm((ui as any).sampler.release ?? 0.0),
         gain: (ui as any).sampler.gain ?? 0.8,
       } : undefined,
     }
@@ -1113,6 +1149,9 @@ function serializeCurrentPreset(): any {
 }
 
 let flushTimer: number | undefined;
+state.serializeCurrentPreset = () => {
+  try { return serializeCurrentPreset(); } catch { return undefined; }
+};
 state.scheduleSavePreset = (preset: any) => {
   const key = currentSoundKey();
   const pending = state.pendingSaves || {};
@@ -1219,10 +1258,10 @@ async function applyPreset(preset: any) {
   retrig_mode: p.sampler?.retrig_mode ?? 0,
   current_sample: p.sampler?.current_sample,
       // Convert ms back to normalized knob value via shared envTime mapping
-      attack: invMapTimeMs(p.sampler?.attack ?? 10.0),
-      decay: invMapTimeMs(p.sampler?.decay ?? 100.0),
-      sustain: p.sampler?.sustain ?? 0.7,
-      release: invMapTimeMs(p.sampler?.release ?? 200.0),
+  attack: invMapTimeMs(p.sampler?.attack ?? 1.0),
+  decay: invMapTimeMs(p.sampler?.decay ?? 1.0),
+  sustain: p.sampler?.sustain ?? 1.0,
+  release: invMapTimeMs(p.sampler?.release ?? 1.0),
       gain: p.sampler?.gain ?? 0.8,
     },
   }));
@@ -1379,10 +1418,10 @@ async function applyPreset(preset: any) {
   if (typeof p.sampler.retrig_mode === 'number') {
       send(`sampler/retrig_mode`, { I32: Math.round(p.sampler.retrig_mode) });
     }
-  send(`sampler/attack`, { F32: p.sampler.attack ?? 10.0 });
-  send(`sampler/decay`, { F32: p.sampler.decay ?? 100.0 });
-    send(`sampler/sustain`, { F32: p.sampler.sustain ?? 0.7 });
-  send(`sampler/release`, { F32: p.sampler.release ?? 200.0 });
+  send(`sampler/attack`, { F32: p.sampler.attack ?? 1.0 });
+  send(`sampler/decay`, { F32: p.sampler.decay ?? 1.0 });
+    send(`sampler/sustain`, { F32: p.sampler.sustain ?? 1.0 });
+  send(`sampler/release`, { F32: p.sampler.release ?? 1.0 });
     send(`sampler/gain`, { F32: p.sampler.gain ?? 0.8 });
   }
   // Throttle slightly to avoid spamming
@@ -1546,10 +1585,10 @@ async function preloadAndReplayProjectPresets(project: string) {
         if (typeof p.sampler.retrig_mode === 'number') {
           await set(`sampler/retrig_mode`, { I32: Math.round(p.sampler.retrig_mode) });
         }
-  await set(`sampler/attack`, { F32: p.sampler.attack ?? 10.0 });
-  await set(`sampler/decay`, { F32: p.sampler.decay ?? 100.0 });
-        await set(`sampler/sustain`, { F32: p.sampler.sustain ?? 0.7 });
-  await set(`sampler/release`, { F32: p.sampler.release ?? 200.0 });
+  await set(`sampler/attack`, { F32: p.sampler.attack ?? 1.0 });
+  await set(`sampler/decay`, { F32: p.sampler.decay ?? 1.0 });
+    await set(`sampler/sustain`, { F32: p.sampler.sustain ?? 1.0 });
+  await set(`sampler/release`, { F32: p.sampler.release ?? 1.0 });
         await set(`sampler/gain`, { F32: p.sampler.gain ?? 0.8 });
       }
     } catch (e) { console.error('replay preset failed', e); }

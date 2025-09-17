@@ -46,6 +46,7 @@ pub fn run() {
       stop_recording,
       list_subsamples,
       load_sample,
+  clear_sample,
       preview_sample,
       stop_preview,
       get_sample_waveform,

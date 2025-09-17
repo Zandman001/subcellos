@@ -677,6 +677,10 @@ impl Part {
     Ok(())
   }
 
+  pub fn clear_sample(&mut self) {
+    self.sampler.clear_sample();
+  }
+
   pub fn render(&mut self, params: &ParamStore, _part_idx: usize, beat_phase: f32) -> (f32, f32) {
     // Module dispatch (0 = Analog, 1 = Acid303, 2 = KarplusStrong, 3 = ResonatorBank, 4 = Sampler)
     let module = params.get_i32_h(self.paths.module_kind, 0);
