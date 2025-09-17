@@ -15,6 +15,7 @@ import ResonatorBank from "./synth/ResonatorBank";
 import Sampler from "./synth/Sampler";
 import SamplerLoop from "./synth/SamplerLoop";
 import SamplerEnvelope from "./synth/SamplerEnvelope";
+import DrumSampler from "./synth/Drum";
 // WaterDroplets removed
 
 export default function RightPane({ view }: { view: ViewName }) {
@@ -100,6 +101,7 @@ function renderSynthPage(label: string): React.ReactNode {
     case 'SAMPLER': return <Sampler />;
     case 'LOOP': return <SamplerLoop />;
     case 'ENVELOPE': return <SamplerEnvelope />;
+  case 'DRUM SAMPLER': return <DrumSampler />;
     case 'OSC': return <SynthOSC />;
     case 'ENV': return <SynthENV />;
     case 'FILTER': return <SynthFILTER />;

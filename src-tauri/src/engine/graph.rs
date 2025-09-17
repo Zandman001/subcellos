@@ -6,6 +6,7 @@ use crate::engine::modules::acid303::{Acid303, AcidParamKeys};
 use crate::engine::modules::karplus_strong::{KarplusStrong, KSParamKeys};
 use crate::engine::modules::resonator_bank::{ResonatorBank, ResonatorParamKeys};
 use crate::engine::modules::sampler::{Sampler, SamplerParamKeys};
+use crate::engine::modules::drum::{DrumPlayer, DrumParamKeys};
 use crate::engine::state::{init_playhead_states, set_playhead_state};
 use freeverb::Freeverb;
 
@@ -346,6 +347,8 @@ pub struct Part {
   // Mono Sampler engine
   sampler: Sampler,
   sampler_keys: SamplerParamKeys,
+  drum: DrumPlayer,
+  drum_keys: DrumParamKeys,
   // Modulated delay lines for chorus/flanger
   delay1: ModDelay,
   delay2: ModDelay,
@@ -598,7 +601,7 @@ impl Part {
         body_blend: hash_path(&format!("part/{}/resonator/body_blend", idx)),
         output_gain: hash_path(&format!("part/{}/resonator/output_gain", idx)),
       },
-      sampler: Sampler::new(sr),
+  sampler: Sampler::new(sr),
       sampler_keys: SamplerParamKeys {
         module_kind: hash_path(&format!("part/{}/module_kind", idx)),
         sample_start: hash_path(&format!("part/{}/sampler/sample_start", idx)),
@@ -616,7 +619,9 @@ impl Part {
         sustain: hash_path(&format!("part/{}/sampler/sustain", idx)),
         release: hash_path(&format!("part/{}/sampler/release", idx)),
       },
-      delay1: ModDelay::new(1500.0, sr), delay2: ModDelay::new(1500.0, sr),
+  drum: DrumPlayer::new(sr),
+  drum_keys: DrumParamKeys::new(idx),
+  delay1: ModDelay::new(1500.0, sr), delay2: ModDelay::new(1500.0, sr),
       delay3: ModDelay::new(1500.0, sr), delay4: ModDelay::new(1500.0, sr),
       sdelay1: SimpleDelay::new(1200.0, sr), sdelay2: SimpleDelay::new(1200.0, sr),
       sdelay3: SimpleDelay::new(1200.0, sr), sdelay4: SimpleDelay::new(1200.0, sr),
@@ -645,23 +650,25 @@ impl Part {
     p
   }
   pub fn note_on(&mut self, params: &ParamStore, note: u8, vel: f32) {
-    // Prevent stacking the same note: stop any existing voices with this note first
-    for v in &mut self.voices { if v.note == note && v.is_active() { v.note_off(); } }
-    let mut idx = None;
-    for (i, v) in self.voices.iter().enumerate() { if !v.is_active() { idx = Some(i); break; } }
-  let i = idx.unwrap_or_else(|| { let i = self.next_voice; self.next_voice = (self.next_voice + 1) % self.voices.len(); i });
-  self.voices[i].note_on(params, note, vel);
-    // Also feed mono Acid engine (render path will choose active module)
-    self.acid.note_on(note, vel);
-    // Also feed mono Karplus-Strong engine
-    self.karplus.note_on(note, vel);
-    // Also feed mono Resonator Bank engine
-    self.resonator.note_on(note, vel);
-  // Also feed mono Sampler engine
-  // Read retrigger mode for this part at note-on time (0=Immediate,1=End,2=Sync)
-  let retrig_i = params.get_i32_h(self.sampler_keys.retrig_mode, 0);
-  let retrig_mode = crate::engine::modules::sampler::RetrigMode::from_index(retrig_i);
-  self.sampler.note_on(note, vel, retrig_mode);
+    let mk = params.get_i32_h(self.paths.module_kind, 0);
+    match mk {
+      0 => { // Analog poly
+        for v in &mut self.voices { if v.note == note && v.is_active() { v.note_off(); } }
+        let mut idx = None; for (i, v) in self.voices.iter().enumerate() { if !v.is_active() { idx = Some(i); break; } }
+        let i = idx.unwrap_or_else(|| { let i = self.next_voice; self.next_voice = (self.next_voice + 1) % self.voices.len(); i });
+        self.voices[i].note_on(params, note, vel);
+      }
+      1 => { self.acid.note_on(note, vel); }
+      2 => { self.karplus.note_on(note, vel); }
+      3 => { self.resonator.note_on(note, vel); }
+      4 => { // Sampler
+        let retrig_i = params.get_i32_h(self.sampler_keys.retrig_mode, 0);
+        let retrig_mode = crate::engine::modules::sampler::RetrigMode::from_index(retrig_i);
+        self.sampler.note_on(note, vel, retrig_mode);
+      }
+      5 => { self.drum.note_on(note, vel); }
+      _ => {}
+    }
   }
   pub fn note_off(&mut self, note: u8) {
     // Stop all voices with this note to guarantee preview stops fully
@@ -669,7 +676,9 @@ impl Part {
     self.acid.note_off(note);
     self.karplus.note_off();
     self.resonator.note_off(note);
-    self.sampler.note_off(note);
+  self.sampler.note_off(note);
+  // Drum voices may have been triggered; attempt to stop matching slot
+  self.drum.note_off(note);
   }
 
   pub fn load_sample(&mut self, path: &str) -> Result<(), String> {
@@ -680,6 +689,12 @@ impl Part {
   pub fn clear_sample(&mut self) {
     self.sampler.clear_sample();
   }
+
+  pub fn load_drum_pack(&mut self, paths: &[String]) {
+    self.drum.load_pack(paths);
+  }
+
+  pub fn drum_mut(&mut self) -> &mut DrumPlayer { &mut self.drum }
 
   pub fn render(&mut self, params: &ParamStore, _part_idx: usize, beat_phase: f32) -> (f32, f32) {
     // Module dispatch (0 = Analog, 1 = Acid303, 2 = KarplusStrong, 3 = ResonatorBank, 4 = Sampler)
@@ -2158,7 +2173,7 @@ impl EngineGraph {
   pub fn new(sr: f32) -> Self {
     let mut parts = Vec::with_capacity(6);
     // 6-voice polyphony per part
-    for i in 0..6 { parts.push(Part::new(sr, 6, i)); }
+  for i in 0..6 { parts.push(Part::new(sr, 6, i)); }
   init_playhead_states(parts.len());
     Self { 
       parts, 
@@ -2202,6 +2217,9 @@ impl EngineGraph {
         } else {
           set_playhead_state(i, None);
         }
+      } else if module == 5 { // Drum
+        // No playhead; clear any previous
+        set_playhead_state(i, None);
       }
     }
     

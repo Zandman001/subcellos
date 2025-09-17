@@ -129,15 +129,12 @@ impl AudioEngine {
     // Move engine state into the audio thread. Keep None in self.
     let mut graph = self.graph.take().unwrap_or_else(|| EngineGraph::new(self.sr));
     let mut params = self.params.take().unwrap_or_else(|| ParamStore::new());
-    let mut spec_tx = self.spec_tx.clone();
+  let spec_tx = self.spec_tx.clone();
     let mut spec_buf = Vec::<f32>::with_capacity(4096);
     let mut recording = false;
     let mut recorded_samples = Vec::<f32>::new();
 
-    let err_fn = |e: cpal::StreamError| eprintln!("stream error: {e}");
-    let mut playing = true;
-    
-    let err_fn = |e| eprintln!("stream error: {e}");
+  let err_fn = |e| eprintln!("stream error: {e}");
     let mut playing = true;
     let stream = device.build_output_stream(&cfg, move |data: &mut [f32], _| {
       // Drain messages without blocking (tight cap to avoid starving audio)
@@ -234,6 +231,11 @@ fn apply_msg(graph: &mut EngineGraph, params: &mut ParamStore, msg: EngineMsg, p
     EngineMsg::PreviewSample { path } => {
       if let Err(e) = graph.load_preview_sample(&path) {
         eprintln!("Failed to load preview sample: {}", e);
+      }
+    }
+    EngineMsg::LoadDrumPack { part, paths } => {
+      if part < graph.parts.len() {
+  graph.parts[part].load_drum_pack(&paths);
       }
     }
     EngineMsg::StopPreview => {

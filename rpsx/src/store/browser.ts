@@ -36,8 +36,22 @@ export interface BrowserState {
   sampleBrowserOpen: boolean;
   sampleBrowserItems: string[];
   sampleBrowserSelected: number;
+  drumPackBrowserOpen?: boolean;
+  drumPackItems?: string[];
+  drumPackSelected?: number;
+  drumSampleItems?: string[];
+  drumSampleSelected?: number;
+  drumPreviewing?: boolean;
   isRecording: boolean;
   closeSampleBrowser: () => void;
+  openDrumPackBrowser?: () => Promise<void>;
+  closeDrumPackBrowser?: () => void;
+  drumPackMoveUp?: () => void;
+  drumPackMoveDown?: () => void;
+  drumPackLoadSelected?: () => Promise<void>;
+  drumSampleMoveUp?: () => void;
+  drumSampleMoveDown?: () => void;
+  drumTogglePreview?: () => Promise<void>;
   confirmOpen?: boolean;
   confirmKind?: 'project'|'pattern'|'module';
   confirmLabel?: string;
@@ -88,7 +102,7 @@ export interface BrowserState {
   scheduleSavePreset?: (preset: any) => void;
   serializeCurrentPreset?: () => any;
   // per-sound module kind hint (UI-only). 'acid' constrains pages to 4.
-  moduleKindById?: Record<string, 'acid' | 'analog' | 'karplus' | 'resonator' | 'sampler'>;
+  moduleKindById?: Record<string, 'acid' | 'analog' | 'karplus' | 'resonator' | 'sampler' | 'drum'>;
   // recompute pages when conditions change (e.g., sampler playback type toggles LOOP availability)
   refreshSynthPages?: () => void;
   setActiveView?: (view: ViewName) => void;
@@ -133,6 +147,12 @@ const state: InternalState = {
   sampleBrowserOpen: false,
   sampleBrowserItems: [],
   sampleBrowserSelected: 0,
+  drumPackBrowserOpen: false,
+  drumPackItems: [],
+  drumPackSelected: 0,
+  drumSampleItems: [],
+  drumSampleSelected: 0,
+  drumPreviewing: false,
   isRecording: false,
   closeSampleBrowser: () => {},
   confirmOpen: false,
@@ -244,6 +264,8 @@ async function refreshPatternItems() {
       moduleKindById[s.id] = 'resonator';
     } else if (name.startsWith('sampler')) {
       moduleKindById[s.id] = 'sampler';
+    } else if (name.startsWith('drum')) {
+      moduleKindById[s.id] = 'drum';
     }
   });
   set({ moduleKindById: { ...moduleKindById } });
@@ -353,7 +375,7 @@ state.goRight = async () => {
       if (state.currentView !== 'Sounds') {
         break;
       }
-      if (state.selectedSoundId && (state.currentSoundType === "synth" || state.currentSoundType === "sampler")) {
+  if (state.selectedSoundId && (state.currentSoundType === "synth" || state.currentSoundType === "sampler" || state.currentSoundType === "drum")) {
         set({ level: "synth", synthPageIndex: 0, selected: 0 });
         await state.loadLevel();
         // Only (re)apply preset the first time we open this synth to avoid floods/underruns
@@ -445,7 +467,7 @@ state.add = async () => {
       return;
     }
     // Confirm create
-    const types = ["synth", "acid", "karplus", "resonator", "sampler", "drum"] as const;
+  const types = ["synth", "acid", "karplus", "resonator", "sampler", "drum"] as const; // last is drum sampler
     const t = types[Math.max(0, Math.min(5, state.modulePickerIndex))];
     const pn = state.projectName!;
     try {
@@ -580,6 +602,63 @@ export function useBrowser<T = InternalState>(selector?: (s: InternalState) => T
   return useSyncExternalStore(subscribe, getSnapshot) as unknown as T;
 }
 
+// Drum pack browser helpers
+state.openDrumPackBrowser = async () => {
+  try { await rpc.startAudio(); } catch {}
+  try {
+    const packs = await rpc.listDrumPacks();
+    set({ drumPackBrowserOpen: true, drumPackItems: packs, drumPackSelected: 0 });
+  } catch(e){ console.error('listDrumPacks failed', e); set({ drumPackBrowserOpen: true, drumPackItems: [], drumPackSelected: 0 }); }
+};
+state.closeDrumPackBrowser = () => { set({ drumPackBrowserOpen: false, drumPreviewing: false }); };
+state.drumPackMoveUp = () => {
+  if (!state.drumPackBrowserOpen) return;
+  const n = (state.drumPackItems||[]).length; if (!n) return;
+  const sel = Math.max(0, Math.min(n-1, (state.drumPackSelected||0)-1));
+  set({ drumPackSelected: sel });
+};
+state.drumPackMoveDown = () => {
+  if (!state.drumPackBrowserOpen) return;
+  const n = (state.drumPackItems||[]).length; if (!n) return;
+  const sel = Math.max(0, Math.min(n-1, (state.drumPackSelected||0)+1));
+  set({ drumPackSelected: sel });
+};
+state.drumPackLoadSelected = async () => {
+  const packs = state.drumPackItems||[]; const sel = state.drumPackSelected||0;
+  const pack = packs[sel]; if (!pack) return;
+  const part = state.selectedSoundPart ?? 0;
+  try { await rpc.loadDrumPack(part, pack); } catch(e){ console.error('loadDrumPack failed', e); }
+  // fetch samples for display
+  let samples: string[] = [];
+  try { samples = await rpc.listDrumSamples(pack); } catch(e){ console.error('listDrumSamples failed', e); }
+  set({ drumPackBrowserOpen: false, drumSampleItems: samples, drumSampleSelected: 0 });
+};
+state.drumSampleMoveUp = () => {
+  const items = state.drumSampleItems||[]; if (!items.length) return;
+  const cur = state.drumSampleSelected||0;
+  const sel = (cur + items.length - 1) % items.length; // wrap left
+  set({ drumSampleSelected: sel });
+};
+state.drumSampleMoveDown = () => {
+  const items = state.drumSampleItems||[]; if (!items.length) return;
+  const cur = state.drumSampleSelected||0;
+  const sel = (cur + 1) % items.length; // wrap right
+  set({ drumSampleSelected: sel });
+};
+state.drumTogglePreview = async () => {
+  // In drum sampler, preview should trigger the selected drum slot via the part's drum engine (not global sampler preview)
+  if (state.drumPackBrowserOpen) return; // no preview while browsing packs
+  const samples = state.drumSampleItems||[]; const sidx = state.drumSampleSelected||0;
+  if (!samples.length) return;
+  const part = state.selectedSoundPart ?? 0;
+  const note = 36 + sidx; // slot mapping logic matches drum slot_for_note
+  try { await rpc.startAudio(); } catch {}
+  try { await rpc.noteOn(part, note, 0.9); } catch(e){ console.error('drum preview noteOn failed', e); }
+  // mark previewing momentarily for UI feedback
+  set({ drumPreviewing: true });
+  setTimeout(()=>{ set({ drumPreviewing: false }); }, 400);
+};
+
 // Provide latest state accessor for key handlers
 export const useBrowserStore = {
   getState: (): InternalState => state,
@@ -662,7 +741,7 @@ function normalizeSoundType(t: Sound["type"] | undefined): "synth" | "sampler" |
   const l = (typeof t === 'string' ? t : '').toLowerCase();
   if (l === 'synth') return 'synth';
   if (l === 'sampler') return 'sampler';
-  if (l === 'drum') return 'drum';
+  if (l === 'drum' || l === 'drumsampler') return 'drum';
   return undefined;
 }
 
@@ -674,12 +753,14 @@ function getCurrentModuleKind(): number {
   if (map[id] === 'karplus') return 2;
   if (map[id] === 'resonator') return 3;
   if (map[id] === 'sampler') return 4;
+  if (map[id] === 'drum') return 5;
   const label = state.selectedSoundName || '';
   const l = label.toLowerCase();
   if (l.startsWith('acid 303')) return 1;
   if (l.startsWith('karplus string')) return 2;
   if (l.startsWith('resonator bank')) return 3;
   if (l.startsWith('sampler')) return 4;
+  if (l.startsWith('drum')) return 5;
   return 0;
 }
 
@@ -722,6 +803,8 @@ function computeSynthPagesForCurrent(): readonly string[] {
       // Keytrack: show ENVELOPE, no LOOP
       return ["SAMPLER", "ENVELOPE", "MIXER", "FX", "EQ"] as const;
     }
+  } else if (moduleKind === 5) { // Drum Sampler
+    return ["DRUM SAMPLER","MIXER","FX","EQ"] as const;
   }
   // Analog synth (default)
   return ["OSC","ENV","FILTER","LFO","MOD","FX","MIXER","EQ"] as const;
@@ -769,8 +852,18 @@ state.setPressedQA = (q: boolean | null, a: boolean | null) => {
 };
 
 state.updatePreviewFromPressed = async () => {
+  // If current module is drum, suppress synth preview entirely.
+  if (state.currentSoundType === 'drum') {
+    // Ensure any existing synth preview note is stopped
+    if (state.currentPreview !== undefined) {
+      try { await rpc.noteOff(state.selectedSoundPart ?? 0, state.currentPreview); } catch {}
+      set({ currentPreview: undefined, _pressedQA: { q: false, a: false } });
+    }
+    return;
+  }
   const pressed = state._pressedQA || { q: false, a: false };
-  const desired = pressed.q && pressed.a ? 72 : pressed.q ? 60 : pressed.a ? 48 : undefined;
+  // Only 'a' now triggers preview; ignore 'q'
+  const desired = pressed.a ? 48 : undefined;
   const cur = state.currentPreview;
 
   if (desired === cur) return;

@@ -19,6 +19,8 @@ pub enum EngineMsg {
   StopRecording,
   LoadSample { part: usize, path: String },
   ClearSample { part: usize },
+  // Drum pack load (paths are absolute file paths resolved on the command side)
+  LoadDrumPack { part: usize, paths: Vec<String> },
   PreviewSample { path: String },
   StopPreview,
   Quit,

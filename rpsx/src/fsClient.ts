@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type Sound = { id: string; type: "Synth" | "Sampler" | "Drum"; name: string; part_index: number };
+// "DrumSampler" kept for backward compat with earlier persisted projects
+export type Sound = { id: string; type: "Synth" | "Sampler" | "Drum" | "DrumSampler"; name: string; part_index: number };
 export type Project = { sounds: Sound[] };
 export type Pattern = { soundRefs: string[] };
 

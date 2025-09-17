@@ -276,3 +276,51 @@ pub fn get_sample_info(path: String) -> Result<SampleInfo, String> {
   let (length_samples, sample_rate, channels) = sampler.get_sample_info();
   Ok(SampleInfo { length_samples, sample_rate, channels })
 }
+
+// ---- Drum pack utilities ----
+#[tauri::command]
+pub fn list_drum_packs() -> Result<Vec<String>, String> {
+  let documents_dir = dirs::document_dir().ok_or("Could not find documents directory")?;
+  let drums_dir = documents_dir.join("Drums");
+  if !drums_dir.exists() { return Ok(vec![]); }
+  let mut packs = Vec::new();
+  for ent in std::fs::read_dir(&drums_dir).map_err(|e| format!("read_dir: {e}"))? {
+    if let Ok(ent) = ent { if ent.path().is_dir() { if let Some(name) = ent.file_name().to_str() { packs.push(name.to_string()); } } }
+  }
+  packs.sort();
+  Ok(packs)
+}
+
+fn is_audio_file(name: &str) -> bool {
+  let l = name.to_ascii_lowercase();
+  l.ends_with(".wav") || l.ends_with(".aiff") || l.ends_with(".aif") || l.ends_with(".flac") || l.ends_with(".mp3")
+}
+
+#[tauri::command]
+pub fn list_drum_samples(pack: String) -> Result<Vec<String>, String> {
+  let documents_dir = dirs::document_dir().ok_or("Could not find documents directory")?;
+  let pack_dir = documents_dir.join("Drums").join(&pack);
+  if !pack_dir.exists() { return Err("pack_not_found".to_string()); }
+  let mut files = Vec::new();
+  for ent in std::fs::read_dir(&pack_dir).map_err(|e| format!("read_dir: {e}"))? {
+    if let Ok(ent) = ent { if ent.path().is_file() { if let Some(name) = ent.file_name().to_str() { if is_audio_file(name) { files.push(name.to_string()); } } } }
+  }
+  files.sort();
+  Ok(files)
+}
+
+#[tauri::command]
+pub fn load_drum_pack(part: usize, pack: String) -> Result<(), String> {
+  let documents_dir = dirs::document_dir().ok_or("Could not find documents directory")?;
+  let pack_dir = documents_dir.join("Drums").join(&pack);
+  if !pack_dir.exists() { return Err("pack_not_found".to_string()); }
+  let mut paths: Vec<String> = Vec::new();
+  for ent in std::fs::read_dir(&pack_dir).map_err(|e| format!("read_dir: {e}"))? {
+    if let Ok(ent) = ent { if ent.path().is_file() { if let Some(name) = ent.file_name().to_str() { if is_audio_file(name) { paths.push(ent.path().to_string_lossy().to_string()); } } } }
+  }
+  paths.sort();
+  if let Some(tx) = ENGINE_TX.get() {
+    let _ = tx.send(EngineMsg::LoadDrumPack { part, paths });
+    Ok(())
+  } else { Err("engine not started".into()) }
+}

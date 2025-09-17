@@ -37,4 +37,7 @@ export const rpc = {
   getSamplerPlayhead: (part: number) => safeInvoke<any>("get_sampler_playhead", { part }, null),
   deleteSubsample: (path: string) => safeInvoke<void>("delete_subsample", { path }),
   setTempo: (bpm: number) => safeInvoke<void>("set_tempo", { bpm }),
+  listDrumPacks: () => safeInvoke<string[]>("list_drum_packs", undefined, []),
+  listDrumSamples: (pack: string) => safeInvoke<string[]>("list_drum_samples", { pack }, []),
+  loadDrumPack: (part: number, pack: string) => safeInvoke<void>("load_drum_pack", { part, pack }),
 };

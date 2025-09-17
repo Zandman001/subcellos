@@ -48,14 +48,14 @@ export default function BrowserKeys() {
         return;
       }
 
-      // Preview notes inside synth level: intercept q/a and use store-managed pressed QA
-      if (st.level === 'synth' && (k === 'q' || k === 'a')) {
+      // Preview notes inside synth level: only 'a' now (disable 'q' preview). Skip if current module is drum.
+      if (st.level === 'synth' && k === 'a') {
+        // If drum module, let DrumSampler handle 'a' (drum preview) and don't use synth note preview.
+        if (st.currentSoundType === 'drum') { e.preventDefault(); return; }
         e.preventDefault();
-        // Ignore duplicate keydown for the same key to avoid repeated noteOn
         const pressed = st._pressedQA || { q: false, a: false };
-        if ((k === 'q' && pressed.q) || (k === 'a' && pressed.a)) return;
-        if (k === 'q') st.setPressedQA(true, null);
-        if (k === 'a') st.setPressedQA(null, true);
+        if (pressed.a) return; // already held
+        st.setPressedQA(null, true);
         st.updatePreviewFromPressed();
         return;
       }
@@ -72,11 +72,12 @@ export default function BrowserKeys() {
       const st = useBrowserStore.getState() as any;
       const k = e.key;
       if (st.focus !== 'browser') return;
-      if (k === 'q' || k === 'a') {
+      if (k === 'a') {
         if (st.level === 'synth') {
+          // Skip synth note preview for drum module
+          if (st.currentSoundType === 'drum') { e.preventDefault(); return; }
           e.preventDefault();
-          if (k === 'q') st.setPressedQA(false, null);
-          if (k === 'a') st.setPressedQA(null, false);
+          st.setPressedQA(null, false);
           st.updatePreviewFromPressed();
           return;
         }
