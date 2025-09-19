@@ -2228,13 +2228,17 @@ pub struct Mixer {
 }
 
 impl Mixer {
-  pub fn new(sr: f32) -> Self { Self { sr, part_gains: [0.0; 6] } }
+  pub fn new(sr: f32) -> Self { Self { sr, part_gains: [1.0; 6] } }
   pub fn set_gain_db(&mut self, idx: usize, db: f32) { if idx < 6 { self.part_gains[idx] = db_to_gain(db.clamp(-12.0, 12.0)); } }
   pub fn mix(&self, parts: &mut [Part], params: &ParamStore, beat_phase: f32) -> (f32, f32) {
     let mut l = 0.0f32; let mut r = 0.0f32;
     for i in 0..parts.len().min(6) {
       let (pl, pr) = parts[i].render(params, i, beat_phase);
-      let g = self.part_gains[i].max(0.0) + db_to_gain(params.get_f32_h(parts[i].paths.mixer_gain_db, 0.0));
+      // Robust gain composition: multiplicative with identity defaults; clamp to sensible range
+      let pg = self.part_gains[i].clamp(0.0, 2.0);
+      let param_g = db_to_gain(params.get_f32_h(parts[i].paths.mixer_gain_db, 0.0)).clamp(0.0, 2.0);
+      let g = pg * param_g;
+      let (pl, pr) = if pl.is_finite() && pr.is_finite() { (pl, pr) } else { (0.0, 0.0) };
       l += pl * g; r += pr * g;
     }
     let l = soft_clip(l);

@@ -305,19 +305,19 @@ pub fn create_sound(project_name: String, sound_type: String) -> Result<Sound, S
   let (kind, prefix) = match t_lower.as_str() {
   "synth" => ("Synth".to_string(), "electricity".to_string()),
     "acid" | "acid303" => ("Synth".to_string(), "acid 303".to_string()),
-    "karplus" => ("Synth".to_string(), "karplus string".to_string()),
-    "resonator" => ("Synth".to_string(), "resonator bank".to_string()),
+    "karplus" => ("Synth".to_string(), "string theory".to_string()),
+    "resonator" => ("Synth".to_string(), "mushrooms".to_string()),
     "sampler" => ("Sampler".to_string(), "sampler".to_string()),
-  "drum" => ("Drum".to_string(), "drum sampler".to_string()),
+  "drum" => ("Drum".to_string(), "drubbles".to_string()),
     other => {
       // accept Title Case too
       let l = other.to_string();
   if l == "synth" || l == "Synth".to_string() { ("Synth".to_string(), "electricity".to_string()) }
       else if l == "Acid" || l == "Acid303" || l == "acid303" { ("Synth".to_string(), "acid 303".to_string()) }
-      else if l == "karplus" || l == "Karplus" { ("Synth".to_string(), "karplus string".to_string()) }
-      else if l == "resonator" || l == "Resonator" { ("Synth".to_string(), "resonator bank".to_string()) }
+      else if l == "karplus" || l == "Karplus" { ("Synth".to_string(), "string theory".to_string()) }
+      else if l == "resonator" || l == "Resonator" { ("Synth".to_string(), "mushrooms".to_string()) }
     else if l == "sampler" || l == "Sampler".to_string() { ("Sampler".to_string(), "sampler".to_string()) }
-  else if l == "drum" || l == "Drum".to_string() || l == "drumsampler" || l == "DrumSampler".to_string() { ("Drum".to_string(), "drum sampler".to_string()) }
+  else if l == "drum" || l == "Drum".to_string() || l == "drumsampler" || l == "DrumSampler".to_string() { ("Drum".to_string(), "drubbles".to_string()) }
       else { return Err("invalid sound type".to_string()); }
     }
   };

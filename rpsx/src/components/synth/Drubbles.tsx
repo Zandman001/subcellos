@@ -2,8 +2,8 @@ import React from 'react';
 import { useBrowser } from '../../store/browser';
 import Knob from './Knob';
 
-// Drubbles UI (formerly Drum Sampler) – grid squircles + knobs at bottom
-export default function DrumSampler() {
+// Drubbles (legacy Drum Sampler UI) – grid squircles + knobs at bottom
+export default function Drubbles() {
   const s: any = useBrowser();
   const part = s.selectedSoundPart ?? 0;
   const packs: string[] = s.drumPackItems || [];
@@ -59,7 +59,7 @@ export default function DrumSampler() {
   // Grid layout: we let flex-wrap handle columns; width fixed for squircles
   const sampleGrid = (
     <div style={{ flex:1, overflowY:'auto', padding:4, display:'flex', flexWrap:'wrap', gap:12, alignContent:'flex-start' }}>
-  {samples.length===0 && <div style={{ fontSize:11, opacity:0.6, padding:6 }}>Select a Drubbles pack (Q)</div>}
+      {samples.length===0 && <div style={{ fontSize:11, opacity:0.6, padding:6 }}>Select a Drubbles pack (Q)</div>}
       {samples.map((sm: string, i: number) => {
         const baseName = sm.replace(/\.[a-z0-9]+$/i,'');
         const sel = i===sampleSel;
@@ -114,7 +114,7 @@ export default function DrumSampler() {
         </div>
       ) : sampleGrid }
       {knobs}
-  <div style={{ fontSize:10, opacity:0.6 }}>Q open/load packs · W left · R right · A preview</div>
+      <div style={{ fontSize:10, opacity:0.6 }}>Q open/load packs · W left · R right · A preview</div>
     </div>
   );
 }

@@ -10,12 +10,12 @@ import SynthFX from "./synth/SynthFX";
 import SynthMIXER from "./synth/SynthMIXER";
 import SynthEQView from "./synth/SynthEQView";
 import Acid303 from "./synth/Acid303";
-import { KarplusStrong } from "./synth/KarplusStrong";
-import ResonatorBank from "./synth/ResonatorBank";
+import StringTheory from "./synth/StringTheory";
+import Mushrooms from "./synth/Mushrooms";
 import Sampler from "./synth/Sampler";
 import SamplerLoop from "./synth/SamplerLoop";
 import SamplerEnvelope from "./synth/SamplerEnvelope";
-import DrumSampler from "./synth/Drum";
+import Drubbles from "./synth/Drubbles";
 // WaterDroplets removed
 
 export default function RightPane({ view }: { view: ViewName }) {
@@ -48,21 +48,13 @@ export default function RightPane({ view }: { view: ViewName }) {
         level === 'synth'
           ? (
             <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: 12, padding: '8px 10px', borderBottom: '1px solid var(--line)' }}>
-                editing {s.selectedSoundName ? extractName(s.selectedSoundName) : ''} 
-                · {s.synthPages[s.synthPageIndex]}
-              </div>
               <div style={{ flex: 1 }}>
                 {renderSynthPage(s.synthPages[s.synthPageIndex])}
               </div>
             </div>
           )
           : (level === 'pattern' && selectedSoundId && (s.selectedSoundName || items[selected]))
-            ? (
-              <div style={{ fontSize: 12 }}>
-                editing {extractName(s.selectedSoundName || items[selected])}
-              </div>
-            )
+            ? null
             : <Center>Select a sound to start editing</Center>
       )}
       {view === 'Sequencer' && (
@@ -96,12 +88,12 @@ function extractName(label: string): string {
 function renderSynthPage(label: string): React.ReactNode {
   switch (label) {
     case 'ACID303': return <Acid303 />;
-  case 'STRING THEORY': return <KarplusStrong />;
-  case 'MUSHROOMS': return <ResonatorBank />;
+  case 'STRING THEORY': return <StringTheory />;
+  case 'MUSHROOMS': return <Mushrooms />;
     case 'SAMPLER': return <Sampler />;
     case 'LOOP': return <SamplerLoop />;
     case 'ENVELOPE': return <SamplerEnvelope />;
-  case 'DRUBBLES': return <DrumSampler />;
+  case 'DRUBBLES': return <Drubbles />;
     case 'OSC': return <SynthOSC />;
     case 'ENV': return <SynthENV />;
     case 'FILTER': return <SynthFILTER />;

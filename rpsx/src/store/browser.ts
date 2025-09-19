@@ -258,13 +258,13 @@ async function refreshPatternItems() {
     const name = s.name.toLowerCase();
     if (name.startsWith('acid 303')) {
       moduleKindById[s.id] = 'acid';
-  } else if (name.startsWith('karplus string') || name.startsWith('string theory')) {
+    } else if (name.startsWith('karplus string') || name.startsWith('string theory')) {
       moduleKindById[s.id] = 'karplus';
-  } else if (name.startsWith('resonator bank') || name.startsWith('mushrooms')) {
+    } else if (name.startsWith('resonator bank') || name.startsWith('mushrooms')) {
       moduleKindById[s.id] = 'resonator';
     } else if (name.startsWith('sampler')) {
       moduleKindById[s.id] = 'sampler';
-    } else if (name.startsWith('drum')) {
+    } else if (name.startsWith('drum') || name.startsWith('drubbles') || name.startsWith('drum sampler')) {
       moduleKindById[s.id] = 'drum';
     }
   });
@@ -760,7 +760,7 @@ function getCurrentModuleKind(): number {
   if (l.startsWith('karplus string') || l.startsWith('string theory')) return 2;
   if (l.startsWith('resonator bank') || l.startsWith('mushrooms')) return 3;
   if (l.startsWith('sampler')) return 4;
-  if (l.startsWith('drum')) return 5;
+  if (l.startsWith('drum') || l.startsWith('drum sampler') || l.startsWith('drubbles')) return 5;
   return 0;
 }
 
