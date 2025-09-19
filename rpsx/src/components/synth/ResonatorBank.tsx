@@ -265,7 +265,7 @@ export default function ResonatorBank() {
         margin: '8px 0 10px',
         color: 'var(--accent)',
         fontWeight: 'bold'
-      }}>RESONATOR BANK · {label} · {page + 1}/4 · press W/R</div>
+  }}>MUSHROOMS · {label} · {page + 1}/4 · press W/R</div>
       {pageKnobs[page]}
       <div style={{ 
         marginTop: 10, 

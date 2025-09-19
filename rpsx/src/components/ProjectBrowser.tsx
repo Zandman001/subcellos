@@ -64,7 +64,7 @@ export default function ProjectBrowser() {
           color: 'var(--text)',
           boxShadow: '0 0 0 2px var(--bg)',
         }}>
-            {["Analog Synth", "Acid 303", "KarplusStrong", "ResonatorBank", "Sampler", "Drum Sampler"].map((name, i) => {
+            {["Electricity", "Acid 303", "String Theory", "Mushrooms", "Sampler", "Drubbles"].map((name, i) => {
             const sel = i === state.modulePickerIndex;
             return (
               <div

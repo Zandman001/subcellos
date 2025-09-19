@@ -2,7 +2,7 @@ import React from 'react';
 import { useBrowser } from '../../store/browser';
 import Knob from './Knob';
 
-// Drum Sampler UI (grid squircles + knobs at bottom)
+// Drubbles UI (formerly Drum Sampler) – grid squircles + knobs at bottom
 export default function DrumSampler() {
   const s: any = useBrowser();
   const part = s.selectedSoundPart ?? 0;
@@ -21,8 +21,8 @@ export default function DrumSampler() {
           case 'q': s.drumPackLoadSelected?.(); break; // load with Q
           case 'e': s.drumPackMoveUp?.(); break;
           case 'd': s.drumPackMoveDown?.(); break;
-          case 'w': s.drumPackMoveUp?.(); break; // alias up
-          case 'r': s.drumPackMoveDown?.(); break; // alias down
+          case 'w': s.drumPackMoveDown?.(); break; // alias down (reversed)
+          case 'r': s.drumPackMoveUp?.(); break;   // alias up (reversed)
           case 'escape': s.closeDrumPackBrowser?.(); break; // optional close
         }
         return;
@@ -33,8 +33,8 @@ export default function DrumSampler() {
       }
       if(['w','r','a'].includes(k)) e.preventDefault();
       switch(k){
-        case 'w': s.drumSampleMoveDown?.(); break; // move right
-        case 'r': s.drumSampleMoveUp?.(); break;   // move left
+        case 'w': s.drumSampleMoveUp?.(); break;   // move left (reversed)
+        case 'r': s.drumSampleMoveDown?.(); break; // move right (reversed)
         case 'a': s.drumTogglePreview?.(); break;  // preview selected
       }
     };
@@ -59,7 +59,7 @@ export default function DrumSampler() {
   // Grid layout: we let flex-wrap handle columns; width fixed for squircles
   const sampleGrid = (
     <div style={{ flex:1, overflowY:'auto', padding:4, display:'flex', flexWrap:'wrap', gap:12, alignContent:'flex-start' }}>
-      {samples.length===0 && <div style={{ fontSize:11, opacity:0.6, padding:6 }}>Select a pack (Q)</div>}
+  {samples.length===0 && <div style={{ fontSize:11, opacity:0.6, padding:6 }}>Select a Drubbles pack (Q)</div>}
       {samples.map((sm: string, i: number) => {
         const baseName = sm.replace(/\.[a-z0-9]+$/i,'');
         const sel = i===sampleSel;
@@ -110,11 +110,11 @@ export default function DrumSampler() {
             <div key={p} style={{ padding:'6px 8px', borderBottom:'1px solid var(--line)', background: i===packSel? 'rgba(var(--accent-rgb),0.14)':'transparent', fontWeight: i===packSel? 'bold':'normal' }}>{p}</div>
           ))}
           {(!packs || packs.length===0) && <div style={{ padding:'6px 8px', fontSize:11, opacity:0.6 }}>Place folders in Documents/Drums</div>}
-          <div style={{ padding:'4px 8px', fontSize:10, color:'var(--text-soft)', borderTop:'1px solid var(--line)', textAlign:'center' }}>E/D (or W/R) select · Q load · Esc close</div>
+          <div style={{ padding:'4px 8px', fontSize:10, color:'var(--text-soft)', borderTop:'1px solid var(--line)', textAlign:'center' }}>E/D (or R/W) select · Q load · Esc close</div>
         </div>
       ) : sampleGrid }
       {knobs}
-  <div style={{ fontSize:10, opacity:0.6 }}>Q open/load packs · W right · R left · A preview</div>
+  <div style={{ fontSize:10, opacity:0.6 }}>Q open/load packs · W left · R right · A preview</div>
     </div>
   );
 }

@@ -169,8 +169,7 @@ impl DrumPlayer {
       let slot = voice.slot;
       let sample = match self.samples.get(slot) { Some(s) if s.len > 0 => s, _ => { voice.active = false; continue; } };
 
-      let amp = sample.sample_at(voice.position);
-      if amp.abs() < 1e-6 { voice.position += 1.0; }
+  let amp = sample.sample_at(voice.position);
 
       let volume = params.get_f32_h(keys.slot_volume[slot], 0.85).clamp(0.0, 1.5);
       let pan_norm = params.get_f32_h(keys.slot_pan[slot], 0.5).clamp(0.0, 1.0);
@@ -260,6 +259,20 @@ impl DrumPlayer {
               }
             }
         }
+        AudioBufferRef::F64(buf) => {
+          let b = buf.as_ref();
+          sample_rate = b.spec().rate as f32;
+          let ch = b.spec().channels.count();
+          if ch == 1 {
+            for &s in b.chan(0) { data.push(s as f32); }
+          } else if ch >= 2 {
+            let left = b.chan(0);
+            let right = b.chan(1);
+            for (&l, &r) in left.iter().zip(right.iter()) {
+              data.push(((l + r) * 0.5) as f32);
+            }
+          }
+        }
         AudioBufferRef::U8(buf) => {
           let b = buf.as_ref();
           sample_rate = b.spec().rate as f32;
@@ -278,6 +291,20 @@ impl DrumPlayer {
             }
           }
         }
+        AudioBufferRef::S8(buf) => {
+          let b = buf.as_ref();
+          sample_rate = b.spec().rate as f32;
+          let ch = b.spec().channels.count();
+          if ch == 1 {
+            for &s in b.chan(0) { data.push(s as f32 / 128.0); }
+          } else if ch >= 2 {
+            let left = b.chan(0);
+            let right = b.chan(1);
+            for (&l, &r) in left.iter().zip(right.iter()) {
+              data.push(((l as f32) / 128.0 + (r as f32) / 128.0) * 0.5);
+            }
+          }
+        }
         AudioBufferRef::U16(buf) => {
           let b = buf.as_ref();
           sample_rate = b.spec().rate as f32;
@@ -293,6 +320,50 @@ impl DrumPlayer {
               let lf = (l as f32 - 32768.0) / 32768.0;
               let rf = (r as f32 - 32768.0) / 32768.0;
               data.push((lf + rf) * 0.5);
+            }
+          }
+        }
+        AudioBufferRef::S16(buf) => {
+          let b = buf.as_ref();
+          sample_rate = b.spec().rate as f32;
+          let ch = b.spec().channels.count();
+          if ch == 1 {
+            for &s in b.chan(0) { data.push((s as f32) / 32768.0); }
+          } else if ch >= 2 {
+            let left = b.chan(0);
+            let right = b.chan(1);
+            for (&l, &r) in left.iter().zip(right.iter()) {
+              data.push(((l as f32) / 32768.0 + (r as f32) / 32768.0) * 0.5);
+            }
+          }
+        }
+        AudioBufferRef::S24(buf) => {
+          let b = buf.as_ref();
+          sample_rate = b.spec().rate as f32;
+          let ch = b.spec().channels.count();
+          if ch == 1 {
+            for &s in b.chan(0) { let si = s.inner(); data.push(si as f32 / 8_388_608.0); }
+          } else if ch >= 2 {
+            let left = b.chan(0);
+            let right = b.chan(1);
+            for (&l, &r) in left.iter().zip(right.iter()) {
+              let li = l.inner(); let ri = r.inner();
+              data.push(((li as f32) / 8_388_608.0 + (ri as f32) / 8_388_608.0) * 0.5);
+            }
+          }
+        }
+        AudioBufferRef::S32(buf) => {
+          let b = buf.as_ref();
+          sample_rate = b.spec().rate as f32;
+          let ch = b.spec().channels.count();
+          const SCALE: f32 = 1.0 / 2_147_483_648.0; // 2^31
+          if ch == 1 {
+            for &s in b.chan(0) { data.push((s as f32) * SCALE); }
+          } else if ch >= 2 {
+            let left = b.chan(0);
+            let right = b.chan(1);
+            for (&l, &r) in left.iter().zip(right.iter()) {
+              data.push(((l as f32) * SCALE + (r as f32) * SCALE) * 0.5);
             }
           }
         }

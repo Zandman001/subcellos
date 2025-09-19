@@ -48,15 +48,16 @@ export default function BrowserKeys() {
         return;
       }
 
-      // Preview notes inside synth level: only 'a' now (disable 'q' preview). Skip if current module is drum.
-      if (st.level === 'synth' && k === 'a') {
-        // If drum module, let DrumSampler handle 'a' (drum preview) and don't use synth note preview.
+  // Preview notes inside synth level: 'a' (base), 'q' (+1 oct), and 'a'+'q' (+2 oct) for Electricity.
+      if (st.level === 'synth' && (k === 'a' || k === 'q')) {
         if (st.currentSoundType === 'drum') { e.preventDefault(); return; }
         e.preventDefault();
         const pressed = st._pressedQA || { q: false, a: false };
-        if (pressed.a) return; // already held
-        st.setPressedQA(null, true);
-        st.updatePreviewFromPressed();
+        if (k === 'a') {
+          if (!pressed.a) { st.setPressedQA(null, true); st.updatePreviewFromPressed(); }
+        } else { // 'q'
+          if (!pressed.q) { st.setPressedQA(true, null); st.updatePreviewFromPressed(); }
+        }
         return;
       }
       if (k === 'e') { st.moveUp(); e.preventDefault(); return; }
@@ -72,12 +73,17 @@ export default function BrowserKeys() {
       const st = useBrowserStore.getState() as any;
       const k = e.key;
       if (st.focus !== 'browser') return;
-      if (k === 'a') {
+    if (k === 'a' || k === 'q') {
         if (st.level === 'synth') {
           // Skip synth note preview for drum module
           if (st.currentSoundType === 'drum') { e.preventDefault(); return; }
           e.preventDefault();
-          st.setPressedQA(null, false);
+          if (k === 'a') {
+            st.setPressedQA(null, false);
+          }
+          if (k === 'q') {
+            st.setPressedQA(false, null);
+          }
           st.updatePreviewFromPressed();
           return;
         }

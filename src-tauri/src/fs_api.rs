@@ -303,7 +303,7 @@ pub fn create_sound(project_name: String, sound_type: String) -> Result<Sound, S
   // Normalize type to Title Case kind and lowercase prefix for display name
   let t_lower = sound_type.to_ascii_lowercase();
   let (kind, prefix) = match t_lower.as_str() {
-    "synth" => ("Synth".to_string(), "analog synth".to_string()),
+  "synth" => ("Synth".to_string(), "electricity".to_string()),
     "acid" | "acid303" => ("Synth".to_string(), "acid 303".to_string()),
     "karplus" => ("Synth".to_string(), "karplus string".to_string()),
     "resonator" => ("Synth".to_string(), "resonator bank".to_string()),
@@ -312,7 +312,7 @@ pub fn create_sound(project_name: String, sound_type: String) -> Result<Sound, S
     other => {
       // accept Title Case too
       let l = other.to_string();
-      if l == "synth" || l == "Synth".to_string() { ("Synth".to_string(), "analog synth".to_string()) }
+  if l == "synth" || l == "Synth".to_string() { ("Synth".to_string(), "electricity".to_string()) }
       else if l == "Acid" || l == "Acid303" || l == "acid303" { ("Synth".to_string(), "acid 303".to_string()) }
       else if l == "karplus" || l == "Karplus" { ("Synth".to_string(), "karplus string".to_string()) }
       else if l == "resonator" || l == "Resonator" { ("Synth".to_string(), "resonator bank".to_string()) }

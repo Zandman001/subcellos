@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables, unused_mut)]
 use std::f32::consts::PI;
 
 use crate::engine::params::{ParamStore, hash_path};
@@ -13,8 +14,6 @@ use freeverb::Freeverb;
 #[inline]
 fn midi_to_freq(m: u8) -> f32 { 440.0 * (2.0_f32).powf((m as f32 - 69.0) / 12.0) }
 
-#[derive(Clone, Copy, Debug)]
-enum FilterType { LP, HP, BP, Notch }
 
 #[derive(Clone)]
 struct Svf {
@@ -192,7 +191,7 @@ impl Voice {
     self.pink = 0.0; self.brown = 0.0;
   }
   pub fn note_off(&mut self) { self.env_amp.gate_off(); self.env_mod.gate_off(); self.active = false; }
-  pub fn render(&mut self, params: &ParamStore, paths: &ParamPaths, sr: f32, modf: &ModFrame) -> f32 {
+  fn render(&mut self, params: &ParamStore, paths: &ParamPaths, _sr: f32, modf: &ModFrame) -> f32 {
     self.age = self.age.wrapping_add(1);
     // Shapes arrive as I32 0..3
     let sh_a = params.get_i32_h(paths.oscA_shape, 0);
@@ -215,8 +214,8 @@ impl Voice {
     let mut cents_b = modf.cents_b;
     let mut lvl_a_m = modf.lvl_a;
     let mut lvl_b_m = modf.lvl_b;
-    let mut filt1_m = modf.filt1;
-    let mut filt2_m = modf.filt2;
+  let mut _filt1_m = modf.filt1;
+  let mut _filt2_m = modf.filt2;
     for i in 0..5 {
       let dest = params.get_i32_h(paths.env_dest[i], 0) as u16;
       if dest == 0 { continue; }
@@ -227,250 +226,117 @@ impl Voice {
         2 => cents_b += 100.0 * v,
         3 => lvl_a_m += v,
         4 => lvl_b_m += v,
-        5 => filt1_m += v,
-        6 => filt2_m += v,
+  5 => _filt1_m += v,
+  6 => _filt2_m += v,
         _ => {}
       }
     }
     let det_a = params.get_f32_h(paths.oscA_detune_cents, 0.0) + cents_a;
     let det_b = params.get_f32_h(paths.oscB_detune_cents, 0.0) + cents_b;
-    let pw = params.get_f32_h(paths.oscA_pulse_width, 0.5).clamp(0.05, 0.95);
-    let fm_ab = params.get_f32_h(paths.oscA_fm_to_B, 0.0);
-    let fm_ba = params.get_f32_h(paths.oscB_fm_to_A, 0.0);
-    // amp envelope already updated above
-    let fa_t = params.get_i32_h(paths.filter1_type, 0);
-    let fa_fc_base = params.get_f32_h(paths.filter1_cutoff_hz, 20000.0).clamp(20.0, 20000.0);
-    let fa_fc = (fa_fc_base * (2.0_f32).powf(filt1_m * 3.0)).clamp(20.0, 20000.0);
-    let fa_q = params
-      .get_f32_h(paths.filter1_q, params.get_f32_h(paths.filter1_res_q, 0.707))
-      .clamp(0.5, 20.0);
-    let fb_t = params.get_i32_h(paths.filter2_type, 0);
-    let fb_fc_base = params.get_f32_h(paths.filter2_cutoff_hz, 20000.0).clamp(20.0, 20000.0);
-    let fb_fc = (fb_fc_base * (2.0_f32).powf(filt2_m * 3.0)).clamp(20.0, 20000.0);
-    let fb_q = params
-      .get_f32_h(paths.filter2_q, params.get_f32_h(paths.filter2_res_q, 0.707))
-      .clamp(0.5, 20.0);
-    // Update filters at a reduced rate to save CPU
-    self.filt_upd_phase = self.filt_upd_phase.wrapping_add(1);
-    if (self.filt_upd_phase & 0x07) == 0 { // every 8 samples
-      if (fa_fc - self.last_fa_fc).abs() > 1e-3 || (fa_q - self.last_fa_q).abs() > 1e-3 {
-        self.filt1.set_params(fa_fc, fa_q, sr);
-        self.last_fa_fc = fa_fc; self.last_fa_q = fa_q;
-      }
-      if (fb_fc - self.last_fb_fc).abs() > 1e-3 || (fb_q - self.last_fb_q).abs() > 1e-3 {
-        self.filt2.set_params(fb_fc, fb_q, sr);
-        self.last_fb_fc = fb_fc; self.last_fb_q = fb_q;
-      }
-    }
-    let shape_a = match sh_a { 1 => OscShape::Saw, 2 => OscShape::Square, 3 => OscShape::Tri, 4 => OscShape::Pulse, 5 => OscShape::NoiseWhite, 6 => OscShape::NoisePink, 7 => OscShape::NoiseBrown, _ => OscShape::Sine };
-    let shape_b = match sh_b { 1 => OscShape::Saw, 2 => OscShape::Square, 3 => OscShape::Tri, 4 => OscShape::Pulse, 5 => OscShape::NoiseWhite, 6 => OscShape::NoisePink, 7 => OscShape::NoiseBrown, _ => OscShape::Sine };
-    let dt_a = self.base_freq * (2.0_f32).powf(det_a / 1200.0) - self.base_freq;
-    let dt_b = self.base_freq * (2.0_f32).powf(det_b / 1200.0) - self.base_freq;
+    // --- Oscillator frequency calculations ---
+    let freq_a = self.base_freq * (2.0_f32).powf(det_a / 1200.0);
+    let freq_b = self.base_freq * (2.0_f32).powf(det_b / 1200.0);
+    // Pulse width and FM amounts
+    let pw_a = params.get_f32_h(paths.oscA_pulse_width, 0.5).clamp(0.02, 0.98);
+    let fm_a_from_b = params.get_f32_h(paths.oscB_fm_to_A, 0.0) * 0.002; // modest scaling
+    let fm_b_from_a = params.get_f32_h(paths.oscA_fm_to_B, 0.0) * 0.002;
+    // Levels (with modulation from mod matrix already folded into lvl_a_m / lvl_b_m)
+    let mut lvl_a = params.get_f32_h(paths.oscA_level, 0.5) + lvl_a_m;
+    let mut lvl_b = params.get_f32_h(paths.oscB_level, 0.5) + lvl_b_m;
+    lvl_a = lvl_a.clamp(0.0, 1.2);
+    lvl_b = lvl_b.clamp(0.0, 1.2);
+    // Envelope advance
     let env_amp = self.env_amp.next();
-    // FM as phase modulation using last-frame cross-samples
-    let pm_depth = 6.0; // radians, musical index
-    let pm_a = (self.last_b * fm_ab * pm_depth) / (2.0 * PI); // convert to cycles
-    let pm_b = (self.last_a * fm_ba * pm_depth) / (2.0 * PI);
-    let mut b_s = if matches!(shape_b, OscShape::NoiseWhite|OscShape::NoisePink|OscShape::NoiseBrown) { self.next_noise(shape_b) } else { self.osc_b.next_pm(self.base_freq + dt_b, shape_b, pw, pm_b) };
-    let mut a_s = if matches!(shape_a, OscShape::NoiseWhite|OscShape::NoisePink|OscShape::NoiseBrown) { self.next_noise(shape_a) } else { self.osc_a.next_pm(self.base_freq + dt_a, shape_a, pw, pm_a) };
-    // Per-osc levels
-    let lvl_a = (params.get_f32_h(paths.oscA_level, 0.7) + lvl_a_m).clamp(0.0, 1.0);
-    let lvl_b = (params.get_f32_h(paths.oscB_level, 0.7) + lvl_b_m).clamp(0.0, 1.0);
-    a_s *= lvl_a;
-    b_s *= lvl_b;
-    // Apply filter assignments per oscillator
-    let mut a = a_s; let mut b = b_s;
-    let fa_assign = params.get_i32_h(paths.filter1_assign, 0).clamp(0, 3);
-    match fa_assign {
-      1 => { let (lp, hp, bp, no) = self.filt1.process(a); a = match map_ft(fa_t) { FilterType::LP => lp, FilterType::HP => hp, FilterType::BP => bp, FilterType::Notch => no }; },
-      2 => { let (lp, hp, bp, no) = self.filt1.process(b); b = match map_ft(fa_t) { FilterType::LP => lp, FilterType::HP => hp, FilterType::BP => bp, FilterType::Notch => no }; },
-      3 => { let (lp, hp, bp, no) = self.filt1.process(a + b); let y = match map_ft(fa_t) { FilterType::LP => lp, FilterType::HP => hp, FilterType::BP => bp, FilterType::Notch => no }; a = y * 0.5; b = y * 0.5; },
-      _ => {}
-    }
-    let fb_assign = params.get_i32_h(paths.filter2_assign, 0).clamp(0, 3);
-    match fb_assign {
-      1 => { let (lp, hp, bp, no) = self.filt2.process(a); a = match map_ft(fb_t) { FilterType::LP => lp, FilterType::HP => hp, FilterType::BP => bp, FilterType::Notch => no }; },
-      2 => { let (lp, hp, bp, no) = self.filt2.process(b); b = match map_ft(fb_t) { FilterType::LP => lp, FilterType::HP => hp, FilterType::BP => bp, FilterType::Notch => no }; },
-      3 => { let (lp, hp, bp, no) = self.filt2.process(a + b); let y = match map_ft(fb_t) { FilterType::LP => lp, FilterType::HP => hp, FilterType::BP => bp, FilterType::Notch => no }; a = y * 0.5; b = y * 0.5; },
-      _ => {}
-    }
-    // Update last samples for next-frame FM
-    self.last_a = a;
-    self.last_b = b;
-    let s = 0.5 * (a + b);
-    s * env_amp * self.vel
-  }
-}
-
-impl Voice {
-  #[inline]
-  fn rand01(&mut self) -> f32 {
-    // LCG
-    self.rng = self.rng.wrapping_mul(1664525).wrapping_add(1013904223);
-    let v = ((self.rng >> 9) as f32) * (1.0 / 8388608.0); // 23 bits
-    v
-  }
-  #[inline]
-  fn next_noise(&mut self, shape: OscShape) -> f32 {
-    let w = self.rand01() * 2.0 - 1.0; // white -1..1
-    match shape {
-      OscShape::NoiseWhite => w,
-      OscShape::NoisePink => {
-        // simple 1-pole lowpass on white
-        self.pink = self.pink * 0.98 + w * 0.02;
-        self.pink.clamp(-1.0, 1.0)
+    // Basic noise RNG (xorshift32)
+  let noise_sample = |state: &mut u32| -> f32 {
+      let mut x = *state;
+      x ^= x << 13; x ^= x >> 17; x ^= x << 5; *state = x; ((x as f32) * 2.3283064365e-10) * 2.0 - 1.0
+    };
+    // Generate oscillator phases with simple phase modulation (FM)
+    let pm_a = fm_a_from_b * self.last_b;
+    let pm_b = fm_b_from_a * self.last_a;
+    let sig_a = if matches!(sh_a, 5 | 6 | 7) { 0.0 } else { self.osc_a.next_pm(freq_a, match sh_a { 1 => OscShape::Saw, 2 => OscShape::Square, 3 => OscShape::Tri, 4 => OscShape::Pulse, 5 => OscShape::NoiseWhite, 6 => OscShape::NoisePink, 7 => OscShape::NoiseBrown, _ => OscShape::Sine }, pw_a, pm_a) };
+    let sig_b = if matches!(sh_b, 5 | 6 | 7) { 0.0 } else { self.osc_b.next_pm(freq_b, match sh_b { 1 => OscShape::Saw, 2 => OscShape::Square, 3 => OscShape::Tri, 4 => OscShape::Pulse, 5 => OscShape::NoiseWhite, 6 => OscShape::NoisePink, 7 => OscShape::NoiseBrown, _ => OscShape::Sine }, pw_a, pm_b) };
+    // Noise handling (simple implementations)
+    let noise_a = if sh_a >= 5 { let n = noise_sample(&mut self.rng); if sh_a == 5 { n } else if sh_a == 6 { // pink (leaky integrator)
+        self.pink = 0.98 * self.pink + 0.02 * n; self.pink
+      } else { // brown
+        self.brown = (self.brown + 0.02 * n).clamp(-1.0, 1.0); self.brown
+      }} else { 0.0 };
+    let noise_b = if sh_b >= 5 { let n = noise_sample(&mut self.rng); if sh_b == 5 { n } else if sh_b == 6 { self.pink = 0.98 * self.pink + 0.02 * n; self.pink } else { self.brown = (self.brown + 0.02 * n).clamp(-1.0,1.0); self.brown } } else { 0.0 };
+    let a_out = sig_a + noise_a;
+    let b_out = sig_b + noise_b;
+    self.last_a = a_out;
+    self.last_b = b_out;
+    let mut y = a_out * lvl_a + b_out * lvl_b;
+    // --- Filters with ENV/LFO modulation ---
+    // Filter 1
+    let f1_assign = params.get_i32_h(paths.filter1_assign, 0);
+  let mut f1_cut = params.get_f32_h(paths.filter1_cutoff_hz, 1200.0);
+    let mut f1_q = params.get_f32_h(paths.filter1_q, 0.707);
+  // Apply modulation to cutoff from LFO/ENV (coarse mapping: +/- 24 semitones in log freq domain)
+  // Use _filt1_m which already combines LFO and ENV rows targeting filter1
+  if _filt1_m.abs() > 1e-6 { let ratio = (2.0_f32).powf(_filt1_m * 2.0); f1_cut = (f1_cut * ratio).clamp(20.0, 18000.0); }
+    // Optionally add ENV influence via mod matrix already folded into modf.filt1 through env_dest
+    // Smooth-ish update every few samples to avoid CPU spikes
+    if self.filt_upd_phase & 3 == 0 {
+      if (f1_cut - self.last_fa_fc).abs() > 1e-3 || (f1_q - self.last_fa_q).abs() > 1e-3 {
+        self.filt1.set_params(f1_cut, f1_q.clamp(0.3, 10.0), _sr);
+        self.last_fa_fc = f1_cut; self.last_fa_q = f1_q;
       }
-      OscShape::NoiseBrown => {
-        self.brown = (self.brown + w * 0.02).clamp(-1.0, 1.0);
-        self.brown
-      }
-      _ => 0.0,
     }
+    let (lp1, hp1, bp1, nt1) = self.filt1.process(y);
+    y = match f1_assign { 1 => lp1, 2 => hp1, 3 => bp1, 4 => nt1, _ => y };
+
+    // Filter 2
+    let f2_assign = params.get_i32_h(paths.filter2_assign, 0);
+  let mut f2_cut = params.get_f32_h(paths.filter2_cutoff_hz, 1200.0);
+    let mut f2_q = params.get_f32_h(paths.filter2_q, 0.707);
+  if _filt2_m.abs() > 1e-6 { let ratio = (2.0_f32).powf(_filt2_m * 2.0); f2_cut = (f2_cut * ratio).clamp(20.0, 18000.0); }
+    if self.filt_upd_phase & 3 == 2 {
+      if (f2_cut - self.last_fb_fc).abs() > 1e-3 || (f2_q - self.last_fb_q).abs() > 1e-3 {
+        self.filt2.set_params(f2_cut, f2_q.clamp(0.3, 10.0), _sr);
+        self.last_fb_fc = f2_cut; self.last_fb_q = f2_q;
+      }
+    }
+    let (lp2, hp2, bp2, nt2) = self.filt2.process(y);
+    y = match f2_assign { 1 => lp2, 2 => hp2, 3 => bp2, 4 => nt2, _ => y };
+
+    // Amp envelope and velocity
+    y *= env_amp * self.vel;
+    y
   }
 }
 
-fn map_ft(t: i32) -> FilterType { match t { 1 => FilterType::HP, 2 => FilterType::BP, 3 => FilterType::Notch, _ => FilterType::LP } }
-
-pub struct Part {
-  voices: Vec<Voice>,
-  sr: f32,
-  next_voice: usize,
-  // Mono Acid engine
-  acid: Acid303,
-  acid_keys: AcidParamKeys,
-  // Mono Karplus-Strong engine
-  karplus: KarplusStrong,
-  karplus_keys: KSParamKeys,
-  // Mono Resonator Bank engine
-  resonator: ResonatorBank,
-  resonator_keys: ResonatorParamKeys,
-  // Mono Sampler engine
-  sampler: Sampler,
-  sampler_keys: SamplerParamKeys,
-  drum: DrumPlayer,
-  drum_keys: DrumParamKeys,
-  // Modulated delay lines for chorus/flanger
-  delay1: ModDelay,
-  delay2: ModDelay,
-  delay3: ModDelay,
-  delay4: ModDelay,
-  // Simple delays for explicit TIME/FEEDBACK
-  sdelay1: SimpleDelay,
-  sdelay2: SimpleDelay,
-  sdelay3: SimpleDelay,
-  sdelay4: SimpleDelay,
-  fx1_reverb: Option<Freeverb>,
-  fx2_reverb: Option<Freeverb>,
-  fx3_reverb: Option<Freeverb>,
-  fx4_reverb: Option<Freeverb>,
-  fx1_crusher: Option<Bitcrusher>,
-  fx2_crusher: Option<Bitcrusher>,
-  fx3_crusher: Option<Bitcrusher>,
-  fx4_crusher: Option<Bitcrusher>,
-  fx1_wet_lp_l: OnePoleLP,
-  fx1_wet_lp_r: OnePoleLP,
-  fx2_wet_lp_l: OnePoleLP,
-  fx2_wet_lp_r: OnePoleLP,
-  fx3_wet_lp_l: OnePoleLP,
-  fx3_wet_lp_r: OnePoleLP,
-  fx4_wet_lp_l: OnePoleLP,
-  fx4_wet_lp_r: OnePoleLP,
-  phaser1: Phaser,
-  phaser2: Phaser,
-  phaser3: Phaser,
-  phaser4: Phaser,
-  eq_lp: Svf,
-  eq_hp: Svf,
-  eq_bands: [Biquad; 8],
-  eq_centers: [f32; 8],
-  eq_last_db: [f32; 8],
-  paths: ParamPaths,
-  lfo_phase: f32,
-  lfo_hold: f32,
-  // Haas delay (left channel buffer)
-  haas_buf: Vec<f32>,
-  haas_wr: usize,
-  haas_len: usize,
-  haas_d: usize,
-}
-
-#[derive(Clone)]
+#[allow(non_snake_case)]
 struct ParamPaths {
-  // Osc / Env
   oscA_shape: u64, oscB_shape: u64,
   oscA_detune_cents: u64, oscB_detune_cents: u64,
   oscA_pulse_width: u64, oscA_fm_to_B: u64, oscB_fm_to_A: u64,
   amp_attack: u64, amp_decay: u64, amp_sustain: u64, amp_release: u64,
-  // Mod envelope (used as modulation source)
   mod_attack: u64, mod_decay: u64, mod_sustain: u64, mod_release: u64,
   filter1_type: u64, filter1_cutoff_hz: u64, filter1_q: u64, filter1_res_q: u64, filter1_assign: u64,
   filter2_type: u64, filter2_cutoff_hz: u64, filter2_q: u64, filter2_res_q: u64, filter2_assign: u64,
   oscA_level: u64, oscB_level: u64,
-  // LFO
   lfo_shape: u64, lfo_rate_hz: u64, lfo_amount: u64, lfo_drive: u64,
-  lfo_dest: [u64; 5], lfo_row_amount: [u64; 5],
-  // ENV mod matrix
-  env_dest: [u64; 5], env_row_amount: [u64; 5],
-  // FX
+  lfo_dest: [u64;5], lfo_row_amount: [u64;5],
+  env_dest: [u64;5], env_row_amount: [u64;5],
   fx1_type: u64, fx1_p1: u64, fx1_p2: u64, fx1_p3: u64,
   fx2_type: u64, fx2_p1: u64, fx2_p2: u64, fx2_p3: u64,
   fx3_type: u64, fx3_p1: u64, fx3_p2: u64, fx3_p3: u64,
   fx4_type: u64, fx4_p1: u64, fx4_p2: u64, fx4_p3: u64,
-  // Mixer and EQ
-  mix_width: u64, mix_pan: u64, mix_comp: u64, mix_volume: u64,
-  eq_bands: [u64; 8],
+  mix_width: u64, mix_pan: u64, mix_comp: u64, mix_volume: u64, mix_haas: u64,
+  eq_bands: [u64;8],
   mixer_gain_db: u64,
-  mix_haas: u64,
-  // Module select and Acid303 params
   module_kind: u64,
-  acid_wave: u64,
-  acid_cutoff: u64,
-  acid_reso: u64,
-  acid_envmod: u64,
-  acid_decay: u64,
-  acid_accent: u64,
-  acid_slide: u64,
-  acid_drive: u64,
-  acid_step_accent: u64,
-  acid_step_slide: u64,
-  // Karplus-Strong params
-  ks_decay: u64,
-  ks_damp: u64,
-  ks_excite: u64,
-  ks_tune: u64,
-  // Resonator Bank params
-  resonator_pitch: u64,
-  resonator_decay: u64,
-  resonator_brightness: u64,
-  resonator_bank_size: u64,
-  resonator_mode: u64,
-  resonator_inharmonicity: u64,
-  resonator_feedback: u64,
-  resonator_drive: u64,
-  resonator_exciter_type: u64,
-  resonator_exciter_amount: u64,
-  resonator_noise_color: u64,
-  resonator_strike_rate: u64,
-  resonator_stereo_width: u64,
-  resonator_randomize: u64,
-  resonator_body_blend: u64,
-  resonator_output_gain: u64,
-  // Sampler params
-  sampler_sample_start: u64,
-  sampler_sample_end: u64,
-  sampler_pitch_semitones: u64,
-  sampler_pitch_cents: u64,
-  sampler_playback_mode: u64,
-  sampler_loop_start: u64,
-  sampler_loop_end: u64,
-  sampler_loop_mode: u64,
-  sampler_smoothness: u64,
-  // retrigger mode (0=Immediate,1=End,2=Sync)
-  // Note: sampler uses its own SamplerParamKeys for render; this field is kept for completeness if needed elsewhere
-  sampler_attack: u64,
-  sampler_decay: u64,
-  sampler_sustain: u64,
-  sampler_release: u64,
+  // Acid303
+  acid_wave: u64, acid_cutoff: u64, acid_reso: u64, acid_envmod: u64, acid_decay: u64, acid_accent: u64, acid_slide: u64, acid_drive: u64, acid_step_accent: u64, acid_step_slide: u64,
+  // Karplus
+  ks_decay: u64, ks_damp: u64, ks_excite: u64, ks_tune: u64,
+  // Resonator
+  resonator_pitch: u64, resonator_decay: u64, resonator_brightness: u64, resonator_bank_size: u64, resonator_mode: u64, resonator_inharmonicity: u64, resonator_feedback: u64, resonator_drive: u64, resonator_exciter_type: u64, resonator_exciter_amount: u64, resonator_noise_color: u64, resonator_strike_rate: u64, resonator_stereo_width: u64, resonator_randomize: u64, resonator_body_blend: u64, resonator_output_gain: u64,
+  // Sampler
+  sampler_sample_start: u64, sampler_sample_end: u64, sampler_pitch_semitones: u64, sampler_pitch_cents: u64, sampler_playback_mode: u64, sampler_loop_start: u64, sampler_loop_end: u64, sampler_loop_mode: u64, sampler_smoothness: u64, sampler_attack: u64, sampler_decay: u64, sampler_sustain: u64, sampler_release: u64,
 }
 
 impl ParamPaths {
@@ -551,6 +417,36 @@ impl ParamPaths {
       sampler_release: p("sampler/release"),
     }
   }
+}
+
+pub struct Part {
+  voices: Vec<Voice>,
+  sr: f32,
+  next_voice: usize,
+  acid: Acid303,
+  acid_keys: AcidParamKeys,
+  karplus: KarplusStrong,
+  karplus_keys: KSParamKeys,
+  resonator: ResonatorBank,
+  resonator_keys: ResonatorParamKeys,
+  sampler: Sampler,
+  sampler_keys: SamplerParamKeys,
+  drum: DrumPlayer,
+  drum_keys: DrumParamKeys,
+  delay1: ModDelay, delay2: ModDelay, delay3: ModDelay, delay4: ModDelay,
+  sdelay1: SimpleDelay, sdelay2: SimpleDelay, sdelay3: SimpleDelay, sdelay4: SimpleDelay,
+  fx1_reverb: Option<Freeverb>, fx2_reverb: Option<Freeverb>, fx3_reverb: Option<Freeverb>, fx4_reverb: Option<Freeverb>,
+  fx1_crusher: Option<Bitcrusher>, fx2_crusher: Option<Bitcrusher>, fx3_crusher: Option<Bitcrusher>, fx4_crusher: Option<Bitcrusher>,
+  fx1_wet_lp_l: OnePoleLP, fx1_wet_lp_r: OnePoleLP,
+  fx2_wet_lp_l: OnePoleLP, fx2_wet_lp_r: OnePoleLP,
+  fx3_wet_lp_l: OnePoleLP, fx3_wet_lp_r: OnePoleLP,
+  fx4_wet_lp_l: OnePoleLP, fx4_wet_lp_r: OnePoleLP,
+  phaser1: Phaser, phaser2: Phaser, phaser3: Phaser, phaser4: Phaser,
+  eq_lp: Svf, eq_hp: Svf,
+  eq_bands: [Biquad;8], eq_centers: [f32;8], eq_last_db: [f32;8],
+  paths: ParamPaths,
+  lfo_phase: f32, lfo_hold: f32,
+  haas_buf: Vec<f32>, haas_wr: usize, haas_len: usize, haas_d: usize,
 }
 
 impl Part {
@@ -701,17 +597,209 @@ impl Part {
     let module = params.get_i32_h(self.paths.module_kind, 0);
     
     // Debug: Log module kind for part 0 when it changes
-    if _part_idx == 0 {
-      static mut LAST_MODULE: i32 = -1;
-      unsafe {
-        if module != LAST_MODULE {
-          eprintln!("Part 0 module_kind changed: {} -> {}", LAST_MODULE, module);
-          LAST_MODULE = module;
+  // (debug logging removed for stability)
+    
+    if module == 5 {
+      // Drum Sampler render path (mono aggregation -> FX -> EQ -> Mixer)
+      let dframe = self.drum.render(params, &self.drum_keys);
+      // Allow FX tails like the Sampler: only early-out if dry is silent and all FX mixes are ~zero
+      let fx1_t_peek = params.get_i32_h(self.paths.fx1_type, 0);
+      let fx1_mix_peek = params.get_f32_h(self.paths.fx1_p3, 0.0).clamp(0.0, 1.0);
+      let fx2_t_peek = params.get_i32_h(self.paths.fx2_type, 0);
+      let fx2_mix_peek = params.get_f32_h(self.paths.fx2_p3, 0.0).clamp(0.0, 1.0);
+      let fx3_t_peek = params.get_i32_h(self.paths.fx3_type, 0);
+      let fx3_mix_peek = params.get_f32_h(self.paths.fx3_p3, 0.0).clamp(0.0, 1.0);
+      let fx4_t_peek = params.get_i32_h(self.paths.fx4_type, 0);
+      let fx4_mix_peek = params.get_f32_h(self.paths.fx4_p3, 0.0).clamp(0.0, 1.0);
+      if dframe.mono.abs() < 1e-9 && (fx1_t_peek <= 0 || fx1_mix_peek <= 0.0005) && (fx2_t_peek <= 0 || fx2_mix_peek <= 0.0005) && (fx3_t_peek <= 0 || fx3_mix_peek <= 0.0005) && (fx4_t_peek <= 0 || fx4_mix_peek <= 0.0005) {
+        return (0.0, 0.0);
+      }
+      let mut out = dframe.mono; // summed mono
+      // --- FX1 chain (copied from other module branches) ---
+      let fx1_t = params.get_i32_h(self.paths.fx1_type, 0);
+      let fx1_p1 = params.get_f32_h(self.paths.fx1_p1, 0.0);
+      let fx1_p2 = params.get_f32_h(self.paths.fx1_p2, 0.0);
+      let fx1_mix = params.get_f32_h(self.paths.fx1_p3, 0.0).clamp(0.0, 1.0);
+      if fx1_t <= 0 || fx1_mix <= 0.0005 {
+        if fx1_t <= 0 { self.fx1_reverb = None; self.fx1_crusher = None; }
+      } else if fx1_t == 2 {
+        let time_ms = 10.0 + fx1_p1.clamp(0.0, 1.0) * 990.0;
+        let fb = (fx1_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
+        let mut lbuf = [out]; let mut rbuf = [out];
+        self.sdelay1.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx1_mix, false);
+        out = 0.5 * (lbuf[0] + rbuf[0]);
+        self.fx1_reverb = None; self.fx1_crusher = None;
+      } else if fx1_t == 1 {
+        if self.fx1_reverb.is_none() {
+          let mut rv = Freeverb::new(self.sr as usize);
+          rv.set_room_size(0.35); rv.set_dampening(0.6); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9);
+          self.fx1_reverb = Some(rv);
+        }
+        if let Some(rv) = &mut self.fx1_reverb {
+          let room = 0.2 + fx1_p1.clamp(0.0, 1.0) * 0.8; let damp = 0.2 + fx1_p2.clamp(0.0, 1.0) * 0.8; let mix = fx1_mix;
+          rv.set_room_size(room as f64); rv.set_dampening(damp as f64); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9);
+          let dry = out; let (wl, wr) = rv.tick((dry as f64, dry as f64));
+          let lp_amt = 0.5 + 0.5 * (damp as f32); self.fx1_wet_lp_l.set_hf_damp(lp_amt); self.fx1_wet_lp_r.set_hf_damp(lp_amt);
+          let wet_l = self.fx1_wet_lp_l.tick(wl as f32) as f32; let wet_r = self.fx1_wet_lp_r.tick(wr as f32) as f32; let wet_m = 0.5 * (wet_l + wet_r);
+          out = dry * (1.0 - mix) + wet_m * mix;
+        }
+      } else if fx1_t == 3 || fx1_t == 4 || fx1_t == 5 {
+        let rate = 0.05 + fx1_p1 * (5.0 - 0.05);
+        let depth_ms = match fx1_t { 4 => 6.0 * fx1_p2, 5 => 12.0 * fx1_p2, _ => 4.0 * fx1_p2 };
+        if fx1_t == 3 {
+          let (wet, _) = self.phaser1.process_one(out, out, self.sr, rate, fx1_p2, 1.0);
+          out = out * (1.0 - fx1_mix) + wet * fx1_mix;
+        } else {
+          let base_ms = match fx1_t { 4 => 2.0, 5 => 15.0, _ => 3.0 };
+          let (wet, _) = self.delay1.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0);
+          out = out * (1.0 - fx1_mix) + wet * fx1_mix;
+        }
+        self.fx1_reverb = None; self.fx1_crusher = None;
+      } else if fx1_t == 6 {
+        let dry = out; let drive_db = (fx1_p1.clamp(0.0, 1.0)) * 20.0; let g = (10.0_f32).powf(drive_db / 20.0);
+        let x = (dry * g).tanh(); let tone = fx1_p2.clamp(0.0, 1.0);
+        let lp_amt = 0.3 + 0.6 * (1.0 - tone); self.fx1_wet_lp_l.set_hf_damp(lp_amt);
+        let y_lp = self.fx1_wet_lp_l.tick(x); let y_hp = x - y_lp; let shaped = y_lp * (1.0 - tone) + y_hp * tone;
+        out = dry * (1.0 - fx1_mix) + shaped * fx1_mix; self.fx1_reverb = None;
+      } else if fx1_t == 7 {
+        let dry = out; let drive = fx1_p2.clamp(0.0, 1.0) * 10.0; let g = 1.0 + drive; let cur = fx1_p1.clamp(0.0, 1.0);
+        let xin = dry * g;
+        let shaped = if cur < 0.34 { xin.tanh() } else if cur < 0.67 { xin.clamp(-1.0, 1.0) } else { let m = (xin + 1.0).abs().rem_euclid(4.0); ((m - 2.0).abs() - 1.0).clamp(-1.0, 1.0) };
+        out = dry * (1.0 - fx1_mix) + shaped * fx1_mix; self.fx1_reverb = None; self.fx1_crusher = None;
+      } else if fx1_t == 8 {
+        if self.fx1_crusher.is_none() { self.fx1_crusher = Some(Bitcrusher::new()); }
+        if let Some(cr) = &mut self.fx1_crusher {
+          let bits = 4.0 + fx1_p1.clamp(0.0, 1.0) * 12.0; let fac = 1.0 + fx1_p2.clamp(0.0, 1.0) * 15.0; cr.set_bits(bits as u8); cr.set_factor(fac as u32); cr.set_mix(fx1_mix); let mut lbuf = [out]; let mut rbuf = [out]; cr.process(&mut lbuf, &mut rbuf); out = 0.5 * (lbuf[0] + rbuf[0]);
         }
       }
-    }
-    
-    if module == 1 {
+      // FX2
+      let fx2_t = params.get_i32_h(self.paths.fx2_type, 0);
+      let fx2_p1 = params.get_f32_h(self.paths.fx2_p1, 0.0);
+      let fx2_p2 = params.get_f32_h(self.paths.fx2_p2, 0.0);
+      let fx2_mix = params.get_f32_h(self.paths.fx2_p3, 0.0).clamp(0.0, 1.0);
+      if fx2_t <= 0 || fx2_mix <= 0.0005 { if fx2_t <= 0 { self.fx2_reverb = None; self.fx2_crusher = None; } }
+      else if fx2_t == 2 {
+        let time_ms = 10.0 + fx2_p1.clamp(0.0, 1.0) * 990.0; let fb = (fx2_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
+        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay2.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx2_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]); self.fx2_reverb = None; self.fx2_crusher = None;
+      } else if fx2_t == 1 {
+        if self.fx2_reverb.is_none() { let mut rv = Freeverb::new(self.sr as usize); rv.set_room_size(0.35); rv.set_dampening(0.6); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9); self.fx2_reverb = Some(rv); }
+        if let Some(rv) = &mut self.fx2_reverb {
+          let room = 0.2 + fx2_p1.clamp(0.0, 1.0) * 0.8; let damp = 0.2 + fx2_p2.clamp(0.0, 1.0) * 0.8; let mix = fx2_mix;
+          rv.set_room_size(room as f64); rv.set_dampening(damp as f64); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9);
+          let dry = out; let (wl, wr) = rv.tick((dry as f64, dry as f64)); let lp_amt = 0.5 + 0.5 * (damp as f32);
+          self.fx2_wet_lp_l.set_hf_damp(lp_amt); self.fx2_wet_lp_r.set_hf_damp(lp_amt);
+          let wet_l = self.fx2_wet_lp_l.tick(wl as f32) as f32; let wet_r = self.fx2_wet_lp_r.tick(wr as f32) as f32; let wet_m = 0.5 * (wet_l + wet_r);
+          out = dry * (1.0 - mix) + wet_m * mix;
+        }
+      } else if fx2_t == 3 || fx2_t == 4 || fx2_t == 5 {
+        let rate = 0.05 + fx2_p1 * (5.0 - 0.05); let depth_ms = match fx2_t { 4 => 6.0 * fx2_p2, 5 => 12.0 * fx2_p2, _ => 4.0 * fx2_p2 };
+        if fx2_t == 3 { let (wet, _) = self.phaser2.process_one(out, out, self.sr, rate, fx2_p2, 1.0); out = out * (1.0 - fx2_mix) + wet * fx2_mix; }
+        else { let base_ms = match fx2_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay2.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx2_mix) + wet * fx2_mix; }
+        self.fx2_reverb = None; self.fx2_crusher = None;
+      } else if fx2_t == 6 {
+        let dry = out; let drive_db = (fx2_p1.clamp(0.0, 1.0)) * 20.0; let g = (10.0_f32).powf(drive_db / 20.0); let x = (dry * g).tanh();
+        let tone = fx2_p2.clamp(0.0, 1.0); let lp_amt = 0.3 + 0.6 * (1.0 - tone); self.fx2_wet_lp_l.set_hf_damp(lp_amt);
+        let y_lp = self.fx2_wet_lp_l.tick(x); let y_hp = x - y_lp; let shaped = y_lp * (1.0 - tone) + y_hp * tone; out = dry * (1.0 - fx2_mix) + shaped * fx2_mix; self.fx2_reverb = None; self.fx2_crusher = None;
+      } else if fx2_t == 7 {
+        let dry = out; let drive = fx2_p2.clamp(0.0, 1.0) * 10.0; let g = 1.0 + drive; let cur = fx2_p1.clamp(0.0, 1.0);
+        let xin = dry * g; let shaped = if cur < 0.34 { xin.tanh() } else if cur < 0.67 { xin.clamp(-1.0, 1.0) } else { let m = (xin + 1.0).abs().rem_euclid(4.0); ((m - 2.0).abs() - 1.0).clamp(-1.0, 1.0) };
+        out = dry * (1.0 - fx2_mix) + shaped * fx2_mix; self.fx2_reverb = None; self.fx2_crusher = None;
+      } else if fx2_t == 8 {
+        if self.fx2_crusher.is_none() { self.fx2_crusher = Some(Bitcrusher::new()); }
+        if let Some(cr) = &mut self.fx2_crusher { let bits = 4.0 + fx2_p1.clamp(0.0, 1.0) * 12.0; let fac = 1.0 + fx2_p2.clamp(0.0, 1.0) * 15.0; cr.set_bits(bits as u8); cr.set_factor(fac as u32); cr.set_mix(fx2_mix); let mut lbuf = [out]; let mut rbuf = [out]; cr.process(&mut lbuf, &mut rbuf); out = 0.5 * (lbuf[0] + rbuf[0]); }
+      }
+      // FX3
+      let fx3_t = params.get_i32_h(self.paths.fx3_type, 0);
+      let fx3_p1 = params.get_f32_h(self.paths.fx3_p1, 0.0);
+      let fx3_p2 = params.get_f32_h(self.paths.fx3_p2, 0.0);
+      let fx3_mix = params.get_f32_h(self.paths.fx3_p3, 0.0).clamp(0.0, 1.0);
+      if fx3_t <= 0 || fx3_mix <= 0.0005 { if fx3_t <= 0 { self.fx3_reverb = None; self.fx3_crusher = None; } }
+      else if fx3_t == 2 {
+        let time_ms = 10.0 + fx3_p1.clamp(0.0, 1.0) * 990.0; let fb = (fx3_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
+        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay3.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx3_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]); self.fx3_reverb = None; self.fx3_crusher = None;
+      } else if fx3_t == 1 {
+        if self.fx3_reverb.is_none() { let mut rv = Freeverb::new(self.sr as usize); rv.set_room_size(0.35); rv.set_dampening(0.6); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9); self.fx3_reverb = Some(rv); }
+        if let Some(rv) = &mut self.fx3_reverb {
+          let room = 0.2 + fx3_p1.clamp(0.0, 1.0) * 0.8; let damp = 0.2 + fx3_p2.clamp(0.0, 1.0) * 0.8; let mix = fx3_mix;
+          rv.set_room_size(room as f64); rv.set_dampening(damp as f64); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9);
+          let dry = out; let (wl, wr) = rv.tick((dry as f64, dry as f64)); let lp_amt = 0.5 + 0.5 * (damp as f32); self.fx3_wet_lp_l.set_hf_damp(lp_amt); self.fx3_wet_lp_r.set_hf_damp(lp_amt);
+          let wet_l = self.fx3_wet_lp_l.tick(wl as f32) as f32; let wet_r = self.fx3_wet_lp_r.tick(wr as f32) as f32; let wet_m = 0.5 * (wet_l + wet_r); out = dry * (1.0 - mix) + wet_m * mix;
+        }
+      } else if fx3_t == 3 || fx3_t == 4 || fx3_t == 5 {
+        let rate = 0.05 + fx3_p1 * (5.0 - 0.05); let depth_ms = match fx3_t { 4 => 6.0 * fx3_p2, 5 => 12.0 * fx3_p2, _ => 4.0 * fx3_p2 };
+        if fx3_t == 3 { let (wet, _) = self.phaser3.process_one(out, out, self.sr, rate, fx3_p2, 1.0); out = out * (1.0 - fx3_mix) + wet * fx3_mix; }
+        else { let base_ms = match fx3_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay3.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx3_mix) + wet * fx3_mix; }
+        self.fx3_reverb = None; self.fx3_crusher = None;
+      } else if fx3_t == 6 {
+        let dry = out; let drive_db = (fx3_p1.clamp(0.0, 1.0)) * 20.0; let g = (10.0_f32).powf(drive_db / 20.0); let x = (dry * g).tanh();
+        let tone = fx3_p2.clamp(0.0, 1.0); let lp_amt = 0.3 + 0.6 * (1.0 - tone); self.fx3_wet_lp_l.set_hf_damp(lp_amt);
+        let y_lp = self.fx3_wet_lp_l.tick(x); let y_hp = x - y_lp; let shaped = y_lp * (1.0 - tone) + y_hp * tone; out = dry * (1.0 - fx3_mix) + shaped * fx3_mix; self.fx3_reverb = None; self.fx3_crusher = None;
+      } else if fx3_t == 7 {
+        let dry = out; let drive = fx3_p2.clamp(0.0, 1.0) * 10.0; let g = 1.0 + drive; let cur = fx3_p1.clamp(0.0, 1.0);
+        let xin = dry * g; let shaped = if cur < 0.34 { xin.tanh() } else if cur < 0.67 { xin.clamp(-1.0, 1.0) } else { let m = (xin + 1.0).abs().rem_euclid(4.0); ((m - 2.0).abs() - 1.0).clamp(-1.0, 1.0) };
+        out = dry * (1.0 - fx3_mix) + shaped * fx3_mix; self.fx3_reverb = None; self.fx3_crusher = None;
+      } else if fx3_t == 8 {
+        if self.fx3_crusher.is_none() { self.fx3_crusher = Some(Bitcrusher::new()); }
+        if let Some(cr) = &mut self.fx3_crusher { let bits = 4.0 + fx3_p1.clamp(0.0, 1.0) * 12.0; let fac = 1.0 + fx3_p2.clamp(0.0, 1.0) * 15.0; cr.set_bits(bits as u8); cr.set_factor(fac as u32); cr.set_mix(fx3_mix); let mut lbuf = [out]; let mut rbuf = [out]; cr.process(&mut lbuf, &mut rbuf); out = 0.5 * (lbuf[0] + rbuf[0]); }
+      }
+      // FX4
+      let fx4_t = params.get_i32_h(self.paths.fx4_type, 0);
+      let fx4_p1 = params.get_f32_h(self.paths.fx4_p1, 0.0);
+      let fx4_p2 = params.get_f32_h(self.paths.fx4_p2, 0.0);
+      let fx4_mix = params.get_f32_h(self.paths.fx4_p3, 0.0).clamp(0.0, 1.0);
+      if fx4_t <= 0 || fx4_mix <= 0.0005 { if fx4_t <= 0 { self.fx4_reverb = None; self.fx4_crusher = None; } }
+      else if fx4_t == 2 {
+        let time_ms = 10.0 + fx4_p1.clamp(0.0, 1.0) * 990.0; let fb = (fx4_p2.clamp(0.0, 1.0) * 0.95).min(0.95);
+        let mut lbuf = [out]; let mut rbuf = [out]; self.sdelay4.process_block(&mut lbuf, &mut rbuf, self.sr, time_ms, fb, fx4_mix, false); out = 0.5 * (lbuf[0] + rbuf[0]); self.fx4_reverb = None; self.fx4_crusher = None;
+      } else if fx4_t == 1 {
+        if self.fx4_reverb.is_none() { let mut rv = Freeverb::new(self.sr as usize); rv.set_room_size(0.35); rv.set_dampening(0.6); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9); self.fx4_reverb = Some(rv); }
+        if let Some(rv) = &mut self.fx4_reverb {
+          let room = 0.2 + fx4_p1.clamp(0.0, 1.0) * 0.8; let damp = 0.2 + fx4_p2.clamp(0.0, 1.0) * 0.8; let mix = fx4_mix;
+          rv.set_room_size(room as f64); rv.set_dampening(damp as f64); rv.set_wet(1.0); rv.set_dry(0.0); rv.set_width(0.9);
+          let dry = out; let (wl, wr) = rv.tick((dry as f64, dry as f64)); let lp_amt = 0.5 + 0.5 * (damp as f32); self.fx4_wet_lp_l.set_hf_damp(lp_amt); self.fx4_wet_lp_r.set_hf_damp(lp_amt);
+          let wet_l = self.fx4_wet_lp_l.tick(wl as f32) as f32; let wet_r = self.fx4_wet_lp_r.tick(wr as f32) as f32; let wet_m = 0.5 * (wet_l + wet_r); out = dry * (1.0 - mix) + wet_m * mix;
+        }
+      } else if fx4_t == 3 || fx4_t == 4 || fx4_t == 5 {
+        let rate = 0.05 + fx4_p1 * (5.0 - 0.05); let depth_ms = match fx4_t { 4 => 6.0 * fx4_p2, 5 => 12.0 * fx4_p2, _ => 4.0 * fx4_p2 };
+        if fx4_t == 3 { let (wet, _) = self.phaser4.process_one(out, out, self.sr, rate, fx4_p2, 1.0); out = out * (1.0 - fx4_mix) + wet * fx4_mix; }
+        else { let base_ms = match fx4_t { 4 => 2.0, 5 => 15.0, _ => 3.0 }; let (wet, _) = self.delay4.process_one(out, out, self.sr, rate, base_ms, depth_ms, 1.0); out = out * (1.0 - fx4_mix) + wet * fx4_mix; }
+        self.fx4_reverb = None; self.fx4_crusher = None;
+      } else if fx4_t == 6 {
+        let dry = out; let drive_db = (fx4_p1.clamp(0.0, 1.0)) * 20.0; let g = (10.0_f32).powf(drive_db / 20.0); let x = (dry * g).tanh();
+        let tone = fx4_p2.clamp(0.0, 1.0); let lp_amt = 0.3 + 0.6 * (1.0 - tone); self.fx4_wet_lp_l.set_hf_damp(lp_amt);
+        let y_lp = self.fx4_wet_lp_l.tick(x); let y_hp = x - y_lp; let shaped = y_lp * (1.0 - tone) + y_hp * tone; out = dry * (1.0 - fx4_mix) + shaped * fx4_mix; self.fx4_reverb = None; self.fx4_crusher = None;
+      } else if fx4_t == 7 {
+        let dry = out; let drive = fx4_p2.clamp(0.0, 1.0) * 10.0; let g = 1.0 + drive; let cur = fx4_p1.clamp(0.0, 1.0);
+        let xin = dry * g; let shaped = if cur < 0.34 { xin.tanh() } else if cur < 0.67 { xin.clamp(-1.0, 1.0) } else { let m = (xin + 1.0).abs().rem_euclid(4.0); ((m - 2.0).abs() - 1.0).clamp(-1.0, 1.0) };
+        out = dry * (1.0 - fx4_mix) + shaped * fx4_mix; self.fx4_reverb = None; self.fx4_crusher = None;
+      } else if fx4_t == 8 {
+        if self.fx4_crusher.is_none() { self.fx4_crusher = Some(Bitcrusher::new()); }
+        if let Some(cr) = &mut self.fx4_crusher { let bits = 4.0 + fx4_p1.clamp(0.0, 1.0) * 12.0; let fac = 1.0 + fx4_p2.clamp(0.0, 1.0) * 15.0; cr.set_bits(bits as u8); cr.set_factor(fac as u32); cr.set_mix(fx4_mix); let mut lbuf = [out]; let mut rbuf = [out]; cr.process(&mut lbuf, &mut rbuf); out = 0.5 * (lbuf[0] + rbuf[0]); }
+      }
+      // EQ
+      let q = 1.0_f32; let mut any_nonzero = false;
+      for i in 0..8 {
+        let db = params.get_f32_h(self.paths.eq_bands[i], 0.0).clamp(-12.0, 12.0);
+        if (db - self.eq_last_db[i]).abs() > 1e-6 { self.eq_bands[i].set_peaking(self.sr, self.eq_centers[i], q, db); self.eq_last_db[i] = db; }
+        if db.abs() > 1e-3 { any_nonzero = true; }
+      }
+      if any_nonzero { for i in 0..8 { out = self.eq_bands[i].process(out); } }
+      // Mixer with per-voice pan blending
+      let pan_local = if dframe.mono.abs() > 1e-9 { (dframe.pan_accum / dframe.mono).clamp(-1.0, 1.0) } else { 0.0 };
+      let mut l = out; let mut r = out;
+      let pan = (params.get_f32_h(self.paths.mix_pan, 0.0) + pan_local).clamp(-1.0, 1.0);
+      let theta = (pan + 1.0) * std::f32::consts::FRAC_PI_4; let gl = theta.cos(); let gr = theta.sin(); l *= gl; r *= gr;
+      let vol = params.get_f32_h(self.paths.mix_volume, 1.0).clamp(0.0, 1.0); l *= vol; r *= vol;
+      let haas = params.get_f32_h(self.paths.mix_haas, 0.0).clamp(0.0, 1.0);
+      if haas > 0.0005 {
+        let rd = if self.haas_wr >= self.haas_d { self.haas_wr - self.haas_d } else { self.haas_wr + self.haas_len - self.haas_d };
+        let delayed_l = self.haas_buf[rd]; self.haas_buf[self.haas_wr] = l; self.haas_wr += 1; if self.haas_wr >= self.haas_len { self.haas_wr = 0; }
+        l = l * (1.0 - haas) + delayed_l * haas;
+      } else { self.haas_buf[self.haas_wr] = l; self.haas_wr += 1; if self.haas_wr >= self.haas_len { self.haas_wr = 0; } }
+      let comp = params.get_f32_h(self.paths.mix_comp, 0.0).clamp(0.0, 1.0);
+      if comp > 0.001 { let drive = 1.0 + 8.0 * comp; let id = 1.0 / drive.tanh(); l = (l * drive).tanh() * id; r = (r * drive).tanh() * id; }
+      return (l, r);
+  } else if module == 1 {
       // Acid303 mono voice sample
       let s = self.acid.render_one(params, &self.acid_keys);
       // Early-out if dry is silent and all FX mixes are ~zero (no tails needed)
@@ -1406,7 +1494,7 @@ impl Part {
       let comp = params.get_f32_h(self.paths.mix_comp, 0.0).clamp(0.0, 1.0);
       if comp > 0.001 { let drive = 1.0 + 8.0 * comp; let id = 1.0 / drive.tanh(); l = (l * drive).tanh() * id; r = (r * drive).tanh() * id; }
       return (l, r);
-    } else if module == 4 {
+  } else if module == 4 {
       // Sampler mono voice sample
       let s = self.sampler.render_one(params, &self.sampler_keys, beat_phase);
       // Early-out if dry is silent and all FX mixes are ~zero (no tails needed)
@@ -1614,7 +1702,7 @@ impl Part {
       let comp = params.get_f32_h(self.paths.mix_comp, 0.0).clamp(0.0, 1.0);
       if comp > 0.001 { let drive = 1.0 + 8.0 * comp; let id = 1.0 / drive.tanh(); l = (l * drive).tanh() * id; r = (r * drive).tanh() * id; }
       return (l, r);
-    } else {
+  } else {
       // Analog voices (module == 0)
       // Compute LFO sample every sample; apply global depth with internal smoothing
     let shape = params.get_i32_h(self.paths.lfo_shape, 0);
@@ -1626,7 +1714,7 @@ impl Part {
     if drive > 0.001 { let k = 1.0 + 8.0*drive; lfo_val = (lfo_val*k).tanh() / k.tanh(); }
     let target_amt = params.get_f32_h(self.paths.lfo_amount, 1.0).clamp(0.0, 1.0);
     // simple de-zipper (~10ms): alpha = 1 - exp(-1/(ms*sr)) 
-    let alpha = 1.0 - (-1.0/(0.01*self.sr)).exp();
+  let alpha = 1.0 - (-1.0f32/(0.01*self.sr)).exp();
     self.lfo_hold += (target_amt - self.lfo_hold) * alpha;
     let modv = lfo_val * self.lfo_hold;
     let mut modf = ModFrame { cents_a: 0.0, cents_b: 0.0, lvl_a: 0.0, lvl_b: 0.0, filt1: 0.0, filt2: 0.0 };

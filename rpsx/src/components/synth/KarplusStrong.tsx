@@ -33,7 +33,7 @@ export const KarplusStrong: React.FC = () => {
     s.updateSynthUI((u: any) => ({ ...u, karplus: { ...(u.karplus || {}), ...patch } }));
 
   return (
-    <Page title="KarplusStrong">
+  <Page title="String Theory">
       <Row>
         <Knob
           label="Decay"

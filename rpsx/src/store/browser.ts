@@ -258,9 +258,9 @@ async function refreshPatternItems() {
     const name = s.name.toLowerCase();
     if (name.startsWith('acid 303')) {
       moduleKindById[s.id] = 'acid';
-    } else if (name.startsWith('karplus string')) {
+  } else if (name.startsWith('karplus string') || name.startsWith('string theory')) {
       moduleKindById[s.id] = 'karplus';
-    } else if (name.startsWith('resonator bank')) {
+  } else if (name.startsWith('resonator bank') || name.startsWith('mushrooms')) {
       moduleKindById[s.id] = 'resonator';
     } else if (name.startsWith('sampler')) {
       moduleKindById[s.id] = 'sampler';
@@ -757,8 +757,8 @@ function getCurrentModuleKind(): number {
   const label = state.selectedSoundName || '';
   const l = label.toLowerCase();
   if (l.startsWith('acid 303')) return 1;
-  if (l.startsWith('karplus string')) return 2;
-  if (l.startsWith('resonator bank')) return 3;
+  if (l.startsWith('karplus string') || l.startsWith('string theory')) return 2;
+  if (l.startsWith('resonator bank') || l.startsWith('mushrooms')) return 3;
   if (l.startsWith('sampler')) return 4;
   if (l.startsWith('drum')) return 5;
   return 0;
@@ -785,10 +785,10 @@ function computeSynthPagesForCurrent(): readonly string[] {
   } catch {}
   if (moduleKind === 1) { // Acid
     return ["ACID303", "FX", "MIXER", "EQ"] as const;
-  } else if (moduleKind === 2) { // KarplusStrong
-    return ["KARPLUS", "FX", "MIXER", "EQ"] as const;
-  } else if (moduleKind === 3) { // ResonatorBank
-    return ["RESONATOR", "FX", "MIXER", "EQ"] as const;
+  } else if (moduleKind === 2) { // String Theory (formerly KarplusStrong)
+    return ["STRING THEORY", "FX", "MIXER", "EQ"] as const;
+  } else if (moduleKind === 3) { // Mushrooms (formerly ResonatorBank)
+    return ["MUSHROOMS", "FX", "MIXER", "EQ"] as const;
   } else if (moduleKind === 4) { // Sampler
     // Pages depend on playback mode: show ENVELOPE only in Loop/Keytrack; LOOP tab only in Loop
     const ui = state.getSynthUI() as any;
@@ -803,10 +803,10 @@ function computeSynthPagesForCurrent(): readonly string[] {
       // Keytrack: show ENVELOPE, no LOOP
       return ["SAMPLER", "ENVELOPE", "MIXER", "FX", "EQ"] as const;
     }
-  } else if (moduleKind === 5) { // Drum Sampler
-    return ["DRUM SAMPLER","MIXER","FX","EQ"] as const;
+  } else if (moduleKind === 5) { // Drubbles (formerly Drum Sampler)
+    return ["DRUBBLES","MIXER","FX","EQ"] as const;
   }
-  // Analog synth (default)
+  // Electricity (formerly Analog synth) – default
   return ["OSC","ENV","FILTER","LFO","MOD","FX","MIXER","EQ"] as const;
 }
 // Preview note actions
@@ -862,8 +862,16 @@ state.updatePreviewFromPressed = async () => {
     return;
   }
   const pressed = state._pressedQA || { q: false, a: false };
-  // Only 'a' now triggers preview; ignore 'q'
-  const desired = pressed.a ? 48 : undefined;
+  // Electricity preview: 'a' = base C3 (48), 'q' adds +12, 'a'+'q' = +24.
+  let desired: number | undefined = undefined;
+  if (pressed.a) {
+    const base = 48; // C3
+    const add = pressed.q ? 24 : 0; // if Q held with A, +24
+    desired = base + add;
+  } else if (pressed.q) {
+    // If only Q is held, play +12
+    desired = 48 + 12;
+  }
   const cur = state.currentPreview;
 
   if (desired === cur) return;
@@ -1137,7 +1145,7 @@ function currentSoundKey(): string {
 function uiToSchema(ui: SynthUI) {
   // Map UI (mostly 0..1) to engine-friendly values per schema
   const part = state.selectedSoundPart ?? 0;
-  const name = state.selectedSoundName || 'Analog Synth';
+  const name = state.selectedSoundName || 'Electricity';
   // helper mappers mirrored from components
   const mapCutoff = (v: number) => 20 * Math.pow(10, v * Math.log10(18000/20));
   const mapQ = (v: number) => 0.5 + v * (12 - 0.5);

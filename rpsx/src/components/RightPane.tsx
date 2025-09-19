@@ -96,12 +96,12 @@ function extractName(label: string): string {
 function renderSynthPage(label: string): React.ReactNode {
   switch (label) {
     case 'ACID303': return <Acid303 />;
-    case 'KARPLUS': return <KarplusStrong />;
-    case 'RESONATOR': return <ResonatorBank />;
+  case 'STRING THEORY': return <KarplusStrong />;
+  case 'MUSHROOMS': return <ResonatorBank />;
     case 'SAMPLER': return <Sampler />;
     case 'LOOP': return <SamplerLoop />;
     case 'ENVELOPE': return <SamplerEnvelope />;
-  case 'DRUM SAMPLER': return <DrumSampler />;
+  case 'DRUBBLES': return <DrumSampler />;
     case 'OSC': return <SynthOSC />;
     case 'ENV': return <SynthENV />;
     case 'FILTER': return <SynthFILTER />;
