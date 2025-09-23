@@ -22,7 +22,7 @@ impl Phaser {
     // Advance phase in cycles
     let dp = rate_hz / sr;
     // center fc sweep
-    let modh = ((core::f32::consts::TAU * self.phase).sin() * 0.5 + 0.5); // 0..1
+  let modh = (core::f32::consts::TAU * self.phase).sin() * 0.5 + 0.5; // 0..1
     let fc = 200.0 + (2000.0 - 200.0) * (0.1 + 0.9 * depth * modh);
     for ap in self.ap.iter_mut() { ap.set_fc(fc, sr); }
     let yl = self.ap.iter_mut().fold(l, |x, ap| ap.tick(x));

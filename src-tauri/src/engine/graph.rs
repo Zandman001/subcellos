@@ -269,9 +269,12 @@ impl Voice {
     self.last_a = a_out;
     self.last_b = b_out;
     let mut y = a_out * lvl_a + b_out * lvl_b;
-    // --- Filters with ENV/LFO modulation ---
-    // Filter 1
-    let f1_assign = params.get_i32_h(paths.filter1_assign, 0);
+  // --- Filters with ENV/LFO modulation ---
+  // Filter 1
+  // Type is 0=LP, 1=HP, 2=BP, 3=Notch (driven by UI "Type" knob)
+  let f1_type = params.get_i32_h(paths.filter1_type, 0);
+  // Assign is currently unused here (intended for oscillator routing A/B/AB in future)
+  let _f1_assign_unused = params.get_i32_h(paths.filter1_assign, 0);
   let mut f1_cut = params.get_f32_h(paths.filter1_cutoff_hz, 1200.0);
     let mut f1_q = params.get_f32_h(paths.filter1_q, 0.707);
   // Apply modulation to cutoff from LFO/ENV (coarse mapping: +/- 24 semitones in log freq domain)
@@ -285,11 +288,13 @@ impl Voice {
         self.last_fa_fc = f1_cut; self.last_fa_q = f1_q;
       }
     }
-    let (lp1, hp1, bp1, nt1) = self.filt1.process(y);
-    y = match f1_assign { 1 => lp1, 2 => hp1, 3 => bp1, 4 => nt1, _ => y };
+  let (lp1, hp1, bp1, nt1) = self.filt1.process(y);
+  // Select output by filter type (from UI)
+  y = match f1_type { 0 => lp1, 1 => hp1, 2 => bp1, 3 => nt1, _ => lp1 };
 
     // Filter 2
-    let f2_assign = params.get_i32_h(paths.filter2_assign, 0);
+  let f2_type = params.get_i32_h(paths.filter2_type, 0);
+  let _f2_assign_unused = params.get_i32_h(paths.filter2_assign, 0);
   let mut f2_cut = params.get_f32_h(paths.filter2_cutoff_hz, 1200.0);
     let mut f2_q = params.get_f32_h(paths.filter2_q, 0.707);
   if _filt2_m.abs() > 1e-6 { let ratio = (2.0_f32).powf(_filt2_m * 2.0); f2_cut = (f2_cut * ratio).clamp(20.0, 18000.0); }
@@ -299,8 +304,8 @@ impl Voice {
         self.last_fb_fc = f2_cut; self.last_fb_q = f2_q;
       }
     }
-    let (lp2, hp2, bp2, nt2) = self.filt2.process(y);
-    y = match f2_assign { 1 => lp2, 2 => hp2, 3 => bp2, 4 => nt2, _ => y };
+  let (lp2, hp2, bp2, nt2) = self.filt2.process(y);
+  y = match f2_type { 0 => lp2, 1 => hp2, 2 => bp2, 3 => nt2, _ => lp2 };
 
     // Amp envelope and velocity
     y *= env_amp * self.vel;

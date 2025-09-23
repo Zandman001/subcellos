@@ -14,9 +14,9 @@ pub struct AudioEngine {
   params: Option<ParamStore>,
   stream: Option<cpal::Stream>,
   spec_tx: Option<Sender<Vec<f32>>>,
-  spec_buf: Vec<f32>,
-  recording: bool,
-  recorded_samples: Vec<f32>,
+  #[allow(dead_code)] spec_buf: Vec<f32>,
+  #[allow(dead_code)] recording: bool,
+  #[allow(dead_code)] recorded_samples: Vec<f32>,
 }
 
 impl AudioEngine {
@@ -183,6 +183,7 @@ impl AudioEngine {
     Ok(())
   }
 
+  #[allow(dead_code)]
   pub fn stop(&mut self) {
     self.stream.take();
   }

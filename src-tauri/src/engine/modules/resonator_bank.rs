@@ -326,7 +326,7 @@ impl ResonatorVoice {
                 for i in 0..bank_size {
                     let partial = i as f32 + 1.0;
                     let i_norm = (i as f32) / (bank_size as f32).max(1.0);
-                    let mut harmonic_freq = base_freq * partial;
+                    let harmonic_freq = base_freq * partial;
                     
                     // Add inharmonicity (detunes higher harmonics)
                     let detune_cents = inharmonicity * partial * partial * 5.0; // Reduced scaling
@@ -449,6 +449,7 @@ impl ResonatorVoice {
 // Parameter keys for the resonator bank
 #[derive(Clone)]
 pub struct ResonatorParamKeys {
+    #[allow(dead_code)]
     pub module_kind: u64,
     pub pitch: u64,
     pub decay: u64,
@@ -471,6 +472,7 @@ pub struct ResonatorParamKeys {
 // Main ResonatorBank structure with polyphonic voices
 #[derive(Clone)]
 pub struct ResonatorBank {
+    #[allow(dead_code)]
     sr: f32,
     voices: [ResonatorVoice; 3], // 3-voice polyphony
     voice_allocator: usize,

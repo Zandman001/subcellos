@@ -28,12 +28,12 @@ impl Default for Project {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Pattern {
-  #[serde(default)]
-  pub soundRefs: Vec<String>,
+  #[serde(default, alias = "sound_refs", rename = "soundRefs")]
+  pub sound_refs: Vec<String>,
 }
 
 impl Default for Pattern {
-  fn default() -> Self { Self { soundRefs: Vec::new() } }
+  fn default() -> Self { Self { sound_refs: Vec::new() } }
 }
 
 fn documents_root() -> Result<PathBuf, String> {
@@ -71,6 +71,7 @@ fn schedule_write(path: PathBuf, data: Vec<u8>) -> Result<(), String> {
   tx.send(data).map_err(|e| format!("send write: {e}"))
 }
 
+#[allow(unused_assignments)]
 fn spawn_writer(path: PathBuf, rx: Receiver<Vec<u8>>) {
   thread::spawn(move || {
     let mut pending: Option<Vec<u8>> = None;
@@ -127,7 +128,6 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
   serde_json::from_slice(&bytes).map_err(|e| e.to_string())
 }
 
-fn project_root() -> Result<PathBuf, String> { documents_root() }
 
 fn now_ms() -> i64 {
   let dur = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
@@ -275,9 +275,9 @@ pub fn delete_sound(project_name: String, sound_id: String) -> Result<(), String
           let f = path.join("pattern.json");
           if f.exists() {
             if let Ok(mut pat) = read_json::<Pattern>(&f) {
-              let len0 = pat.soundRefs.len();
-              pat.soundRefs.retain(|id| id != &sound_id);
-              if pat.soundRefs.len() != len0 {
+              let len0 = pat.sound_refs.len();
+              pat.sound_refs.retain(|id| id != &sound_id);
+              if pat.sound_refs.len() != len0 {
                 let _ = write_json_atomic(&f, &pat);
               }
             }

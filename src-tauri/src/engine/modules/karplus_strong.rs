@@ -83,6 +83,7 @@ pub struct KarplusStrong {
 
 #[derive(Clone)]
 pub struct KSParamKeys {
+    #[allow(dead_code)]
     pub module_kind: u64,
     pub decay: u64,
     pub damp: u64,

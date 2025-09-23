@@ -2,9 +2,13 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug, Deserialize)]
 pub enum ParamValue {
+  #[allow(dead_code)]
   F32(f32),
+  #[allow(dead_code)]
   I32(i32),
+  #[allow(dead_code)]
   Bool(bool),
+  #[allow(dead_code)]
   Str(String),
 }
 

@@ -48,6 +48,7 @@ impl DrumVoice {
 }
 
 pub struct DrumParamKeys {
+  #[allow(dead_code)]
   pub module_kind: u64,
   pub slot_volume: [u64; MAX_DRUM_SLOTS],
   pub slot_pan: [u64; MAX_DRUM_SLOTS],
@@ -132,6 +133,7 @@ impl DrumPlayer {
     }
   }
 
+  #[allow(dead_code)]
   pub fn sample_names(&self) -> &[String] { &self.sample_names }
 
   pub fn note_on(&mut self, note: u8, vel: f32) {

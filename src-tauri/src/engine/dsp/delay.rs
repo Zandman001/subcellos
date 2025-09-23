@@ -5,6 +5,7 @@ impl Smooth {
     Self { y: 0.0, a }
   }
   #[inline]
+  #[allow(dead_code)]
   pub fn set_tau(&mut self, sr: f32, ms: f32) { self.a = (-1.0 / (ms * 0.001 * sr)).exp(); }
   #[inline]
   pub fn next(&mut self, target: f32) -> f32 { self.y = self.a * self.y + (1.0 - self.a) * target; self.y }

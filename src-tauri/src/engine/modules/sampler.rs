@@ -13,18 +13,22 @@ use symphonia::core::probe::Hint;
 
 // Helper functions
 #[inline]
+#[allow(dead_code)]
 fn midi_to_freq(m: u8) -> f32 { 440.0 * 2f32.powf((m as f32 - 69.0) / 12.0) }
 
 #[inline]
 fn cents_to_ratio(c: f32) -> f32 { 2f32.powf(c / 1200.0) }
 
 #[inline]
+#[allow(dead_code)]
 fn db_to_gain(db: f32) -> f32 { 10f32.powf(db / 20.0) }
 
 #[inline]
+#[allow(dead_code)]
 fn lerp(a: f32, b: f32, t: f32) -> f32 { a + (b - a) * t }
 
 #[inline]
+#[allow(dead_code)]
 fn hann_window(t: f32) -> f32 {
     0.5 * (1.0 - (2.0 * PI * t).cos())
 }
@@ -108,6 +112,7 @@ impl SampleBuffer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.data.clear();
         self.length_samples = 0;
@@ -225,6 +230,7 @@ impl Envelope {
     }
 
     // Ensure we're in release if not already (idempotent entry to Release)
+    #[allow(dead_code)]
     fn ensure_release(&mut self) {
         if !matches!(self.stage, EnvelopeStage::Release | EnvelopeStage::Idle) {
             self.note_off();
@@ -291,13 +297,13 @@ pub struct SamplerVoice {
     declick_target: f32,
     declick_rate: f32,
     // Retrigger scheduling
-    retrig_pending: bool,
-    retrig_mode: RetrigMode,
-    retrig_note: u8,
-    retrig_vel: f32,
+    #[allow(dead_code)] retrig_pending: bool,
+    #[allow(dead_code)] retrig_mode: RetrigMode,
+    #[allow(dead_code)] retrig_note: u8,
+    #[allow(dead_code)] retrig_vel: f32,
     last_beat_phase: f32,
     // Tempo-sync retrigger helpers
-    beat_counter: u64,
+    #[allow(dead_code)] beat_counter: u64,
     last_step_idx: i32,
     // Local clock (in beats) that starts on note_on; driven by global BPM but not phase-synced
     local_beats: f32,
@@ -362,6 +368,7 @@ impl SamplerVoice {
         self.gate = false;
     }
 
+    #[allow(dead_code)]
     pub fn request_retrig(&mut self, mode: RetrigMode, note: u8, vel: f32) {
         match mode {
             RetrigMode::Immediate => {
@@ -382,6 +389,7 @@ impl SamplerVoice {
         }
     }
 
+    #[allow(dead_code)]
     fn apply_retrig_now(&mut self, start_pos: f32) {
         self.note = self.retrig_note;
         self.velocity = self.retrig_vel;
@@ -682,7 +690,7 @@ impl SamplerVoice {
 // Parameter keys for the sampler
 #[derive(Clone)]
 pub struct SamplerParamKeys {
-    pub module_kind: u64,
+    #[allow(dead_code)] pub module_kind: u64,
     // Sample parameters
     pub sample_start: u64,
     pub sample_end: u64,
@@ -709,8 +717,8 @@ pub struct Sampler {
     voices: Vec<SamplerVoice>,
     voice_allocator: usize,
     sample_buffer: Arc<Mutex<SampleBuffer>>,
-    recording: bool,
-    record_buffer: Vec<f32>,
+    #[allow(dead_code)] recording: bool,
+    #[allow(dead_code)] record_buffer: Vec<f32>,
     trigger_counter: u64,
 }
 
@@ -790,11 +798,13 @@ impl Sampler {
         self.voices.iter().any(|voice| voice.is_active())
     }
 
+    #[allow(dead_code)]
     pub fn start_recording(&mut self) {
         self.recording = true;
         self.record_buffer.clear();
     }
 
+    #[allow(dead_code)]
     pub fn stop_recording(&mut self) {
         self.recording = false;
         if !self.record_buffer.is_empty() {
@@ -807,6 +817,7 @@ impl Sampler {
         }
     }
 
+    #[allow(dead_code)]
     pub fn record_input(&mut self, input: f32) {
         if self.recording {
             self.record_buffer.push(input);

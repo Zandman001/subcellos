@@ -91,7 +91,7 @@ impl BiquadLP {
 
 #[derive(Clone)]
 pub struct AcidParamKeys {
-  pub module_kind: u64,
+  #[allow(dead_code)] pub module_kind: u64,
   pub wave: u64,
   pub cutoff: u64,
   pub reso: u64,
@@ -100,8 +100,8 @@ pub struct AcidParamKeys {
   pub accent: u64,
   pub slide: u64,
   pub drive: u64,
-  pub step_accent: u64,
-  pub step_slide: u64,
+  #[allow(dead_code)] pub step_accent: u64,
+  #[allow(dead_code)] pub step_slide: u64,
 }
 
 #[derive(Clone)]
