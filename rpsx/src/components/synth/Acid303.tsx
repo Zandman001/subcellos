@@ -1,6 +1,7 @@
 import React from 'react'
 import Knob from './Knob'
 import { useBrowser } from '../../store/browser'
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
 
 export default function Acid303() {
   const s = useBrowser() as any;
@@ -43,6 +44,21 @@ export default function Acid303() {
     drive: typeof raw.drive === 'number' && isFinite(raw.drive) ? raw.drive : 0.3,
   };
   const update = (patch: Partial<typeof acid>) => s.updateSynthUI((u: any) => ({ ...u, acid: { ...(u.acid || {}), ...patch } }));
+
+  // 4-knob hotkeys: page 0 -> Wave, Cutoff, Reso, EnvMod; page 1 -> Decay, Accent, Slide, Drive
+  const clamp01 = (x:number)=> Math.max(0, Math.min(1, x));
+  const step = 1/48;
+  useFourKnobHotkeys({
+    dec1: ()=> { if (page===0) { const v=clamp01(acid.wave-step); update({wave:v}); s.setSynthParam(`part/${part}/acid/wave`, v); } else { const v=clamp01(acid.decay-step); update({decay:v}); s.setSynthParam(`part/${part}/acid/decay`, v); } },
+    inc1: ()=> { if (page===0) { const v=clamp01(acid.wave+step); update({wave:v}); s.setSynthParam(`part/${part}/acid/wave`, v); } else { const v=clamp01(acid.decay+step); update({decay:v}); s.setSynthParam(`part/${part}/acid/decay`, v); } },
+    dec2: ()=> { if (page===0) { const v=clamp01(acid.cutoff-step); update({cutoff:v}); s.setSynthParam(`part/${part}/acid/cutoff`, v); } else { const v=clamp01(acid.accent-step); update({accent:v}); s.setSynthParam(`part/${part}/acid/accent`, v); } },
+    inc2: ()=> { if (page===0) { const v=clamp01(acid.cutoff+step); update({cutoff:v}); s.setSynthParam(`part/${part}/acid/cutoff`, v); } else { const v=clamp01(acid.accent+step); update({accent:v}); s.setSynthParam(`part/${part}/acid/accent`, v); } },
+    dec3: ()=> { if (page===0) { const v=clamp01(acid.reso-step); update({reso:v}); s.setSynthParam(`part/${part}/acid/reso`, v); } else { const v=clamp01(acid.slide-step); update({slide:v}); s.setSynthParam(`part/${part}/acid/slide`, v); } },
+    inc3: ()=> { if (page===0) { const v=clamp01(acid.reso+step); update({reso:v}); s.setSynthParam(`part/${part}/acid/reso`, v); } else { const v=clamp01(acid.slide+step); update({slide:v}); s.setSynthParam(`part/${part}/acid/slide`, v); } },
+    dec4: ()=> { if (page===0) { const v=clamp01(acid.envmod-step); update({envmod:v}); s.setSynthParam(`part/${part}/acid/envmod`, v); } else { const v=clamp01(acid.drive-step); update({drive:v}); s.setSynthParam(`part/${part}/acid/drive`, v); } },
+    inc4: ()=> { if (page===0) { const v=clamp01(acid.envmod+step); update({envmod:v}); s.setSynthParam(`part/${part}/acid/envmod`, v); } else { const v=clamp01(acid.drive+step); update({drive:v}); s.setSynthParam(`part/${part}/acid/drive`, v); } },
+    active: true,
+  });
 
   const knobs0 = (
     <Row>

@@ -2,6 +2,7 @@ import React from 'react'
 import Knob from './Knob'
 import ModMatrixTable, { MOD_DEST_LIST } from './ModMatrixTable'
 import { useBrowser } from '../../store/browser'
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
 
 export default function SynthModMatrix() {
   const s = useBrowser() as any;
@@ -68,6 +69,23 @@ export default function SynthModMatrix() {
     const next = Math.max(0, Math.min(MOD_DEST_LIST.length - 1, Math.round(v * (MOD_DEST_LIST.length - 1))));
     s.setEnvDest(eNow, next);
   };
+
+  // 4-knob hotkeys mirror the compact Mod page behavior
+  useFourKnobHotkeys({
+    dec1: ()=> s.isRDown ? s.updateLfoAmount(lRow, Math.max(-1, Math.min(1, (ui.mod.lfo[lRow].amount ?? 0) - 0.05)))
+                         : s.setLfoRow(Math.max(0, Math.min(4, lRow - 1))),
+    inc1: ()=> s.isRDown ? s.updateLfoAmount(lRow, Math.max(-1, Math.min(1, (ui.mod.lfo[lRow].amount ?? 0) + 0.05)))
+                         : s.setLfoRow(Math.max(0, Math.min(4, lRow + 1))),
+    dec2: ()=> s.setLfoDest(lRow, Math.max(0, Math.min(MOD_DEST_LIST.length-1, (ui.mod.lfo[lRow].dest ?? 0) - 1))),
+    inc2: ()=> s.setLfoDest(lRow, Math.max(0, Math.min(MOD_DEST_LIST.length-1, (ui.mod.lfo[lRow].dest ?? 0) + 1))),
+    dec3: ()=> s.isRDown ? s.updateEnvAmount(eRow, Math.max(-1, Math.min(1, (ui.mod.env[eRow].amount ?? 0) - 0.01)))
+                         : s.setEnvRow(Math.max(0, Math.min(4, eRow - 1))),
+    inc3: ()=> s.isRDown ? s.updateEnvAmount(eRow, Math.max(-1, Math.min(1, (ui.mod.env[eRow].amount ?? 0) + 0.01)))
+                         : s.setEnvRow(Math.max(0, Math.min(4, eRow + 1))),
+    dec4: ()=> s.setEnvDest(eRow, Math.max(0, Math.min(MOD_DEST_LIST.length-1, (ui.mod.env[eRow].dest ?? 0) - 1))),
+    inc4: ()=> s.setEnvDest(eRow, Math.max(0, Math.min(MOD_DEST_LIST.length-1, (ui.mod.env[eRow].dest ?? 0) + 1))),
+    active: true,
+  });
 
   return (
     <Page title={`MOD`}>

@@ -3,6 +3,7 @@ import { useBrowser } from '../../store/browser';
 import Knob from './Knob';
 import EnvelopePreview from './EnvelopePreview';
 import { envTimeFromNorm, envTimeMsFromNorm, formatEnvTime } from '../../utils/envTime';
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys';
 
 export default function SamplerEnvelope() {
   const s = useBrowser() as any;
@@ -41,6 +42,17 @@ export default function SamplerEnvelope() {
 
   const formatPercent = (v: number): string => (v * 100).toFixed(0) + '%';
 
+  // 4-knob hotkeys: Attack, Decay, Sustain, Release
+  const clamp01 = (x:number)=> Math.max(0, Math.min(1, x));
+  const step = 1/48;
+  useFourKnobHotkeys({
+    dec1: ()=> setParam('attack', clamp01((sampler.attack ?? 0) - step)), inc1: ()=> setParam('attack', clamp01((sampler.attack ?? 0) + step)),
+    dec2: ()=> setParam('decay', clamp01((sampler.decay ?? 0) - step)), inc2: ()=> setParam('decay', clamp01((sampler.decay ?? 0) + step)),
+    dec3: ()=> setParam('sustain', clamp01((sampler.sustain ?? 0.7) - step)), inc3: ()=> setParam('sustain', clamp01((sampler.sustain ?? 0.7) + step)),
+    dec4: ()=> setParam('release', clamp01((sampler.release ?? 0) - step)), inc4: ()=> setParam('release', clamp01((sampler.release ?? 0) + step)),
+    active: !disabled,
+  });
+
   return (
     <div className="synth-page">
       <div className="page-header"><h2>ENVELOPE</h2></div>
@@ -52,19 +64,19 @@ export default function SamplerEnvelope() {
       {/* ADSR knobs */}
       <div className="knob-grid envelope-knobs">
         <div className="knob-group">
-          <Knob label="Attack" value={sampler.attack ?? 0} onChange={(v)=> setParam('attack', v)} format={(v)=>fmtTime(mapTime(v))} disabled={disabled} />
+          <Knob label="Attack" value={sampler.attack ?? 0} step={49} onChange={(v)=> setParam('attack', v)} format={(v)=>fmtTime(mapTime(v))} disabled={disabled} />
         </div>
 
         <div className="knob-group">
-          <Knob label="Decay" value={sampler.decay ?? 0} onChange={(v)=> setParam('decay', v)} format={(v)=>fmtTime(mapTime(v))} disabled={disabled} />
+          <Knob label="Decay" value={sampler.decay ?? 0} step={49} onChange={(v)=> setParam('decay', v)} format={(v)=>fmtTime(mapTime(v))} disabled={disabled} />
         </div>
 
         <div className="knob-group">
-          <Knob label="Sustain" value={sampler.sustain ?? 0.7} onChange={(v)=> setParam('sustain', v)} format={formatPercent} disabled={disabled} />
+          <Knob label="Sustain" value={sampler.sustain ?? 0.7} step={49} onChange={(v)=> setParam('sustain', v)} format={formatPercent} disabled={disabled} />
         </div>
 
         <div className="knob-group">
-          <Knob label="Release" value={sampler.release ?? 0} onChange={(v)=> setParam('release', v)} format={(v)=>fmtTime(mapTime(v))} disabled={disabled} />
+          <Knob label="Release" value={sampler.release ?? 0} step={49} onChange={(v)=> setParam('release', v)} format={(v)=>fmtTime(mapTime(v))} disabled={disabled} />
         </div>
       </div>
 

@@ -275,7 +275,7 @@ impl Voice {
   // Filter 1
   // Type is 0=LP, 1=HP, 2=BP, 3=Notch (driven by UI "Type" knob)
   let f1_type = params.get_i32_h(paths.filter1_type, 0);
-  // Assign: 0=None (mute), 1=A, 2=B, 3=AB
+  // Assign: 0=None (bypass), 1=A, 2=B, 3=AB
   let f1_assign = params.get_i32_h(paths.filter1_assign, 0);
   let w1_a: f32 = if f1_assign == 1 || f1_assign == 3 { 1.0_f32 } else { 0.0_f32 };
   let w1_b: f32 = if f1_assign == 2 || f1_assign == 3 { 1.0_f32 } else { 0.0_f32 };
@@ -322,6 +322,25 @@ impl Voice {
   let used2: f32 = if w2_a + w2_b > 0.0_f32 { 1.0_f32 } else { 0.0_f32 };
   let denom = (used1 + used2).max(1.0_f32);
     let mut y = (y1 * used1 + y2 * used2) / denom;
+
+    // If an oscillator isn't assigned to any filter, pass it through as dry (bypass)
+    let osc_a_used = (w1_a + w2_a) > 0.0_f32;
+    let osc_b_used = (w1_b + w2_b) > 0.0_f32;
+    let dry_a = if osc_a_used { 0.0_f32 } else { in_a };
+    let dry_b = if osc_b_used { 0.0_f32 } else { in_b };
+    let dry_count: i32 = (if !osc_a_used { 1 } else { 0 }) + (if !osc_b_used { 1 } else { 0 });
+    if dry_count > 0 {
+      let ydry = (dry_a + dry_b) / (dry_count as f32);
+      let fcount = used1 + used2; // number of active filter routes (0,1,2)
+      if fcount > 0.0_f32 {
+        // Normalize by total contributing paths (filters + dry oscillators)
+        let total = fcount + (dry_count as f32);
+        y = (y * fcount + ydry * (dry_count as f32)) / total;
+      } else {
+        // No filters active; fully bypass
+        y = ydry;
+      }
+    }
 
     // Amp envelope and velocity
     y *= env_amp * self.vel;

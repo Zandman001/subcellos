@@ -2,6 +2,7 @@ import React from 'react'
 import Knob from './Knob'
 import { useBrowser } from '../../store/browser'
 import { setFxPage } from '../../store/browser'
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
 
 export default function SynthFX() {
   const s = useBrowser() as any;
@@ -28,6 +29,26 @@ export default function SynthFX() {
   const part = s.selectedSoundPart ?? 0;
   const typeNames = ['No Effect','Reverb','Delay','Phaser','Chorus','Chorus 2','Distortion','Waveshaper','Bitcrusher'] as const;
   const pedalTypes = [ui.fx1.type, ui.fx2.type, ui.fx3.type, ui.fx4.type].map((t:number)=> Math.max(0, Math.min(8, Math.round(t||0))));
+
+  // 4-knob hotkeys: Type (discrete 9), then three parameters with guard
+  const clamp01 = (x:number)=> Math.max(0, Math.min(1, x));
+  const step = 1/48;
+  const stepDiscrete = (v:number, steps:number, dir:number)=> {
+    const i = Math.round(v * (steps-1));
+    const ni = Math.max(0, Math.min(steps-1, i + dir));
+    return (steps===1)?0:(ni / (steps-1));
+  };
+  const setType = (nv:number)=> { const t = Math.round(clamp01(nv)*8); updateFx(s, key, { type: t }); s.setSynthParam(`part/${part}/${key}/type`, t, 'I32'); };
+  const setP1 = (nv:number)=> { if (disabledParams) return; const v = clamp01(nv); updateFx(s, key, { p1: v }); s.setSynthParam(`part/${part}/${key}/p1`, v); };
+  const setP2 = (nv:number)=> { if (disabledParams) return; const v = clamp01(nv); updateFx(s, key, { p2: v }); s.setSynthParam(`part/${part}/${key}/p2`, v); };
+  const setP3 = (nv:number)=> { if (disabledParams) return; const v = clamp01(nv); updateFx(s, key, { p3: v }); s.setSynthParam(`part/${part}/${key}/p3`, v); };
+  useFourKnobHotkeys({
+    dec1: ()=> setType(stepDiscrete((fx.type||0)/8, 9, -1)), inc1: ()=> setType(stepDiscrete((fx.type||0)/8, 9, +1)),
+    dec2: ()=> setP1((fx.p1||0) - step), inc2: ()=> setP1((fx.p1||0) + step),
+    dec3: ()=> setP2((fx.p2||0) - step), inc3: ()=> setP2((fx.p2||0) + step),
+    dec4: ()=> setP3((fx.p3||0) - step), inc4: ()=> setP3((fx.p3||0) + step),
+    active: true,
+  });
   return (
     <Page title={`FX · ${which}` }>
       <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
@@ -41,18 +62,18 @@ export default function SynthFX() {
         ))}
       </div>
       <Row>
-        <Knob label={L[0]} value={fx.type/8} step={9}
+  <Knob label={L[0]} value={fx.type/8} step={9}
               onChange={(v)=> { const t = Math.round(v*8); updateFx(s, key, { type: t }); s.setSynthParam(`part/${part}/${key}/type`, t, 'I32'); }}
               format={(v)=> typeNames[Math.round(v*8)]} />
-        <Knob label={L[1]} value={fx.p1}
+  <Knob label={L[1]} value={fx.p1} step={49}
               onChange={(v)=> { if (disabledParams) return; updateFx(s, key, { p1: v }); s.setSynthParam(`part/${part}/${key}/p1`, v); }}
               format={(v)=> L[1]==='Time' ? `${Math.round(10 + v*990)} ms` : L[1]==='RateHz' ? `${(0.05 + v*(10-0.05)).toFixed(2)} Hz` : L[1]==='Drive dB' ? `${Math.round(v*20)} dB` : L[1]==='Curve' ? (v<0.34?'tanh':(v<0.67?'clip':'fold')) : L[1]==='Bits' ? `${Math.round(4 + v*12)} bits` : (L[1]==='—' ? '—' : `${Math.round(v*100)}%`)}
               disabled={disabledParams} />
-        <Knob label={L[2]} value={fx.p2}
+  <Knob label={L[2]} value={fx.p2} step={49}
               onChange={(v)=> { if (disabledParams) return; updateFx(s, key, { p2: v }); s.setSynthParam(`part/${part}/${key}/p2`, v); }}
               format={(v)=> L[2]==='Feedback' ? `${Math.round(v*95)}%` : L[2]==='Drive' ? `${(v*10).toFixed(1)}` : L[2]==='Rate Red' ? `x${Math.max(1, Math.round(1 + v*15))}` : (L[2]==='—' ? '—' : `${Math.round(v*100)}%`)}
               disabled={disabledParams} />
-        <Knob label={L[3]} value={fx.p3}
+  <Knob label={L[3]} value={fx.p3} step={49}
               onChange={(v)=> { if (disabledParams) return; updateFx(s, key, { p3: v }); s.setSynthParam(`part/${part}/${key}/p3`, v); }}
               format={(v)=> L[3]==='—' ? '—' : `${Math.round(v*100)}%`}
               disabled={disabledParams} />

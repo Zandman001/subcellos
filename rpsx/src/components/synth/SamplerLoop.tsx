@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useBrowser } from '../../store/browser';
 import Knob from './Knob';
 import { rpc } from '../../rpc';
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys';
 
 export default function SamplerLoop() {
   const s = useBrowser() as any;
@@ -158,6 +159,45 @@ export default function SamplerLoop() {
   setEditing(Math.abs(relView - ((newStart - sampleStart)/span)) < Math.abs(relView - ((newEnd - sampleStart)/span)) ? 'start' : 'end');
   };
 
+  // 4-knob hotkeys: Loop Type (discrete 2), Loop Start, Loop End, Retrig (discrete 8)
+  const clamp01 = (x:number)=> Math.max(0, Math.min(1, x));
+  const step = 1/48;
+  useFourKnobHotkeys({
+    dec1: ()=> setParam('loop_mode', Math.max(0, Math.round(sampler.loop_mode ?? 0) - 1)),
+    inc1: ()=> setParam('loop_mode', Math.min(1, Math.round(sampler.loop_mode ?? 0) + 1)),
+    dec2: ()=> {
+      const rel = clamp01(safeLoopStartRel - step);
+      let abs = sampleStart + rel * span;
+      if (abs > sampler.loop_end - minSpan) abs = sampler.loop_end - minSpan;
+      if (abs < sampleStart) abs = sampleStart;
+      setParam('loop_start', abs);
+    },
+    inc2: ()=> {
+      const rel = clamp01(safeLoopStartRel + step);
+      let abs = sampleStart + rel * span;
+      if (abs > sampler.loop_end - minSpan) abs = sampler.loop_end - minSpan;
+      if (abs < sampleStart) abs = sampleStart;
+      setParam('loop_start', abs);
+    },
+    dec3: ()=> {
+      const rel = clamp01(safeLoopEndRel - step);
+      let abs = sampleStart + rel * span;
+      if (abs < sampler.loop_start + minSpan) abs = sampler.loop_start + minSpan;
+      if (abs > sampleEnd) abs = sampleEnd;
+      setParam('loop_end', abs);
+    },
+    inc3: ()=> {
+      const rel = clamp01(safeLoopEndRel + step);
+      let abs = sampleStart + rel * span;
+      if (abs < sampler.loop_start + minSpan) abs = sampler.loop_start + minSpan;
+      if (abs > sampleEnd) abs = sampleEnd;
+      setParam('loop_end', abs);
+    },
+    dec4: ()=> setParam('retrig_mode', Math.max(0, Math.round(sampler.retrig_mode ?? 0) - 1)),
+    inc4: ()=> setParam('retrig_mode', Math.min(7, Math.round(sampler.retrig_mode ?? 0) + 1)),
+    active: true,
+  });
+
   const setParam = (key: string, value: number) => {
     s.updateSynthUI((ui: any) => ({
       ...ui,
@@ -259,6 +299,7 @@ export default function SamplerLoop() {
         <div className="knob-group">
           <Knob
             value={safeLoopStartRel}
+            step={49}
             dragScale={span} /* smaller selection -> finer movement */
             onChange={(v: number) => {
               const rel = Math.max(0, Math.min(1, v));
@@ -275,6 +316,7 @@ export default function SamplerLoop() {
         <div className="knob-group">
           <Knob
             value={safeLoopEndRel}
+            step={49}
             dragScale={span}
             onChange={(v: number) => {
               const rel = Math.max(0, Math.min(1, v));

@@ -118,7 +118,8 @@ type InternalState = BrowserState & {
   _projectData?: Project;
   _patternData?: Pattern;
   _presetApplied?: Record<string, boolean>;
-  _lastAppliedModuleKind?: number;
+  // Track last applied module kind per part to avoid skipping sends across parts
+  _lastAppliedModuleKindByPart?: Record<number, number>;
 };
 
 const state: InternalState = {
@@ -142,7 +143,7 @@ const state: InternalState = {
   fxSelect: 0,
   eqGroup: 0,
   modulePickerOpen: false,
-  _lastAppliedModuleKind: undefined,
+  _lastAppliedModuleKindByPart: {},
   modulePickerIndex: 0,
   sampleBrowserOpen: false,
   sampleBrowserItems: [],
@@ -276,6 +277,22 @@ async function refreshPatternItems() {
   state.selectedSoundName = selectedSound?.name;
   state.currentSoundType = selectedSound ? normalizeSoundType(selectedSound.type) : undefined;
   state.selectedSoundPart = (selectedSound as any)?.part_index ?? 0;
+  // Proactively sync engine module kind for the newly selected item
+  try { syncModuleKindToEngineForSelected(); } catch {}
+}
+
+// Ensure the engine's part/{selected}/module_kind matches current selection's inferred module
+function syncModuleKindToEngineForSelected() {
+  const part = state.selectedSoundPart ?? 0;
+  const mk = getCurrentModuleKind();
+  const lastMap = state._lastAppliedModuleKindByPart || {};
+  const last = lastMap[part];
+  if (last !== mk) {
+    lastMap[part] = mk as any;
+    set({ _lastAppliedModuleKindByPart: { ...lastMap } });
+    // Send immediately with debounce to avoid IPC flood
+    debounceInvokeSet(`part/${part}/module_kind`, { I32: mk });
+  }
 }
 
 // Actions implementation
@@ -308,13 +325,8 @@ state.loadLevel = async () => {
       const maxIdx = pages.length - 1;
       const idx = Math.max(0, Math.min(maxIdx, state.synthPageIndex));
       set({ synthPages: pages, items: pages.slice(), selected: idx, synthPageIndex: idx });
-      // Ensure engine module_kind matches pages (prevents Analog sounding like Acid and vice versa)
-      try {
-        const part = state.selectedSoundPart ?? 0;
-        const kind = getCurrentModuleKind();
-        await rpc.startAudio();
-        await rpc.setParam(`part/${part}/module_kind`, { I32: kind } as any);
-      } catch {}
+  // Ensure engine module_kind matches current selection
+  try { syncModuleKindToEngineForSelected(); } catch {}
       break;
     }
   }
@@ -378,6 +390,7 @@ state.goRight = async () => {
   if (state.selectedSoundId && (state.currentSoundType === "synth" || state.currentSoundType === "sampler" || state.currentSoundType === "drum")) {
         set({ level: "synth", synthPageIndex: 0, selected: 0 });
         await state.loadLevel();
+  try { syncModuleKindToEngineForSelected(); } catch {}
         // Only (re)apply preset the first time we open this synth to avoid floods/underruns
         const id = state.selectedSoundId!;
         if (!state._presetApplied || !state._presetApplied[id]) {
@@ -411,7 +424,8 @@ state.moveUp = () => {
     const parts = state.soundPartsAtLevel ?? [];
     const names = state.items;
     if (state.selected !== nextSel) { (async ()=>{ try { await state.forceStopPreview(); } catch(_){} })(); }
-    set({ selected: nextSel, selectedSoundId: ids[nextSel], selectedSoundName: names[nextSel], currentSoundType: types[nextSel], selectedSoundPart: parts[nextSel] });
+  set({ selected: nextSel, selectedSoundId: ids[nextSel], selectedSoundName: names[nextSel], currentSoundType: types[nextSel], selectedSoundPart: parts[nextSel] });
+  try { syncModuleKindToEngineForSelected(); } catch {}
   } else {
     set({ selected: nextSel });
   }
@@ -437,7 +451,8 @@ state.moveDown = () => {
     const parts = state.soundPartsAtLevel ?? [];
     const names = state.items;
     if (state.selected !== nextSel) { (async ()=>{ try { await state.forceStopPreview(); } catch(_){} })(); }
-    set({ selected: nextSel, selectedSoundId: ids[nextSel], selectedSoundName: names[nextSel], currentSoundType: types[nextSel], selectedSoundPart: parts[nextSel] });
+  set({ selected: nextSel, selectedSoundId: ids[nextSel], selectedSoundName: names[nextSel], currentSoundType: types[nextSel], selectedSoundPart: parts[nextSel] });
+  try { syncModuleKindToEngineForSelected(); } catch {}
   } else {
     set({ selected: nextSel });
   }
@@ -796,9 +811,12 @@ function computeSynthPagesForCurrent(): readonly string[] {
   // Ensure engine module_kind matches inferred moduleKind (including analog=0)
   try {
     const part = state.selectedSoundPart ?? 0;
-    // We only send if mismatch to avoid extra IPC
-    if (moduleKind !== state._lastAppliedModuleKind) {
-      state._lastAppliedModuleKind = moduleKind as any;
+    // Track per-part last-applied value to avoid cross-part desyncs
+    const lastMap = state._lastAppliedModuleKindByPart || {};
+    const last = lastMap[part];
+    if (last !== moduleKind) {
+      lastMap[part] = moduleKind as any;
+      set({ _lastAppliedModuleKindByPart: { ...lastMap } });
       state.setSynthParam?.(`part/${part}/module_kind`, moduleKind, 'I32');
     }
   } catch {}
@@ -843,9 +861,9 @@ state.startPreview = async (midi: number) => {
   if (cur === midi) return; // already playing
   try {
     if (cur !== undefined) {
-      await rpc.noteOff(0, cur);
+      await rpc.noteOff(state.selectedSoundPart ?? 0, cur);
     }
-    await rpc.noteOn(0, midi, 0.9);
+    await rpc.noteOn(state.selectedSoundPart ?? 0, midi, 0.9);
     set({ currentPreview: midi });
   } catch (e) {
     console.error('preview switch failed', e);
@@ -857,7 +875,7 @@ state.stopPreview = async (midi: number) => {
   if (cur === undefined) return;
   if (cur !== midi) return; // only stop if matches current
   try {
-    await rpc.noteOff(0, cur);
+  await rpc.noteOff(state.selectedSoundPart ?? 0, cur);
   } catch (e) {
     console.error('noteOff failed', e);
   }

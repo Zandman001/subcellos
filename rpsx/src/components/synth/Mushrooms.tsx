@@ -1,6 +1,7 @@
 import React from 'react'
 import Knob from './Knob'
 import { useBrowser } from '../../store/browser'
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
 
 export default function Mushrooms() {
   const s = useBrowser() as any;
@@ -94,6 +95,61 @@ export default function Mushrooms() {
   const pageNames = ['Core', 'Structure', 'Excitation', 'Output'];
   const pageKnobs = [knobs0, knobs1, knobs2, knobs3];
   const label = pageNames[page];
+
+  // 4-knob hotkeys per page
+  const clamp01 = (x:number)=> Math.max(0, Math.min(1, x));
+  const step = 1/48;
+  useFourKnobHotkeys({
+    dec1: ()=> {
+      if (page===0) { const v=clamp01(resonator.pitch-step); update({pitch:v}); s.setSynthParam(`part/${part}/resonator/pitch`, v*2-1); }
+      if (page===1) { const v=clamp01(resonator.mode-step); update({mode:v}); s.setSynthParam(`part/${part}/resonator/mode`, v<0.5?0:1, 'I32'); }
+      if (page===2) { const v=clamp01(resonator.exciter_type-step); update({exciter_type:v}); s.setSynthParam(`part/${part}/resonator/exciter_type`, Math.floor(v*3.99), 'I32'); }
+      if (page===3) { const v=clamp01(resonator.stereo_width-step); update({stereo_width:v}); s.setSynthParam(`part/${part}/resonator/stereo_width`, v); }
+    },
+    inc1: ()=> {
+      if (page===0) { const v=clamp01(resonator.pitch+step); update({pitch:v}); s.setSynthParam(`part/${part}/resonator/pitch`, v*2-1); }
+      if (page===1) { const v=clamp01(resonator.mode+step); update({mode:v}); s.setSynthParam(`part/${part}/resonator/mode`, v<0.5?0:1, 'I32'); }
+      if (page===2) { const v=clamp01(resonator.exciter_type+step); update({exciter_type:v}); s.setSynthParam(`part/${part}/resonator/exciter_type`, Math.floor(v*3.99), 'I32'); }
+      if (page===3) { const v=clamp01(resonator.stereo_width+step); update({stereo_width:v}); s.setSynthParam(`part/${part}/resonator/stereo_width`, v); }
+    },
+    dec2: ()=> {
+      if (page===0) { const v=clamp01(resonator.decay-step); update({decay:v}); s.setSynthParam(`part/${part}/resonator/decay`, v); }
+      if (page===1) { const v=clamp01(resonator.inharmonicity-step); update({inharmonicity:v}); s.setSynthParam(`part/${part}/resonator/inharmonicity`, v*2); }
+      if (page===2) { const v=clamp01(resonator.exciter_amount-step); update({exciter_amount:v}); s.setSynthParam(`part/${part}/resonator/exciter_amount`, v); }
+      if (page===3) { const v=clamp01(resonator.randomize-step); update({randomize:v}); s.setSynthParam(`part/${part}/resonator/randomize`, v); }
+    },
+    inc2: ()=> {
+      if (page===0) { const v=clamp01(resonator.decay+step); update({decay:v}); s.setSynthParam(`part/${part}/resonator/decay`, v); }
+      if (page===1) { const v=clamp01(resonator.inharmonicity+step); update({inharmonicity:v}); s.setSynthParam(`part/${part}/resonator/inharmonicity`, v*2); }
+      if (page===2) { const v=clamp01(resonator.exciter_amount+step); update({exciter_amount:v}); s.setSynthParam(`part/${part}/resonator/exciter_amount`, v); }
+      if (page===3) { const v=clamp01(resonator.randomize+step); update({randomize:v}); s.setSynthParam(`part/${part}/resonator/randomize`, v); }
+    },
+    dec3: ()=> {
+      if (page===0) { const v=clamp01(resonator.brightness-step); update({brightness:v}); s.setSynthParam(`part/${part}/resonator/brightness`, v); }
+      if (page===1) { const v=clamp01(resonator.feedback-step); update({feedback:v}); s.setSynthParam(`part/${part}/resonator/feedback`, v); }
+      if (page===2) { const v=clamp01(resonator.noise_color-step); update({noise_color:v}); s.setSynthParam(`part/${part}/resonator/noise_color`, v*2-1); }
+      if (page===3) { const v=clamp01(resonator.body_blend-step); update({body_blend:v}); s.setSynthParam(`part/${part}/resonator/body_blend`, v); }
+    },
+    inc3: ()=> {
+      if (page===0) { const v=clamp01(resonator.brightness+step); update({brightness:v}); s.setSynthParam(`part/${part}/resonator/brightness`, v); }
+      if (page===1) { const v=clamp01(resonator.feedback+step); update({feedback:v}); s.setSynthParam(`part/${part}/resonator/feedback`, v); }
+      if (page===2) { const v=clamp01(resonator.noise_color+step); update({noise_color:v}); s.setSynthParam(`part/${part}/resonator/noise_color`, v*2-1); }
+      if (page===3) { const v=clamp01(resonator.body_blend+step); update({body_blend:v}); s.setSynthParam(`part/${part}/resonator/body_blend`, v); }
+    },
+    dec4: ()=> {
+      if (page===0) { const v=clamp01(resonator.bank_size-step); update({bank_size:v}); s.setSynthParam(`part/${part}/resonator/bank_size`, Math.round(1+v*15), 'I32'); }
+      if (page===1) { const v=clamp01(resonator.drive-step); update({drive:v}); s.setSynthParam(`part/${part}/resonator/drive`, v); }
+      if (page===2) { const v=clamp01(resonator.strike_rate-step); update({strike_rate:v}); s.setSynthParam(`part/${part}/resonator/strike_rate`, v); }
+      if (page===3) { const v=clamp01(resonator.output_gain-step); update({output_gain:v}); s.setSynthParam(`part/${part}/resonator/output_gain`, (v-0.5)*2); }
+    },
+    inc4: ()=> {
+      if (page===0) { const v=clamp01(resonator.bank_size+step); update({bank_size:v}); s.setSynthParam(`part/${part}/resonator/bank_size`, Math.round(1+v*15), 'I32'); }
+      if (page===1) { const v=clamp01(resonator.drive+step); update({drive:v}); s.setSynthParam(`part/${part}/resonator/drive`, v); }
+      if (page===2) { const v=clamp01(resonator.strike_rate+step); update({strike_rate:v}); s.setSynthParam(`part/${part}/resonator/strike_rate`, v); }
+      if (page===3) { const v=clamp01(resonator.output_gain+step); update({output_gain:v}); s.setSynthParam(`part/${part}/resonator/output_gain`, (v-0.5)*2); }
+    },
+    active: true,
+  });
 
   return (
     <div id="mushrooms-tab" style={{ padding: '16px', backgroundColor: 'var(--bg)', minHeight: 200, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

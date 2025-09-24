@@ -162,13 +162,13 @@ function tick(ts: number) {
     const elapsed = followGlobal ? gElapsed : (s as any)._localStart ? (now - (s as any)._localStart) : 0;
     if (!followGlobal && !(s as any)._localStart) { (s as any)._localStart = now; }
     // Position in steps
-    const totalMs = stMs * s.length;
-    const loopPos = elapsed % totalMs;
-    const frac = Math.max(0, Math.min(1, loopPos / totalMs));
-    const step = Math.floor((loopPos / stMs) + 1e-6) % s.length;
+  const totalMs = stMs * s.length;
+  const loopPos = elapsed % totalMs;
+  const frac = Math.max(0, Math.min(1, loopPos / totalMs));
+  const step = Math.floor((loopPos / stMs) + 1e-6) % s.length;
   const prev = s.playheadStep;
-    s.playheadFrac = frac;
-    s.playheadStep = step;
+  s.playheadFrac = frac;
+  s.playheadStep = step;
     // If just started, trigger the very first step immediately
     if ((s as any)._needsTrigger) {
       (s as any)._needsTrigger = false;
@@ -203,42 +203,40 @@ function tick(ts: number) {
     }
     // Triggered step edge detection
     if (prev !== step) {
-      s.lastTriggered = true;
+      // Process all crossed steps between prev and current to avoid skipping at low frame rates
       const part = typeof s.part === 'number' ? s.part : undefined;
-      const curr = (s.steps[step]?.notes) || [];
-      const prevNotes = (s.steps[prev >= 0 ? prev : 0]?.notes) || [];
-      const prevSet = new Set(prevNotes.map(n=>n.midi));
-      if (s.moduleKind === 'synth') {
-        const held: Set<number> = (s as any)._held || new Set<number>();
-        (s as any)._held = held;
-        // NoteOff for held midis not continued
-        const contMidis = new Set<number>();
-        for (const n of curr) { if (n.legato && prevSet.has(n.midi)) contMidis.add(n.midi); }
-        if (typeof part === 'number') {
-          for (const m of Array.from(held)) {
-            if (!contMidis.has(m)) {
-              try { rpc.noteOff(part, m); } catch {}
-              held.delete(m);
+      const stepDiff = (step - Math.max(0, prev));
+      // Determine how many steps advanced considering wrap
+      const advanced = prev < 0 ? 1 : ((stepDiff > 0 ? stepDiff : stepDiff + s.length) || 1);
+      for (let k = 1; k <= advanced; k++) {
+        const from = (prev < 0) ? step : ((Math.max(0, prev) + k - 1) % s.length);
+        const to = (from + 1) % s.length;
+        const curr = (s.steps[to]?.notes) || [];
+        const prevNotes = (s.steps[from]?.notes) || [];
+        const prevSet = new Set(prevNotes.map(n=>n.midi));
+        if (s.moduleKind === 'synth') {
+          const held: Set<number> = (s as any)._held || new Set<number>();
+          (s as any)._held = held;
+          // NoteOff for held midis not continued
+          const contMidis = new Set<number>();
+          for (const n of curr) { if (n.legato && prevSet.has(n.midi)) contMidis.add(n.midi); }
+          if (typeof part === 'number') {
+            for (const m of Array.from(held)) {
+              if (!contMidis.has(m)) { try { rpc.noteOff(part, m); } catch {}; held.delete(m); }
             }
           }
-        }
-        // NoteOn for current non-legato notes
-        for (const n of curr) {
-          const cont = n.legato && prevSet.has(n.midi);
-          if (!cont && typeof part === 'number') {
-            try { rpc.noteOn(part, n.midi, n.vel); } catch {}
-            held.add(n.midi);
+          // NoteOn for current non-legato notes
+          for (const n of curr) {
+            const cont = n.legato && prevSet.has(n.midi);
+            if (!cont && typeof part === 'number') { try { rpc.noteOn(part, n.midi, n.vel); } catch {}; held.add(n.midi); }
           }
-        }
-      } else {
-        // drums/sampler: trigger all notes each step
-        for (const n of curr) {
-          if (typeof part === 'number') { try { rpc.noteOn(part, n.midi, n.vel); } catch {} }
+        } else {
+          // drums/sampler: trigger all notes each step
+          for (const n of curr) { if (typeof part === 'number') { try { rpc.noteOn(part, n.midi, n.vel); } catch {} } }
         }
       }
-      // small decay of flash
+      s.lastTriggered = true;
       setTimeout(() => { s.lastTriggered = false; touch(id); notify(); }, 80);
-      // bump snapshot for step change immediately
       touch(id);
       notify();
     } else {

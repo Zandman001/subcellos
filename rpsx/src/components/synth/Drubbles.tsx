@@ -1,6 +1,7 @@
 import React from 'react';
 import { useBrowser } from '../../store/browser';
 import Knob from './Knob';
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys';
 
 // Drubbles (legacy Drum Sampler UI) – grid squircles + knobs at bottom
 export default function Drubbles() {
@@ -57,6 +58,21 @@ export default function Drubbles() {
   const [fine, setFine] = React.useState(0.5);
   const send = (path: string, v: number) => s.setSynthParam?.(path, v);
 
+  // 4-knob hotkeys for bottom row: Vol, Pan, Semi, Fine
+  const clamp01 = (x:number)=> Math.max(0, Math.min(1, x));
+  const step = 1/48;
+  const setVolK = (nv:number)=> { const v = clamp01(nv); setVol(v); send(volPath, v); };
+  const setPanK = (nv:number)=> { const v = clamp01(nv); setPan(v); send(panPath, v); };
+  const setSemiK = (nv:number)=> { const v = clamp01(nv); setSemi(v); send(semiPath, (v-0.5)*24); };
+  const setFineK = (nv:number)=> { const v = clamp01(nv); setFine(v); send(finePath, (v-0.5)*100); };
+  useFourKnobHotkeys({
+  dec1: ()=> setVolK(vol - step), inc1: ()=> setVolK(vol + step),
+    dec2: ()=> setPanK(pan - step), inc2: ()=> setPanK(pan + step),
+    dec3: ()=> setSemiK(semi - step), inc3: ()=> setSemiK(semi + step),
+    dec4: ()=> setFineK(fine - step), inc4: ()=> setFineK(fine + step),
+    active: !packBrowserOpen,
+  });
+
   // Grid layout: we let flex-wrap handle columns; width fixed for squircles
   const sampleGrid = (
     <div style={{ flex:1, overflowY:'auto', padding:4, display:'flex', flexWrap:'wrap', gap:12, alignContent:'flex-start' }}>
@@ -92,10 +108,10 @@ export default function Drubbles() {
 
   const knobs = (
     <div style={{ display:'flex', gap:24, justifyContent:'center', padding:'8px 0' }}>
-      <Knob label='Vol' value={vol} onChange={v=>{ setVol(v); send(volPath, v); }} format={v=> (v*100).toFixed(0)+'%'} />
-      <Knob label='Pan' value={pan} onChange={v=>{ setPan(v); send(panPath, v); }} format={v=> ((v-0.5)*200).toFixed(0)+'%'} />
-      <Knob label='Semi' value={semi} onChange={v=>{ setSemi(v); send(semiPath, (v-0.5)*24); }} format={v=> ((v-0.5)*24).toFixed(1)} />
-      <Knob label='Fine' value={fine} onChange={v=>{ setFine(v); send(finePath, (v-0.5)*100); }} format={v=> ((v-0.5)*100).toFixed(0)+'c'} />
+  <Knob label='Vol' value={vol} step={49} onChange={v=>{ setVol(v); send(volPath, v); }} format={v=> (v*100).toFixed(0)+'%'} />
+  <Knob label='Pan' value={pan} step={41} onChange={v=>{ setPan(v); send(panPath, v); }} format={v=> ((v-0.5)*200).toFixed(0)+'%'} />
+  <Knob label='Semi' value={semi} step={49} onChange={v=>{ setSemi(v); send(semiPath, (v-0.5)*24); }} format={v=> ((v-0.5)*24).toFixed(1)} />
+  <Knob label='Fine' value={fine} step={49} onChange={v=>{ setFine(v); send(finePath, (v-0.5)*100); }} format={v=> ((v-0.5)*100).toFixed(0)+'c'} />
     </div>
   );
 

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useBrowser } from '../../store/browser';
 import Knob from './Knob';
 import { rpc } from '../../rpc';
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys';
 
 export default function Sampler() {
   const s = useBrowser() as any;
@@ -339,6 +340,21 @@ export default function Sampler() {
     );
   };
 
+  // 4-knob hotkeys: Sample Start, Sample End, Pitch, Playback
+  const clamp01 = (x:number)=> Math.max(0, Math.min(1, x));
+  const step = 1/48;
+  useFourKnobHotkeys({
+    dec1: ()=> { const nv = Math.min(sampler.sample_end - 0.0005, clamp01((sampler.sample_start ?? 0) - step)); setParam('sample_start', nv); },
+    inc1: ()=> { const nv = Math.min(sampler.sample_end - 0.0005, clamp01((sampler.sample_start ?? 0) + step)); setParam('sample_start', nv); },
+    dec2: ()=> { const nv = Math.max(sampler.sample_start + 0.0005, clamp01((sampler.sample_end ?? 1) - step)); setParam('sample_end', nv); },
+    inc2: ()=> { const nv = Math.max(sampler.sample_start + 0.0005, clamp01((sampler.sample_end ?? 1) + step)); setParam('sample_end', nv); },
+    dec3: ()=> { const v = clamp01(unifiedPitchNorm - step); const cents = (v * 2 - 1) * 4900; s.updateSynthUI((ui: any) => ({ ...ui, sampler: { ...ui.sampler, pitch_semitones: 0, pitch_cents: cents } })); s.setSynthParam(`part/${part}/sampler/pitch_semitones`, 0, 'F32'); s.setSynthParam(`part/${part}/sampler/pitch_cents`, cents); },
+    inc3: ()=> { const v = clamp01(unifiedPitchNorm + step); const cents = (v * 2 - 1) * 4900; s.updateSynthUI((ui: any) => ({ ...ui, sampler: { ...ui.sampler, pitch_semitones: 0, pitch_cents: cents } })); s.setSynthParam(`part/${part}/sampler/pitch_semitones`, 0, 'F32'); s.setSynthParam(`part/${part}/sampler/pitch_cents`, cents); },
+    dec4: ()=> { const idx = Math.max(0, playbackModeIndex - 1); setParam('playback_mode', idx); },
+    inc4: ()=> { const idx = Math.min(2, playbackModeIndex + 1); setParam('playback_mode', idx); },
+    active: true,
+  });
+
   return (
     <div className="synth-page">
       <div className="page-header">
@@ -381,6 +397,7 @@ export default function Sampler() {
         <div className="knob-group">
           <Knob
             value={sampler.sample_start}
+            step={49}
             dragScale={dragScaleForSelection}
             onChange={(v: number) => {
               let nv = Math.min(v, sampler.sample_end - 0.0005);
@@ -395,6 +412,7 @@ export default function Sampler() {
         <div className="knob-group">
           <Knob
             value={sampler.sample_end}
+            step={49}
             dragScale={dragScaleForSelection}
             onChange={(v: number) => {
               let nv = Math.max(v, sampler.sample_start + 0.0005);
@@ -409,6 +427,7 @@ export default function Sampler() {
         <div className="knob-group">
           <Knob
             value={unifiedPitchNorm}
+            step={49}
             onChange={(v: number) => {
               // Map 0..1 to total cents in [-4900, +4900]
               const totalCents = (v * 2 - 1) * 4900;

@@ -2,6 +2,7 @@ import React from 'react'
 import Knob from './Knob'
 import ModMatrixTable, { MOD_DEST_LIST } from './ModMatrixTable'
 import { useBrowser, useBrowserStore } from '../../store/browser'
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
 
 export default function SynthMOD() {
   const s = useBrowser() as any;
@@ -58,6 +59,75 @@ export default function SynthMOD() {
       if (d !== 0) updateRow(s,'envRow',(((s.getSynthUI().mod.envRow + d) % 5) + 5) % 5);
     }
   };
+
+  // 4-knob hotkeys: K1 LFO Row or Amt (R), K2 LFO Dest, K3 ENV Row or Amt (R), K4 ENV Dest
+  useFourKnobHotkeys({
+    dec1: ()=> {
+      const part = s.selectedSoundPart ?? 0;
+      if (s.isRDown) {
+        const rowIdx = s.getSynthUI().mod.lfoRow;
+        const next = Math.max(-1, Math.min(1, (s.getSynthUI().mod.lfo[rowIdx].amount ?? 0) - 0.05));
+        s.updateSynthUI((ui:any)=>{ const rows=ui.mod.lfo.slice(); rows[rowIdx]={...rows[rowIdx], amount: next}; return {...ui, mod:{...ui.mod, lfo:rows}}; });
+        s.setSynthParam(`part/${part}/mod/lfo/row${rowIdx}/amount`, next, 'F32');
+      } else {
+        updateRow(s,'lfoRow', Math.max(0, Math.min(4, (s.getSynthUI().mod.lfoRow - 1))));
+      }
+    },
+    inc1: ()=> {
+      const part = s.selectedSoundPart ?? 0;
+      if (s.isRDown) {
+        const rowIdx = s.getSynthUI().mod.lfoRow;
+        const next = Math.max(-1, Math.min(1, (s.getSynthUI().mod.lfo[rowIdx].amount ?? 0) + 0.05));
+        s.updateSynthUI((ui:any)=>{ const rows=ui.mod.lfo.slice(); rows[rowIdx]={...rows[rowIdx], amount: next}; return {...ui, mod:{...ui.mod, lfo:rows}}; });
+        s.setSynthParam(`part/${part}/mod/lfo/row${rowIdx}/amount`, next, 'F32');
+      } else {
+        updateRow(s,'lfoRow', Math.max(0, Math.min(4, (s.getSynthUI().mod.lfoRow + 1))));
+      }
+    },
+    dec2: ()=> {
+      const rowIdx = s.getSynthUI().mod.lfoRow;
+      const cur = s.getSynthUI().mod.lfo[rowIdx].dest;
+      updateDest(s,'lfo', Math.max(0, Math.min(MOD_DEST_LIST.length-1, cur - 1)));
+    },
+    inc2: ()=> {
+      const rowIdx = s.getSynthUI().mod.lfoRow;
+      const cur = s.getSynthUI().mod.lfo[rowIdx].dest;
+      updateDest(s,'lfo', Math.max(0, Math.min(MOD_DEST_LIST.length-1, cur + 1)));
+    },
+    dec3: ()=> {
+      const part = s.selectedSoundPart ?? 0;
+      if (s.isRDown) {
+        const rowIdx = s.getSynthUI().mod.lfoRow;
+        const next = Math.max(-1, Math.min(1, (s.getSynthUI().mod.lfo[rowIdx].amount ?? 0) - 0.01));
+        s.updateSynthUI((ui:any)=>{ const rows=ui.mod.lfo.slice(); rows[rowIdx]={...rows[rowIdx], amount: next}; return {...ui, mod:{...ui.mod, lfo:rows}}; });
+        s.setSynthParam(`part/${part}/mod/lfo/row${rowIdx}/amount`, next, 'F32');
+      } else {
+        updateRow(s,'envRow', Math.max(0, Math.min(4, (s.getSynthUI().mod.envRow - 1))));
+      }
+    },
+    inc3: ()=> {
+      const part = s.selectedSoundPart ?? 0;
+      if (s.isRDown) {
+        const rowIdx = s.getSynthUI().mod.lfoRow;
+        const next = Math.max(-1, Math.min(1, (s.getSynthUI().mod.lfo[rowIdx].amount ?? 0) + 0.01));
+        s.updateSynthUI((ui:any)=>{ const rows=ui.mod.lfo.slice(); rows[rowIdx]={...rows[rowIdx], amount: next}; return {...ui, mod:{...ui.mod, lfo:rows}}; });
+        s.setSynthParam(`part/${part}/mod/lfo/row${rowIdx}/amount`, next, 'F32');
+      } else {
+        updateRow(s,'envRow', Math.max(0, Math.min(4, (s.getSynthUI().mod.envRow + 1))));
+      }
+    },
+    dec4: ()=> {
+      const rowIdx = s.getSynthUI().mod.envRow;
+      const cur = s.getSynthUI().mod.env[rowIdx].dest;
+      updateDest(s,'env', Math.max(0, Math.min(MOD_DEST_LIST.length-1, cur - 1)));
+    },
+    inc4: ()=> {
+      const rowIdx = s.getSynthUI().mod.envRow;
+      const cur = s.getSynthUI().mod.env[rowIdx].dest;
+      updateDest(s,'env', Math.max(0, Math.min(MOD_DEST_LIST.length-1, cur + 1)));
+    },
+    active: true,
+  });
   return (
     <Page title={`MOD`}>
       <ModMatrixTable />

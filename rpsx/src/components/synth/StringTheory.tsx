@@ -1,6 +1,7 @@
 import React from 'react';
 import Knob from './Knob';
 import { useBrowser } from '../../store/browser';
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys';
 
 export default function StringTheory() {
   const s = useBrowser() as any;
@@ -26,6 +27,21 @@ export default function StringTheory() {
     tune: typeof raw.tune === 'number' && isFinite(raw.tune) ? raw.tune : 0.0,
   };
   const update = (patch: Partial<typeof karplus>) => s.updateSynthUI((u: any) => ({ ...u, karplus: { ...(u.karplus || {}), ...patch } }));
+
+  // 4-knob hotkeys: Decay, Damp, Excite, Tune
+  const clamp01 = (x:number)=> Math.max(0, Math.min(1, x));
+  const step = 1/48;
+  useFourKnobHotkeys({
+    dec1: ()=> { const v = clamp01(karplus.decay - step); update({decay:v}); s.setSynthParam(`part/${part}/ks/decay`, v); },
+    inc1: ()=> { const v = clamp01(karplus.decay + step); update({decay:v}); s.setSynthParam(`part/${part}/ks/decay`, v); },
+    dec2: ()=> { const v = clamp01(karplus.damp - step); update({damp:v}); s.setSynthParam(`part/${part}/ks/damp`, v); },
+    inc2: ()=> { const v = clamp01(karplus.damp + step); update({damp:v}); s.setSynthParam(`part/${part}/ks/damp`, v); },
+    dec3: ()=> { const v = clamp01(karplus.excite - step); update({excite:v}); s.setSynthParam(`part/${part}/ks/excite`, v); },
+    inc3: ()=> { const v = clamp01(karplus.excite + step); update({excite:v}); s.setSynthParam(`part/${part}/ks/excite`, v); },
+    dec4: ()=> { const v = clamp01(karplus.tune - step); update({tune:v}); s.setSynthParam(`part/${part}/ks/tune`, v); },
+    inc4: ()=> { const v = clamp01(karplus.tune + step); update({tune:v}); s.setSynthParam(`part/${part}/ks/tune`, v); },
+    active: true,
+  });
 
   return (
     <Page title="String Theory">

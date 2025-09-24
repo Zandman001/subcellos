@@ -1,6 +1,7 @@
 import React from 'react'
 import Knob from './Knob'
 import { useSynthEqState, setEqPage, updateEqGain } from '../../store/browser'
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
 import { listen } from '@tauri-apps/api/event'
 
 const FREQS = [50, 100, 200, 400, 800, 1600, 3200, 6400];
@@ -221,6 +222,27 @@ export default function SynthEQView({ partIndex }: { partIndex?: number }) {
   const normFromDb = (db: number) => (db + 8) / 16;
   const dbFromNorm = (n: number) => -8 + n * 16;
 
+  // 4-knob hotkeys to adjust current page bands in 0.5 dB steps (matches step=33)
+  const clampDb = (db: number) => Math.max(VISUAL_DB_MIN, Math.min(VISUAL_DB_MAX, db));
+  const stepDb = 0.5;
+  const quantizeDb = (db: number) => Math.round(db / stepDb) * stepDb;
+  const adjustBand = (idx: number, delta: number) => {
+    const cur = eqGains[idx] ?? 0;
+    const nxt = quantizeDb(clampDb(cur + delta));
+    updateEqGain(idx, nxt);
+  };
+  useFourKnobHotkeys({
+    dec1: () => adjustBand(pageBase + 0, -stepDb),
+    inc1: () => adjustBand(pageBase + 0, +stepDb),
+    dec2: () => adjustBand(pageBase + 1, -stepDb),
+    inc2: () => adjustBand(pageBase + 1, +stepDb),
+    dec3: () => adjustBand(pageBase + 2, -stepDb),
+    inc3: () => adjustBand(pageBase + 2, +stepDb),
+    dec4: () => adjustBand(pageBase + 3, -stepDb),
+    inc4: () => adjustBand(pageBase + 3, +stepDb),
+    active: true,
+  });
+
   return (
     <div className="eq-panel">
       <div className="eq-canvas-wrap" ref={wrapRef} style={{ position: 'relative' }}>
@@ -241,10 +263,10 @@ export default function SynthEQView({ partIndex }: { partIndex?: number }) {
         })}
       </div>
       <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
-        <Knob label={`K1 → Band ${pageBase+1}`} value={normFromDb(eqGains[pageBase+0] || 0)} onChange={(v)=> updateEqGain(pageBase+0, dbFromNorm(v))} format={() => ''} />
-        <Knob label={`K2 → Band ${pageBase+2}`} value={normFromDb(eqGains[pageBase+1] || 0)} onChange={(v)=> updateEqGain(pageBase+1, dbFromNorm(v))} format={() => ''} />
-        <Knob label={`K3 → Band ${pageBase+3}`} value={normFromDb(eqGains[pageBase+2] || 0)} onChange={(v)=> updateEqGain(pageBase+2, dbFromNorm(v))} format={() => ''} />
-        <Knob label={`K4 → Band ${pageBase+4}`} value={normFromDb(eqGains[pageBase+3] || 0)} onChange={(v)=> updateEqGain(pageBase+3, dbFromNorm(v))} format={() => ''} />
+        <Knob label={`K1 → Band ${pageBase+1}`} value={normFromDb(eqGains[pageBase+0] || 0)} onChange={(v)=> updateEqGain(pageBase+0, dbFromNorm(v))} step={33} format={() => ''} />
+        <Knob label={`K2 → Band ${pageBase+2}`} value={normFromDb(eqGains[pageBase+1] || 0)} onChange={(v)=> updateEqGain(pageBase+1, dbFromNorm(v))} step={33} format={() => ''} />
+        <Knob label={`K3 → Band ${pageBase+3}`} value={normFromDb(eqGains[pageBase+2] || 0)} onChange={(v)=> updateEqGain(pageBase+2, dbFromNorm(v))} step={33} format={() => ''} />
+        <Knob label={`K4 → Band ${pageBase+4}`} value={normFromDb(eqGains[pageBase+3] || 0)} onChange={(v)=> updateEqGain(pageBase+3, dbFromNorm(v))} step={33} format={() => ''} />
       </div>
     </div>
   );

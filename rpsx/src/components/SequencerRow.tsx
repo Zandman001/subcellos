@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Knob from './synth/Knob';
 import { useSequencer, SequencerNote, chordNameFromMidiSet, SequencerStep } from '../store/sequencer';
 import { useBrowser } from '../store/browser';
+import { useFourKnobHotkeys } from '../hooks/useFourKnobHotkeys';
 
 export default function SequencerRow({ soundId, part }: { soundId: string; part: number }) {
   const seq = useSequencer(soundId);
@@ -42,6 +43,72 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
   const [k3, setK3] = useState(0.5);
   const [k4, setK4] = useState(0.7);
   // No local guard needed; store-level ensureNoteAtSelection prevents duplicates
+
+  // 4-knob hotkeys for controls: Step, Note, Pitch/Sample, Velocity (aligned to knob step grids)
+  useFourKnobHotkeys({
+    dec1: ()=> { const st = 1/Math.max(1, seq.length-1); onStepChange(k1 - st); },
+    inc1: ()=> { const st = 1/Math.max(1, seq.length-1); onStepChange(k1 + st); },
+    dec2: ()=> {
+      const notes = seq.steps[seq.stepIndex]?.notes || [];
+      const st = notes.length > 1 ? 1/(notes.length-1) : 1;
+      onNoteChange(Math.max(0, k2 - st));
+    },
+    inc2: ()=> {
+      const notes = seq.steps[seq.stepIndex]?.notes || [];
+      const st = notes.length > 1 ? 1/(notes.length-1) : 1;
+      onNoteChange(Math.min(1, k2 + st));
+    },
+    dec3: ()=> {
+      if (isDrum) {
+        const slots = Math.max(1, (drumSamples?.length || 16));
+        const st = slots > 1 ? 1/(slots-1) : 1;
+        onPitchChange(Math.max(0, k3 - st));
+      } else {
+        onPitchChange(Math.max(0, k3 - 1/48));
+      }
+    },
+    inc3: ()=> {
+      if (isDrum) {
+        const slots = Math.max(1, (drumSamples?.length || 16));
+        const st = slots > 1 ? 1/(slots-1) : 1;
+        onPitchChange(Math.min(1, k3 + st));
+      } else {
+        onPitchChange(Math.min(1, k3 + 1/48));
+      }
+    },
+    dec4: ()=> onVelChange(Math.max(0, k4 - 1/32)),
+    inc4: ()=> onVelChange(Math.min(1, k4 + 1/32)),
+    active: !menu,
+  });
+
+  // When in menu (W), map the same four-knob hotkeys to settings: Res, Length, Mode, Local BPM
+  useFourKnobHotkeys({
+    // Resolution: 6 discrete items
+    dec1: () => {
+      const items = ['1/4','1/8','1/16','1/32','1/8t','1/16t'] as const;
+      const idx = items.indexOf(seq.resolution as any);
+      const next = Math.max(0, idx - 1);
+      const norm = next / (items.length - 1);
+      seq.setResolutionNorm(norm);
+    },
+    inc1: () => {
+      const items = ['1/4','1/8','1/16','1/32','1/8t','1/16t'] as const;
+      const idx = items.indexOf(seq.resolution as any);
+      const next = Math.min(items.length - 1, idx + 1);
+      const norm = next / (items.length - 1);
+      seq.setResolutionNorm(norm);
+    },
+    // Length 1..64
+    dec2: () => seq.setLength(Math.max(1, seq.length - 1)),
+    inc2: () => seq.setLength(Math.min(64, seq.length + 1)),
+    // Mode: two-position switch
+    dec3: () => seq.setMode('tempo'),
+    inc3: () => seq.setMode('poly'),
+    // Local BPM (only active in Poly mode, but allow adjusting anyway)
+    dec4: () => seq.setLocalBpm(Math.max(20, Math.round(seq.localBpm - 1))),
+    inc4: () => seq.setLocalBpm(Math.min(240, Math.round(seq.localBpm + 1))),
+    active: menu,
+  });
 
   // Reflect external selection
   useEffect(() => {
@@ -267,11 +334,12 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
       {/* Controls (Knobs) */}
       {!menu && (
         <div style={{ display: 'flex', justifyContent: 'center', gap: 24, padding: '8px 0' }}>
-          <Knob label="Step" value={k1} onChange={onStepChange} infinite format={() => `${seq.stepIndex + 1}/${Math.max(1, seq.length)}`} onStepClick={(d)=> onStepChange(k1 + (d>0? 1 : -1)/Math.max(1, seq.length-1))} />
-          <Knob label="Note" value={k2} onChange={onNoteChange} infinite format={() => { const notes = seq.steps[seq.stepIndex]?.notes || []; const count = notes.length; const idx = Math.max(0, Math.min(Math.max(0, count-1), seq.noteIndex)); return count ? `${idx+1}/${count}` : '0/0'; }} onStepClick={(d)=> onNoteChange(k2 + (d>0? 1 : -1)/Math.max(1, ((seq.steps[seq.stepIndex]?.notes||[]).length||1)-1 || 1))} />
+          <Knob label="Step" value={k1} step={Math.max(2, seq.length)} onChange={onStepChange} infinite format={() => `${seq.stepIndex + 1}/${Math.max(1, seq.length)}`} onStepClick={(d)=> onStepChange(k1 + (d>0? 1 : -1)/Math.max(1, seq.length-1))} />
+          <Knob label="Note" value={k2} step={Math.max(2, (seq.steps[seq.stepIndex]?.notes?.length || 0) || 2)} onChange={onNoteChange} infinite format={() => { const notes = seq.steps[seq.stepIndex]?.notes || []; const count = notes.length; const idx = Math.max(0, Math.min(Math.max(0, count-1), seq.noteIndex)); return count ? `${idx+1}/${count}` : '0/0'; }} onStepClick={(d)=> onNoteChange(k2 + (d>0? 1 : -1)/Math.max(1, ((seq.steps[seq.stepIndex]?.notes||[]).length||1)-1 || 1))} />
           <Knob
             label={isDrum ? "Sample" : "Pitch"}
             value={k3}
+            step={isDrum ? Math.max(2, (drumSamples?.length || 16)) : 49}
             onChange={onPitchChange}
             infinite
             format={() => {
@@ -300,7 +368,7 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
               }
             }}
           />
-          <Knob label="Velocity" value={k4} onChange={onVelChange} infinite format={() => { const notes = seq.steps[seq.stepIndex]?.notes || []; const cur = notes[seq.noteIndex]; if (!cur) return '--'; return `VEL ${Math.round(cur.vel * 127)}`; }} onStepClick={(d)=> onVelChange(k4 + (d>0? 0.05 : -0.05))} />
+          <Knob label="Velocity" value={k4} step={33} onChange={onVelChange} infinite format={() => { const notes = seq.steps[seq.stepIndex]?.notes || []; const cur = notes[seq.noteIndex]; if (!cur) return '--'; return `VEL ${Math.round(cur.vel * 127)}`; }} onStepClick={(d)=> onVelChange(k4 + (d>0? 0.05 : -0.05))} />
         </div>
       )}
     </div>

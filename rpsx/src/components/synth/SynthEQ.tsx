@@ -2,6 +2,7 @@ import React from 'react'
 import Knob from './Knob'
 import { useBrowser } from '../../store/browser'
 import EQPreview from './EQPreview'
+import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
 
 export default function SynthEQ() {
   const s = useBrowser() as any;
@@ -9,6 +10,15 @@ export default function SynthEQ() {
   const ui = s.getSynthUI();
   const gains = ui.eq.gains;
   const base = s.eqGroup === 0 ? 0 : 4;
+  const clamp01 = (x:number)=> Math.max(0, Math.min(1, x));
+  const step = 1/48;
+  useFourKnobHotkeys({
+    dec1: ()=> setEqGain(s, base+0, clamp01(gains[base+0] - step)), inc1: ()=> setEqGain(s, base+0, clamp01(gains[base+0] + step)),
+    dec2: ()=> setEqGain(s, base+1, clamp01(gains[base+1] - step)), inc2: ()=> setEqGain(s, base+1, clamp01(gains[base+1] + step)),
+    dec3: ()=> setEqGain(s, base+2, clamp01(gains[base+2] - step)), inc3: ()=> setEqGain(s, base+2, clamp01(gains[base+2] + step)),
+    dec4: ()=> setEqGain(s, base+3, clamp01(gains[base+3] - step)), inc4: ()=> setEqGain(s, base+3, clamp01(gains[base+3] + step)),
+    active: true,
+  });
   return (
     <Page title={`EQ · ${group}`}>
       <EQPreview gains={gains} />
