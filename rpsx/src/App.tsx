@@ -1,5 +1,10 @@
 import Shell from './Shell'
+import ErrorBoundary from './components/ErrorBoundary'
 
 export default function App() {
-  return <Shell />
+  return (
+    <ErrorBoundary>
+      <Shell />
+    </ErrorBoundary>
+  )
 }

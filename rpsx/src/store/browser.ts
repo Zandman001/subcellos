@@ -462,6 +462,10 @@ state.add = async () => {
     return;
   }
   if (state.level === "pattern") {
+    // Only allow adding sounds from the Sounds view
+    if (state.currentView !== 'Sounds') {
+      return;
+    }
     if (!state.modulePickerOpen) {
       set({ modulePickerOpen: true, modulePickerIndex: 0 });
       return;
@@ -554,6 +558,8 @@ state.remove = async () => {
       break;
     }
     case "pattern": {
+  // Only allow removing sounds from the Sounds view
+  if (state.currentView !== 'Sounds') return;
       if (!state.projectName) return;
       const id = state.soundIdsAtLevel?.[state.selected];
       if (!id) return;
@@ -631,6 +637,19 @@ state.drumPackLoadSelected = async () => {
   // fetch samples for display
   let samples: string[] = [];
   try { samples = await rpc.listDrumSamples(pack); } catch(e){ console.error('listDrumSamples failed', e); }
+  // Persist selected pack into per-sound UI and save preset
+  try {
+    const id = state.selectedSoundId;
+    if (id) {
+      const map = state.synthUIById || {} as any;
+      const ui = map[id] ? { ...map[id] } : defaultSynthUI();
+      ui.drum = { ...(ui.drum||{}), current_pack: pack };
+      map[id] = ui;
+      set({ synthUIById: { ...map }, synthUIVersion: (state.synthUIVersion||0)+1 });
+      const preset = uiToSchema(ui as any);
+      const proj = state.projectName; if (proj) { await fsClient.saveSoundPreset(proj, id, preset); }
+    }
+  } catch (e) { console.error('persist drum pack failed', e); }
   set({ drumPackBrowserOpen: false, drumSampleItems: samples, drumSampleSelected: 0 });
 };
 state.drumSampleMoveUp = () => {
@@ -1157,6 +1176,8 @@ function uiToSchema(ui: SynthUI) {
     part_index: part,
     params: {
       module_kind: getCurrentModuleKind(),
+      // Persist selected Drubbles pack name if available (stored in per-sound UI)
+      drum: (ui as any).drum && (ui as any).drum.current_pack ? { current_pack: (ui as any).drum.current_pack } : undefined,
       oscA: { shape: Math.round(ui.oscA.shape*7), detune_cents: detuneCents(ui.oscA.detune), fm_to_B: ui.oscA.fm, level: ui.oscA.level },
       oscB: { shape: Math.round(ui.oscB.shape*7), detune_cents: detuneCents(ui.oscB.detune), fm_to_A: ui.oscB.fm, level: ui.oscB.level },
       amp_env: { attack: envTimeFromNorm(ui.ampEnv.a), decay: envTimeFromNorm(ui.ampEnv.d), sustain: ui.ampEnv.s, release: envTimeFromNorm(ui.ampEnv.r) },
@@ -1280,6 +1301,7 @@ async function applyPreset(preset: any) {
   // Update UI state from preset
   state.updateSynthUI((ui: any) => ({
     ...ui,
+  drum: { current_pack: preset.params?.drum?.current_pack },
     oscA: { shape: (p.oscA?.shape ?? 0)/7, detune: ((p.oscA?.detune_cents ?? 0)/200)+0.5, fm: p.oscA?.fm_to_B ?? 0, level: p.oscA?.level ?? 0.7 },
     oscB: { shape: (p.oscB?.shape ?? 0)/7, detune: ((p.oscB?.detune_cents ?? 0)/200)+0.5, fm: p.oscB?.fm_to_A ?? 0, level: p.oscB?.level ?? 0.0 },
     ampEnv: { a: invMapTime(p.amp_env?.attack ?? 0.01), d: invMapTime(p.amp_env?.decay ?? 0.2), s: p.amp_env?.sustain ?? 0.8, r: invMapTime(p.amp_env?.release ?? 0.2) },
@@ -1374,6 +1396,15 @@ async function applyPreset(preset: any) {
   try { await rpc.startAudio(); } catch {}
   const calls: Array<Promise<any>> = [];
   const send = (path: string, v: any) => calls.push(rpc.setParam(pf + path, v));
+  // Drubbles: load saved drum pack first, if present
+  try {
+    const pack = p?.drum?.current_pack;
+    if (typeof pack === 'string' && pack.length > 0) {
+      await rpc.loadDrumPack(part, pack);
+      // Also update UI drum sample list for display if available
+      try { const samples = await rpc.listDrumSamples(pack); set({ drumSampleItems: samples, drumSampleSelected: 0 }); } catch {}
+    }
+  } catch (e) { console.error('applyPreset drum pack load failed', e); }
   // Module kind - also update UI state module hint
   if (typeof p.module_kind === 'number') {
     send(`module_kind`, { I32: p.module_kind });
@@ -1556,9 +1587,9 @@ async function preloadAndReplayProjectPresets(project: string) {
   const pj = await fsClient.readProject(project);
   const sounds = pj.sounds || [];
   for (const s of sounds) {
-    // Apply for Synth and Sampler kinds
+  // Apply for Synth, Sampler, and Drubbles (Drum) kinds
     const kind = (s as any).type || (s as any).kind;
-    if (kind !== 'Synth' && kind !== 'Sampler') continue;
+  if (kind !== 'Synth' && kind !== 'Sampler' && kind !== 'Drum' && kind !== 'DrumSampler') continue;
     const id = s.id; const part = (s as any).part_index ?? 0;
     const preset = await fsClient.loadSoundPreset(project, id);
     if (!preset || preset.schema !== 1) continue;
@@ -1571,6 +1602,10 @@ async function preloadAndReplayProjectPresets(project: string) {
     
     try {
       if (typeof p.module_kind === 'number') { await set(`module_kind`, { I32: p.module_kind }); }
+      // If drum with a saved pack, load it first
+      if (p.drum && typeof p.drum.current_pack === 'string' && p.drum.current_pack.length > 0) {
+        try { await rpc.loadDrumPack(part, p.drum.current_pack); } catch (e) { console.error('preload drum pack failed', e); }
+      }
       // If sampler with a saved file, load it first
       if (p.sampler && typeof p.sampler.current_sample === 'string' && p.sampler.current_sample.length > 0) {
         try { await rpc.loadSample(part, p.sampler.current_sample); } catch (e) { console.error('preload sampler file failed', e); }

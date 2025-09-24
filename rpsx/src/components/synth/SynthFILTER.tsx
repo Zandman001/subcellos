@@ -13,10 +13,10 @@ export default function SynthFILTER() {
     <Page title={`FILTER · ${which}`}>
       <FilterPreview type={filt.type} cutoff={filt.cutoff} q={filt.res} />
       <Row>
-        <Knob label="Type" value={filt.type} step={4} onChange={(v)=> { updateFilt(s, key, { type: v }); s.setSynthParam(`part/0/${key}/type`, Math.round(v*3), 'I32'); }} format={(v)=>['LP','HP','BP','Notch'][Math.round(v*3)]} />
-        <Knob label="Cutoff" value={filt.cutoff} onChange={(v)=> { updateFilt(s, key, { cutoff: v }); s.setSynthParam(`part/0/${key}/cutoff_hz`, mapCutoff(v)); }} format={(v)=>`${Math.round(mapCutoff(v))} Hz`} />
-        <Knob label="Resonance" value={filt.res} onChange={(v)=> { updateFilt(s, key, { res: v }); s.setSynthParam(`part/0/${key}/q`, mapQ(v)); }} format={(v)=>`${mapQ(v).toFixed(2)} Q`} />
-        <Knob label="Assign" value={filt.assign/3} step={4} onChange={(v)=> { updateFilt(s, key, { assign: Math.round(v*3) }); s.setSynthParam(`part/0/${key}/assign`, Math.round(v*3), 'I32'); }} format={(v)=>['None','A','B','AB'][Math.round(v*3)]} />
+  <Knob label="Type" value={filt.type} step={4} onChange={(v)=> { updateFilt(s, key, { type: v }); s.setSynthParam(`part/0/${key}/type`, Math.round(v*3), 'I32'); }} format={(v)=>['LP','HP','BP','Notch'][Math.round(v*3)]} />
+  <Knob label="Cutoff" value={filt.cutoff} onChange={(v)=> { updateFilt(s, key, { cutoff: v }); s.setSynthParam(`part/0/${key}/cutoff_hz`, mapCutoff(v)); }} format={(v)=>`${Math.round(mapCutoff(v))} Hz`} />
+  <Knob label="Resonance" value={filt.res} onChange={(v)=> { updateFilt(s, key, { res: v }); s.setSynthParam(`part/0/${key}/q`, mapQ(v)); }} format={(v)=>`${mapQ(v).toFixed(2)} Q`} />
+  <Knob label="Assign" value={(filt.assign ?? 3)/3} step={4} onChange={(v)=> { const a = Math.round(v*3); updateFilt(s, key, { assign: a }); s.setSynthParam(`part/0/${key}/assign`, a, 'I32'); }} format={(v)=>['None','A','B','AB'][Math.round(v*3)]} />
       </Row>
     </Page>
   );

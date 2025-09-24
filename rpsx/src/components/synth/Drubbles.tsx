@@ -11,6 +11,7 @@ export default function Drubbles() {
   const packBrowserOpen: boolean = !!s.drumPackBrowserOpen;
   const samples: string[] = s.drumSampleItems || [];
   const sampleSel: number = s.drumSampleSelected || 0;
+  const ui: any = s.getSynthUI?.();
 
   React.useEffect(()=>{
     const onKey = (e: KeyboardEvent) => {
@@ -42,7 +43,7 @@ export default function Drubbles() {
     return ()=> window.removeEventListener('keydown', onKey);
   }, [packBrowserOpen, samples.length, packs.length, sampleSel, packSel]);
 
-  const selectedPack = packs[packSel];
+  const selectedPack = packs[packSel] || ui?.drum?.current_pack;
   const paramBase = (slot: number) => `part/${part}/drum/slot/${slot}`;
 
   const volPath = `${paramBase(sampleSel)}/volume`;

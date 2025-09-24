@@ -268,13 +268,19 @@ impl Voice {
     let b_out = sig_b + noise_b;
     self.last_a = a_out;
     self.last_b = b_out;
-    let mut y = a_out * lvl_a + b_out * lvl_b;
-  // --- Filters with ENV/LFO modulation ---
+    // Pre-mix per-oscillator signals (post level) used for filter assignment
+    let in_a = a_out * lvl_a;
+    let in_b = b_out * lvl_b;
+  // --- Filters with ENV/LFO modulation and per-filter Assign routing ---
   // Filter 1
   // Type is 0=LP, 1=HP, 2=BP, 3=Notch (driven by UI "Type" knob)
   let f1_type = params.get_i32_h(paths.filter1_type, 0);
-  // Assign is currently unused here (intended for oscillator routing A/B/AB in future)
-  let _f1_assign_unused = params.get_i32_h(paths.filter1_assign, 0);
+  // Assign: 0=None (mute), 1=A, 2=B, 3=AB
+  let f1_assign = params.get_i32_h(paths.filter1_assign, 0);
+  let w1_a: f32 = if f1_assign == 1 || f1_assign == 3 { 1.0_f32 } else { 0.0_f32 };
+  let w1_b: f32 = if f1_assign == 2 || f1_assign == 3 { 1.0_f32 } else { 0.0_f32 };
+  let norm1 = (w1_a + w1_b).max(1.0_f32); // avoid doubling when AB
+  let mut x1 = (w1_a * in_a + w1_b * in_b) / norm1;
   let mut f1_cut = params.get_f32_h(paths.filter1_cutoff_hz, 1200.0);
     let mut f1_q = params.get_f32_h(paths.filter1_q, 0.707);
   // Apply modulation to cutoff from LFO/ENV (coarse mapping: +/- 24 semitones in log freq domain)
@@ -288,13 +294,17 @@ impl Voice {
         self.last_fa_fc = f1_cut; self.last_fa_q = f1_q;
       }
     }
-  let (lp1, hp1, bp1, nt1) = self.filt1.process(y);
+  let (lp1, hp1, bp1, nt1) = self.filt1.process(x1);
   // Select output by filter type (from UI)
-  y = match f1_type { 0 => lp1, 1 => hp1, 2 => bp1, 3 => nt1, _ => lp1 };
+  let y1 = match f1_type { 0 => lp1, 1 => hp1, 2 => bp1, 3 => nt1, _ => lp1 };
 
     // Filter 2
   let f2_type = params.get_i32_h(paths.filter2_type, 0);
-  let _f2_assign_unused = params.get_i32_h(paths.filter2_assign, 0);
+  let f2_assign = params.get_i32_h(paths.filter2_assign, 0);
+  let w2_a: f32 = if f2_assign == 1 || f2_assign == 3 { 1.0_f32 } else { 0.0_f32 };
+  let w2_b: f32 = if f2_assign == 2 || f2_assign == 3 { 1.0_f32 } else { 0.0_f32 };
+  let norm2 = (w2_a + w2_b).max(1.0_f32);
+  let mut x2 = (w2_a * in_a + w2_b * in_b) / norm2;
   let mut f2_cut = params.get_f32_h(paths.filter2_cutoff_hz, 1200.0);
     let mut f2_q = params.get_f32_h(paths.filter2_q, 0.707);
   if _filt2_m.abs() > 1e-6 { let ratio = (2.0_f32).powf(_filt2_m * 2.0); f2_cut = (f2_cut * ratio).clamp(20.0, 18000.0); }
@@ -304,8 +314,14 @@ impl Voice {
         self.last_fb_fc = f2_cut; self.last_fb_q = f2_q;
       }
     }
-  let (lp2, hp2, bp2, nt2) = self.filt2.process(y);
-  y = match f2_type { 0 => lp2, 1 => hp2, 2 => bp2, 3 => nt2, _ => lp2 };
+  let (lp2, hp2, bp2, nt2) = self.filt2.process(x2);
+  let y2 = match f2_type { 0 => lp2, 1 => hp2, 2 => bp2, 3 => nt2, _ => lp2 };
+
+    // Mix filters in parallel; average if both are active to maintain headroom
+  let used1: f32 = if w1_a + w1_b > 0.0_f32 { 1.0_f32 } else { 0.0_f32 };
+  let used2: f32 = if w2_a + w2_b > 0.0_f32 { 1.0_f32 } else { 0.0_f32 };
+  let denom = (used1 + used2).max(1.0_f32);
+    let mut y = (y1 * used1 + y2 * used2) / denom;
 
     // Amp envelope and velocity
     y *= env_amp * self.vel;

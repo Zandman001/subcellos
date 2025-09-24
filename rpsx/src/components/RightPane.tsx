@@ -17,10 +17,14 @@ import SamplerLoop from "./synth/SamplerLoop";
 import SamplerEnvelope from "./synth/SamplerEnvelope";
 import Drubbles from "./synth/Drubbles";
 // WaterDroplets removed
+import SequencerRow from "./SequencerRow";
+import { useSequencer } from "../store/sequencer";
 
 export default function RightPane({ view }: { view: ViewName }) {
   const s = useBrowser();
-  const { focus, level, items, selected, selectedSoundId } = s as any;
+  const { focus, level, items, selected, selectedSoundId, selectedSoundPart } = s as any;
+  // Always call hooks; use a dummy id when none is selected to respect Rules of Hooks
+  const seq = useSequencer(selectedSoundId || '__none__');
   const focused = focus === 'right';
   // Droplets removed
 
@@ -59,7 +63,21 @@ export default function RightPane({ view }: { view: ViewName }) {
       )}
       {view === 'Sequencer' && (
         level === 'pattern' && selectedSoundId && items[selected]
-          ? <Center>Sequencer for {extractName(items[selected])}</Center>
+          ? (
+            <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '8px 0' }}>
+                <button className="tab" onClick={() => seq?.toggleLocalPlay()}>
+                  {seq?.playingLocal ? 'Pause Local' : 'Play Local'}
+                </button>
+                <button className="tab" onClick={() => seq?.toggleGlobalPlay()}>
+                  {seq?.playingGlobal ? 'Pause Global' : 'Play Global'}
+                </button>
+              </div>
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <SequencerRow soundId={selectedSoundId} part={typeof selectedSoundPart === 'number' ? selectedSoundPart : 0} />
+              </div>
+            </div>
+          )
           : <Center>Nothing to sequence, please select a sound</Center>
       )}
       {view === 'Arrangement' && (

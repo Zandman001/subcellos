@@ -9,9 +9,11 @@ type KnobProps = {
   disabled?: boolean;
   dragScale?: number; // optional scaling of drag sensitivity (multiplies baseline)
   inactive?: boolean; // visually dim, still interactive
+  infinite?: boolean; // if true, don't capture; accumulate deltas endlessly
+  onStepClick?: (dir: -1 | 1) => void; // click steppy: left/right click
 };
 
-export default function Knob({ label, value, onChange, step, format, disabled, dragScale, inactive }: KnobProps) {
+export default function Knob({ label, value, onChange, step, format, disabled, dragScale, inactive, infinite, onStepClick }: KnobProps) {
   // Round knob with radial ticks & pointer
   const [v, setV] = useState<number>(clamp01(value));
   useEffect(() => setV(clamp01(value)), [value]);
@@ -35,19 +37,26 @@ export default function Knob({ label, value, onChange, step, format, disabled, d
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (disabled) return;
-    dragging.current = true;
-    startY.current = e.clientY;
-    startV.current = v;
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
+    if (e.button === 0) {
+      dragging.current = true;
+      startY.current = e.clientY;
+      startV.current = v;
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+    } else if (onStepClick && (e.button === 2 || e.button === 1)) {
+      // middle/right click steps down/up
+      e.preventDefault();
+      onStepClick(e.button === 2 ? -1 : 1);
+    }
   };
+  const onContextMenu = (e: React.MouseEvent) => { if (onStepClick) e.preventDefault(); };
   const onMouseMove = (e: MouseEvent) => {
     if (!dragging.current) return;
     const dy = startY.current - e.clientY;
     const base = e.shiftKey ? 0.001 : 0.003;
     const scale = (dragScale === undefined ? 1 : dragScale);
     const sensitivity = base * scale;
-    const nv = startV.current + dy * sensitivity;
+    const nv = (infinite ? v : startV.current) + dy * sensitivity;
     commit(nv);
   };
   const onMouseUp = () => {
@@ -95,6 +104,7 @@ export default function Knob({ label, value, onChange, step, format, disabled, d
         onMouseDown={onMouseDown}
         onWheel={onWheel}
         style={{ cursor: disabled ? 'default' : 'grab' }}
+        onContextMenu={onContextMenu}
       >
         <div className="knob-face">
           {/* tick ring */}
