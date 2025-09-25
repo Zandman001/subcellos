@@ -48,9 +48,14 @@ export default function BrowserKeys() {
         return;
       }
 
-  // Preview notes inside synth level: 'a' (base), 'q' (+1 oct), and 'a'+'q' (+2 oct) for Electricity.
+      // Preview notes inside synth level: 'a' (base), 'q' (+1 oct), and 'a'+'q' (+2 oct) for Electricity.
+      // Suppress BOTH when current module is drum (Drubbles) – only Drubbles component handles 'a' for slot preview.
       if (st.level === 'synth' && (k === 'a' || k === 'q')) {
-        if (st.currentSoundType === 'drum') { e.preventDefault(); return; }
+        if (st.currentSoundType === 'drum') {
+          // Allow Q to fall through for pack browser open in Drubbles (handled in Drubbles component); prevent generic preview.
+          if (k === 'a') e.preventDefault(); // prevent accidental remove action binding below
+          return;
+        }
         e.preventDefault();
         const pressed = st._pressedQA || { q: false, a: false };
         if (k === 'a') {
@@ -64,8 +69,11 @@ export default function BrowserKeys() {
       if (k === 'd') { st.moveDown(); e.preventDefault(); return; }
       if (k === 's') { st.goLeft(); e.preventDefault(); return; }
       if (k === 'f') { st.goRight(); e.preventDefault(); return; }
+      // Avoid interpreting 'a' as remove when in drum synth page (reserved for slot preview there)
       if (k === 'q') { st.add(); e.preventDefault(); return; }
-      if (k === 'a') { st.remove(); e.preventDefault(); return; }
+      if (k === 'a') {
+        if (st.currentSoundType === 'drum' && st.level === 'synth') { e.preventDefault(); return; }
+        st.remove(); e.preventDefault(); return; }
       if (k === 'w') { st.moveLeft(); e.preventDefault(); return; }
       if (k === 'r') { st.moveRight(); e.preventDefault(); return; }
       };

@@ -28,13 +28,23 @@ type Seq = {
   lastTriggered: boolean; // flash marker
 };
 
+// Pattern-scoped sequences. Composite key: `${patternId}::${soundId}`.
+let currentPatternId: string = 'default';
 const seqMap: Record<string, Seq> = {};
+
+export function sequencerSetCurrentPattern(pid: string) {
+  currentPatternId = pid || 'default';
+}
+
+function keyFor(soundId: string): string { return `${currentPatternId}::${soundId}`; }
+function patternFromKey(k: string): string { const i = k.indexOf('::'); return i >= 0 ? k.slice(0,i) : 'default'; }
 
 // Simple local persistence per soundId
 function saveSeq(soundId: string) {
   if (typeof window === 'undefined') return;
   try {
-    const s = seqMap[soundId];
+  const k = soundId.includes('::') ? soundId : keyFor(soundId);
+  const s = seqMap[k];
     if (!s) return;
     const payload = {
       steps: s.steps,
@@ -44,14 +54,15 @@ function saveSeq(soundId: string) {
       mode: s.mode,
       localBpm: s.localBpm,
     };
-    localStorage.setItem(`seq:${soundId}`, JSON.stringify(payload));
+  localStorage.setItem(`seq:${k}`, JSON.stringify(payload));
   } catch {}
 }
 
 function loadSeq(soundId: string): Partial<Seq> | null {
   if (typeof window === 'undefined') return null;
   try {
-    const raw = localStorage.getItem(`seq:${soundId}`);
+  const k = soundId.includes('::') ? soundId : keyFor(soundId);
+  const raw = localStorage.getItem(`seq:${k}`);
     if (!raw) return null;
     const obj = JSON.parse(raw);
     // Basic validation
@@ -91,26 +102,29 @@ const snapshots: Record<string, any> = {};
 function notify() { listeners.forEach(l => { try { l(); } catch {} }); }
 
 function get(soundId: string): Seq {
-  if (!seqMap[soundId]) {
+  const k = soundId.includes('::') ? soundId : keyFor(soundId);
+  if (!seqMap[k]) {
     const base = getDefault();
-    const loaded = loadSeq(soundId);
-    seqMap[soundId] = loaded ? { ...base, ...loaded } : base;
+    const loaded = loadSeq(k);
+    seqMap[k] = loaded ? { ...base, ...loaded } : base;
   }
-  return seqMap[soundId];
+  return seqMap[k];
 }
 
 function set(soundId: string, patch: Partial<Seq>) {
-  Object.assign(get(soundId), patch);
-  versions[soundId] = (versions[soundId] || 0) + 1;
-  snapshots[soundId] = undefined; // invalidate cached snapshot
+  const k = soundId.includes('::') ? soundId : keyFor(soundId);
+  Object.assign(get(k), patch);
+  versions[k] = (versions[k] || 0) + 1;
+  snapshots[k] = undefined; // invalidate cached snapshot
   notify();
-  saveSeq(soundId);
+  saveSeq(k);
 }
 
 // Transient updates (playhead, flashes) that shouldn't hit localStorage
 function touch(soundId: string) {
-  versions[soundId] = (versions[soundId] || 0) + 1;
-  snapshots[soundId] = undefined;
+  const k = soundId.includes('::') ? soundId : keyFor(soundId);
+  versions[k] = (versions[k] || 0) + 1;
+  snapshots[k] = undefined;
 }
 
 // Transport clock: drive playhead; sequences align to global if playingGlobal true
@@ -119,6 +133,47 @@ let lastT = 0; // ms
 let globalStart = 0;
 let globalPlaying = false;
 let globalBpm = 120;
+// Preview debounce
+let lastPreviewAt = 0;
+const PREVIEW_THROTTLE_MS = 60;
+
+function previewNote(seq: Seq, note: SequencerNote | undefined) {
+  if (!note) return;
+  const now = performance.now();
+  if (now - lastPreviewAt < PREVIEW_THROTTLE_MS) return;
+  lastPreviewAt = now;
+  const part = typeof seq.part === 'number' ? seq.part : undefined;
+  if (typeof part !== 'number') return;
+  try { rpc.startAudio(); } catch {}
+  try { rpc.noteOn(part, note.midi, Math.min(1, Math.max(0.1, note.vel || 0.7))); } catch {}
+  // Schedule quick noteOff for synth previews (not for drums/sampler which are one-shots)
+  if (seq.moduleKind === 'synth') {
+    setTimeout(()=>{ try { rpc.noteOff(part, note.midi); } catch {} }, 180);
+  }
+}
+
+export function sequencerStopAll() {
+  Object.keys(seqMap).forEach(id => {
+    const s = seqMap[id];
+    if (s.playingGlobal || s.playingLocal) {
+      const held: Set<number> = (s as any)._held || new Set<number>();
+      const part = typeof s.part === 'number' ? s.part : undefined;
+      if (typeof part === 'number') {
+        for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} }
+      }
+      (s as any)._held = new Set<number>();
+      s.playingGlobal = false;
+      s.playingLocal = false;
+    }
+  });
+  try { (window as any).__seqGlobalPlaying = false; } catch {}
+  globalPlaying = false;
+  notify();
+}
+// High-resolution step scheduler (interval based) to reduce rAF jitter
+let schedId: any;
+const SCHED_INTERVAL_MS = 8; // ~125 Hz
+const STEP_TOLERANCE_MS = 2; // allow slight early trigger window
 // throttle per-seq frac updates to ~30 Hz to avoid excessive renders
 const lastFracNotify: Record<string, number> = {};
 // Listen to global tempo changes dispatched by TopBar and others
@@ -152,6 +207,7 @@ function tick(ts: number) {
   const gElapsed = now - globalStart;
   // For each sequence: decide which clock to follow
   Object.keys(seqMap).forEach(id => {
+    if (patternFromKey(id) !== currentPatternId) return;
     const s = seqMap[id];
     const followGlobal = (s.mode === 'tempo') && s.playingGlobal;
     const isActive = followGlobal || s.playingLocal; // in polyrhythm mode, allow local when global running
@@ -159,6 +215,20 @@ function tick(ts: number) {
     const stMs = stepTimeMs(s.resolution, bpm);
     if (!isActive) return; // paused entirely
     if (stMs <= 0 || s.length <= 0) return;
+    // If scheduler mode is active, only update fractional playhead here; step edges handled by scheduler.
+    if ((s as any)._schedulerMode) {
+      const startTime = followGlobal ? globalStart : (s as any)._localStart || globalStart;
+      const elapsed = now - startTime;
+      const totalMs = stMs * s.length;
+      const loopPos = elapsed % totalMs;
+      const frac = Math.max(0, Math.min(1, loopPos / totalMs));
+      s.playheadFrac = frac;
+      // throttle notify
+      const nowMs = performance.now();
+      const last = lastFracNotify[id] || 0;
+      if (nowMs - last > 33) { lastFracNotify[id] = nowMs; touch(id); notify(); }
+      return;
+    }
     const elapsed = followGlobal ? gElapsed : (s as any)._localStart ? (now - (s as any)._localStart) : 0;
     if (!followGlobal && !(s as any)._localStart) { (s as any)._localStart = now; }
     // Position in steps
@@ -254,6 +324,73 @@ function tick(ts: number) {
 }
 if (typeof window !== 'undefined') rafId = requestAnimationFrame(tick);
 
+// Step scheduler interval
+function scheduleSteps() {
+  const now = performance.now();
+  Object.keys(seqMap).forEach(id => {
+    if (patternFromKey(id) !== currentPatternId) return;
+    const s = seqMap[id];
+    if (!(s.playingLocal || s.playingGlobal)) return;
+    const followGlobal = (s.mode === 'tempo') && s.playingGlobal;
+    const bpm = followGlobal ? globalBpm : (s.localBpm || 120);
+    const stMs = stepTimeMs(s.resolution, bpm);
+    if (!stMs || stMs <= 0 || s.length <= 0) return;
+    if (!(s as any)._schedulerMode) return; // only for scheduler-enabled sequences
+    if ((s as any)._nextStepTime == null) {
+      (s as any)._nextStepTime = now;
+      (s as any)._lastStepIdx = -1;
+    }
+    // Process all steps whose scheduled time has arrived
+    while (((s as any)._nextStepTime - STEP_TOLERANCE_MS) <= now) {
+      const prevIdx = (s as any)._lastStepIdx;
+      const nextIdx = ((prevIdx + 1) % s.length + s.length) % s.length;
+      triggerStepEdge(s, id, prevIdx, nextIdx);
+      (s as any)._lastStepIdx = nextIdx;
+      s.playheadStep = nextIdx;
+      (s as any)._lastStepTime = (s as any)._nextStepTime;
+      (s as any)._nextStepTime += stMs;
+      // Update playheadFrac immediately after step for snappy UI
+      const loopElapsed = ((s as any)._lastStepTime - (followGlobal ? globalStart : (s as any)._localStart || globalStart));
+      const totalMs = stMs * s.length;
+      s.playheadFrac = Math.max(0, Math.min(1, (loopElapsed % totalMs) / totalMs));
+      touch(id); notify();
+      if (((s as any)._nextStepTime - now) > stMs * 4) break; // safety
+    }
+  });
+}
+if (typeof window !== 'undefined') {
+  schedId = setInterval(scheduleSteps, SCHED_INTERVAL_MS);
+}
+
+function triggerStepEdge(s: Seq, id: string, prev: number, step: number) {
+  const part = typeof s.part === 'number' ? s.part : undefined;
+  const curr = (s.steps[step]?.notes) || [];
+  const prevNotes = (s.steps[prev >= 0 ? prev : 0]?.notes) || [];
+  const prevSet = new Set(prevNotes.map(n=>n.midi));
+  if (s.moduleKind === 'synth') {
+    const held: Set<number> = (s as any)._held || new Set<number>();
+    (s as any)._held = held;
+    // NoteOff for held midis not continued
+    const contMidis = new Set<number>();
+    for (const n of curr) { if (n.legato && prevSet.has(n.midi)) contMidis.add(n.midi); }
+    if (typeof part === 'number') {
+      for (const m of Array.from(held)) {
+        if (!contMidis.has(m)) { try { rpc.noteOff(part, m); } catch {}; held.delete(m); }
+      }
+    }
+    // NoteOn for current non-legato notes
+    for (const n of curr) {
+      const cont = n.legato && prevSet.has(n.midi);
+      if (!cont && typeof part === 'number') { try { rpc.noteOn(part, n.midi, n.vel); } catch {}; held.add(n.midi); }
+    }
+  } else {
+    // drums/sampler: trigger all notes each step
+    for (const n of curr) { if (typeof part === 'number') { try { rpc.noteOn(part, n.midi, n.vel); } catch {} } }
+  }
+  s.lastTriggered = true;
+  setTimeout(() => { s.lastTriggered = false; touch(id); notify(); }, 80);
+}
+
 function snapResolutionFromNorm(v: number): SequencerResolution {
   const items: SequencerResolution[] = ['1/4','1/8','1/16','1/32','1/8t','1/16t'];
   const idx = Math.max(0, Math.min(items.length - 1, Math.round(v * (items.length - 1))));
@@ -261,15 +398,16 @@ function snapResolutionFromNorm(v: number): SequencerResolution {
 }
 
 export function useSequencer(soundId: string) {
-  useEffect(() => { get(soundId); }, [soundId]);
+  useEffect(() => { get(soundId); }, [soundId, currentPatternId]);
   const subscribe = (cb: () => void) => { listeners.add(cb); return () => listeners.delete(cb); };
   // Versioned snapshot: new identity only when set() mutates state
   const getSnapshot = () => {
-    const v = versions[soundId] || 0;
-    const cached = snapshots[soundId];
+    const k = keyFor(soundId);
+    const v = versions[k] || 0;
+    const cached = snapshots[k];
     if (cached && cached.__v === v) return cached;
-    const snap = { ...get(soundId), __v: v } as any;
-    snapshots[soundId] = snap;
+    const snap = { ...get(k), __v: v } as any;
+    snapshots[k] = snap;
     return snap;
   };
   const s = useSyncExternalStore(subscribe, getSnapshot);
@@ -292,6 +430,8 @@ export function useSequencer(soundId: string) {
   notes.push({ midi: baseMidi, vel });
       steps[idx] = { ...steps[idx], notes };
   set(soundId, { steps, noteIndex: Math.max(0, notes.length - 1) });
+      // Preview newly added note
+      previewNote(st, notes[notes.length-1]);
     },
     // Add at most one note: only when the step is empty. Used by pitch knob to avoid spamming.
     ensureNoteAtSelection: (midi: number, vel: number = 0.7) => {
@@ -304,6 +444,7 @@ export function useSequencer(soundId: string) {
       notes.push({ midi, vel });
       steps[idx] = { ...steps[idx], notes };
       set(soundId, { steps, noteIndex: Math.max(0, notes.length - 1) });
+      previewNote(st, notes[0]);
     },
     removeNoteAtSelection: () => {
       const st = get(soundId);
@@ -323,9 +464,12 @@ export function useSequencer(soundId: string) {
       const ni = Math.max(0, Math.min(((st.steps[idx]?.notes.length)||1)-1, st.noteIndex));
       const steps = st.steps.slice();
       const notes = (steps[idx]?.notes || []).slice();
+      const prev = notes[ni];
       notes[ni] = n;
       steps[idx] = { ...steps[idx], notes };
       set(soundId, { steps });
+      // If pitch changed, preview
+      if (!prev || prev.midi !== n.midi) previewNote(st, n);
     },
     toggleLegatoAtSelection: () => {
       const st = get(soundId);
@@ -397,9 +541,11 @@ export function useSequencer(soundId: string) {
           }
         });
         // Start this local
-        (cur as any)._localStart = performance.now();
-        cur.playheadFrac = 0; cur.playheadStep = 0; cur.lastTriggered = false;
-        (cur as any)._needsTrigger = true;
+  const start = performance.now();
+  (cur as any)._localStart = start;
+  cur.playheadFrac = 0; cur.playheadStep = -1; cur.lastTriggered = false;
+  (cur as any)._schedulerMode = true;
+  (cur as any)._nextStepTime = start; (cur as any)._lastStepIdx = -1;
       } else {
         // release any held notes for this local
         const held: Set<number> = (cur as any)._held || new Set<number>();
@@ -424,18 +570,23 @@ export function useSequencer(soundId: string) {
           }
         });
         // Start global
-        globalPlaying = true;
-        globalStart = performance.now();
+  globalPlaying = true;
+  globalStart = performance.now();
+  try { (window as any).__seqGlobalPlaying = true; (window as any).__seqGlobalStart = globalStart; } catch {}
         Object.keys(seqMap).forEach(id => {
+          if (patternFromKey(id) !== currentPatternId) return;
           const s = get(id);
-          s.playheadFrac = 0; s.playheadStep = 0; s.lastTriggered = false;
-          (s as any)._needsTrigger = true;
+          s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
+          (s as any)._schedulerMode = true;
+          (s as any)._nextStepTime = globalStart; (s as any)._lastStepIdx = -1;
           set(id, { playingGlobal: true });
         });
       } else {
         // Stop global and release held notes
-        globalPlaying = false;
+  globalPlaying = false;
+  try { (window as any).__seqGlobalPlaying = false; } catch {}
         Object.keys(seqMap).forEach(id => {
+          if (patternFromKey(id) !== currentPatternId) return;
           const s = get(id);
           const held: Set<number> = (s as any)._held || new Set<number>();
           const part = typeof s.part === 'number' ? s.part : undefined;
@@ -464,6 +615,28 @@ export function useSequencer(soundId: string) {
     toggleLocalPlay(): void;
     toggleGlobalPlay(): void;
   };
+}
+
+// External helper: ensure a sequencer entry has correct part & moduleKind without mounting UI
+export function sequencerSetPart(soundId: string, part: number, kind?: 'synth'|'sampler'|'drum') {
+  const s = get(soundId);
+  s.part = Math.max(0, Math.min(5, Math.floor(part)));
+  if (kind) s.moduleKind = kind;
+  // If global is currently playing, auto-enlist this sequence so user doesn't need to scroll/mount UI first.
+  if ((s as any).playingGlobal !== true && (typeof (globalThis as any).requestAnimationFrame !== 'undefined')) {
+    // Access internal globalPlaying flag via closure by scheduling a no-op tick read; simpler approach: mirror flag on window.
+    // We maintain a mirrored flag on window for cross-module visibility.
+    try {
+      const gp = (window as any).__seqGlobalPlaying;
+      if (gp) {
+        s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
+        (s as any)._schedulerMode = true;
+        const start = (window as any).__seqGlobalStart || performance.now();
+        (s as any)._nextStepTime = start; (s as any)._lastStepIdx = -1;
+        s.playingGlobal = true;
+      }
+    } catch {}
+  }
 }
 
 // Utility: chord naming (basic triads/sevenths by pitch-class set)

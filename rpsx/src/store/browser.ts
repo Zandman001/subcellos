@@ -1,6 +1,8 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { sequencerSetPart } from './sequencer';
 import { fsClient, Pattern, Project, Sound } from "../fsClient";
 import { rpc } from "../rpc";
+import { sequencerSetCurrentPattern, sequencerStopAll } from '../store/sequencer';
 import { envTimeFromNorm, envTimeMsFromNorm, envTimeNormFromMilliseconds, envTimeNormFromSeconds } from "../utils/envTime";
 import type { ViewName } from "../types/ui";
 
@@ -241,6 +243,9 @@ async function loadProject(project: string) {
 }
 
 async function loadPattern(project: string, pattern: string) {
+  // Stop any running playback before switching patterns
+  try { sequencerStopAll(); } catch {}
+  try { sequencerSetCurrentPattern(pattern); } catch {}
   const pat = await fsClient.readPattern(project, pattern);
   state._patternData = pat;
 }
@@ -1608,7 +1613,9 @@ async function preloadAndReplayProjectPresets(project: string) {
   // Apply for Synth, Sampler, and Drubbles (Drum) kinds
     const kind = (s as any).type || (s as any).kind;
   if (kind !== 'Synth' && kind !== 'Sampler' && kind !== 'Drum' && kind !== 'DrumSampler') continue;
-    const id = s.id; const part = (s as any).part_index ?? 0;
+  const id = s.id; const part = (s as any).part_index ?? 0;
+  // Ensure sequencer has correct part & kind before any UI mounts
+  try { sequencerSetPart(id, part, (kind === 'Sampler') ? 'sampler' : (kind === 'Drum' || kind === 'DrumSampler') ? 'drum' : 'synth'); } catch {}
     const preset = await fsClient.loadSoundPreset(project, id);
     if (!preset || preset.schema !== 1) continue;
     
