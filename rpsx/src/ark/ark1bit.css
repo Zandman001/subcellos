@@ -1,0 +1,109 @@
+:root {
+  --ark-bg: #000;
+  --ark-fg: #fff;
+  --ark-gap-1: 2px; /* micro spacing */
+  --ark-gap-2: 4px; /* base grid */
+  --ark-gap-3: 8px; /* group spacing */
+  --ark-speed-fast: 80ms;
+  --ark-speed-med: 160ms;
+  --ark-speed-slow: 320ms;
+  --ark-font-size-6: 6px;
+  --ark-font-size-8: 8px;
+  --ark-focus-ring: 1px solid #fff;
+  --ark-encoder-size: 14px;
+}
+
+/* ===== Monochrome Base ===== */
+.ark-root { background:#000; color:#fff; font-family: var(--ark-font-stack, 'Press Start 2P', monospace); image-rendering: pixelated; }
+
+/* ===== Dither + Noise Patterns (1-bit illusions) ===== */
+.ark-dither-a { background: repeating-conic-gradient(from 45deg, #fff 0deg 2deg, #000 2deg 4deg); background-size:4px 4px; }
+.ark-dither-b { background: repeating-conic-gradient(from 90deg, #fff 0deg 1deg, #000 1deg 2deg); background-size:4px 4px; }
+.ark-stipple-2 { background-image: repeating-linear-gradient(0deg, #fff 0 1px, #000 1px 2px); background-size:2px 2px; }
+
+/* Used for pulse by toggling between a/b */
+@keyframes ark-pulse-alt { 0%,49% { background-position:0 0; } 50%,100% { background-position:1px 1px; } }
+
+/* ===== Glitch Flash ===== */
+@keyframes ark-glitch-flash { 0% { opacity:1; } 100% { opacity:0; } }
+.ark-glitch-layer { position:absolute; inset:0; pointer-events:none; }
+
+/* Will be populated with random pixels via inline style or canvas */
+.ark-glitch-active { animation: ark-glitch-flash 120ms steps(2, end); }
+
+/* Horizontal tear (optional) */
+@keyframes ark-tear { 0% { transform: translateY(0); } 50% { transform: translateY(-1px); } 100% { transform: translateY(0); } }
+.ark-tear-line { position:absolute; left:0; right:0; height:1px; background:#fff; top:10%; animation: ark-tear 90ms linear; }
+
+/* ===== Orbit (discrete positions) ===== */
+/* We approximate 12 angular positions with a sprite-like radial dots using box-shadow */
+.ark-encoder-orbit { position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; }
+.ark-encoder { position:relative; width:var(--ark-encoder-size); height:var(--ark-encoder-size); }
+.ark-encoder-base { position:absolute; inset:0; border:1px solid #fff; border-radius:50%; }
+.ark-encoder-dot { position:absolute; width:2px; height:2px; background:#fff; top:50%; left:50%; margin:-1px 0 0 -1px; }
+
+/* State classes set data-pos (0..11); we map via transform tables */
+.ark-encoder[data-pos="0"]  .ark-encoder-dot { transform:translate(0,-6px); }
+.ark-encoder[data-pos="1"]  .ark-encoder-dot { transform:translate(3,-5px); }
+.ark-encoder[data-pos="2"]  .ark-encoder-dot { transform:translate(5,-3px); }
+.ark-encoder[data-pos="3"]  .ark-encoder-dot { transform:translate(6px,0); }
+.ark-encoder[data-pos="4"]  .ark-encoder-dot { transform:translate(5,3px); }
+.ark-encoder[data-pos="5"]  .ark-encoder-dot { transform:translate(3,5px); }
+.ark-encoder[data-pos="6"]  .ark-encoder-dot { transform:translate(0,6px); }
+.ark-encoder[data-pos="7"]  .ark-encoder-dot { transform:translate(-3,5px); }
+.ark-encoder[data-pos="8"]  .ark-encoder-dot { transform:translate(-5,3px); }
+.ark-encoder[data-pos="9"]  .ark-encoder-dot { transform:translate(-6px,0); }
+.ark-encoder[data-pos="10"] .ark-encoder-dot { transform:translate(-5,-3px); }
+.ark-encoder[data-pos="11"] .ark-encoder-dot { transform:translate(-3,-5px); }
+
+/* Focus ring (1-bit) */
+.ark-focus { outline: var(--ark-focus-ring); outline-offset:1px; }
+
+/* ===== Buttons & Toggles ===== */
+.ark-btn { font: inherit; font-size:8px; letter-spacing:0.5px; padding:2px 4px; border:1px solid #fff; background:#000; color:#fff; cursor:pointer; display:inline-flex; align-items:center; gap:2px; position:relative; }
+.ark-btn:active { filter:invert(1); }
+.ark-btn.is-active { background:#fff; color:#000; }
+.ark-btn.is-disabled { opacity:0.4; pointer-events:none; }
+
+.ark-toggle { width:14px; height:14px; border:1px solid #fff; background:#000; position:relative; cursor:pointer; }
+.ark-toggle[data-state="on"] { background:#fff; }
+.ark-toggle[data-state="alt"] { background:#fff; }
+.ark-toggle[data-state="alt"]::after { content:""; position:absolute; left:3px; right:3px; top:6px; height:1px; background:#000; }
+
+/* ===== Slider ===== */
+.ark-slider { width:80px; height:10px; position:relative; }
+.ark-slider-rail { position:absolute; left:0; right:0; top:50%; height:1px; background:#fff; }
+.ark-slider-handle { position:absolute; top:2px; width:6px; height:6px; background:#fff; }
+.ark-slider.is-focus .ark-slider-handle { outline:1px solid #fff; outline-offset:1px; }
+
+/* ===== Grid ===== */
+.ark-grid { display:grid; grid-template-columns: repeat(var(--cols), var(--cell-size)); grid-auto-rows: var(--cell-size); gap:1px; }
+.ark-grid-cell { width:var(--cell-size); height:var(--cell-size); border:1px solid #fff; position:relative; background:#000; }
+.ark-grid-cell.is-on { background:#fff; color:#000; }
+.ark-grid-cell.is-pulse { animation: ark-pulse-alt 1s steps(2, end) infinite; }
+.ark-grid-cell .corner-accent { position:absolute; width:0; height:0; border-left:4px solid #fff; border-bottom:4px solid transparent; top:-1px; right:-1px; }
+
+/* ===== Labels ===== */
+.ark-label { font-size:8px; line-height:1; white-space:nowrap; }
+
+/* ===== Glyph (ARK runes) ===== */
+.ark-glyph { display:inline-block; width:8px; height:8px; position:relative; }
+/* Basic rune shapes using pseudo elements */
+.ark-glyph[data-kind="A"]::before { content:""; position:absolute; left:3px; top:0; width:2px; height:8px; background:#fff; box-shadow:-3px 8px 0 -3px #000; }
+.ark-glyph[data-kind="A"]::after { content:""; position:absolute; left:0; top:4px; width:8px; height:1px; background:#fff; }
+.ark-glyph[data-kind="R"]::before { content:""; position:absolute; inset:0; background: linear-gradient(#fff 0 50%, #000 0 100%); }
+.ark-glyph[data-kind="K"]::before { content:""; position:absolute; left:0; top:0; width:2px; height:8px; background:#fff; }
+.ark-glyph[data-kind="K"]::after { content:""; position:absolute; left:2px; top:3px; width:6px; height:2px; background:#fff; transform:skewY(40deg); }
+
+/* ===== Utility ===== */
+.ark-row { display:flex; gap:var(--ark-gap-2); align-items:center; }
+.ark-col { display:flex; flex-direction:column; gap:var(--ark-gap-2); }
+.ark-spacer { flex:1; }
+
+/* ===== Selection Pulse (class toggle alt) ===== */
+.ark-pulse-a { background:#000; }
+.ark-pulse-b { background:#000; background-image:linear-gradient(45deg,#fff 0 1px,#000 1px 4px); background-size:4px 4px; }
+
+/* ===== Encoder Value Flash ===== */
+@keyframes ark-value-flash { 0% { filter:invert(0); } 50% { filter:invert(1); } 100% { filter:invert(0); } }
+.ark-value-flash { animation: ark-value-flash 160ms steps(2, end); }

@@ -39,19 +39,15 @@ export default function SynthENV() {
 
 function Page({ title, children }: { title: string, children: React.ReactNode }) {
   return (
-    <div style={{ padding: 8, borderTop: '3px solid var(--accent)' }}>
-      <div style={{ height: 2, background: 'var(--accent)' }} />
-      <div style={{ fontSize: 12, margin: '6px 0 8px' }}>{title}</div>
+    <div className="synth-section" style={{ padding:'var(--space-2)', borderTop:'3px solid var(--accent)' }}>
+      <div style={{ height:2, background:'var(--accent)' }} />
+      <div style={{ fontSize:12, margin:'6px 0 8px' }}>{title}</div>
       {children}
     </div>
   );
 }
 
-function Row({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', gap: 12 }}>{children}</div>
-  )
-}
+function Row({ children }: { children: React.ReactNode }) { return <div style={{ display:'flex', gap:'var(--space-3)' }}>{children}</div>; }
 
 function fmtTime(sec: number): string { return formatEnvTime(sec); }
 

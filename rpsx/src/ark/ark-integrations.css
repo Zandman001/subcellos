@@ -1,0 +1,55 @@
+/* Ark integration overrides applied when body.ark-mode present */
+body.ark-mode {
+  background:#000 !important;
+  color:#fff !important;
+  font-family: 'Press Start 2P', monospace;
+}
+/* ===== Panels / Layout ===== */
+body.ark-mode .panel { border:1px solid #fff; background:#000; box-shadow:none !important; position:relative; }
+body.ark-mode .panel::before { content:""; position:absolute; inset:0; background-image: linear-gradient(45deg,#fff 0 1px,transparent 1px 4px), linear-gradient(45deg,#fff 0 1px,transparent 1px 4px); background-size:4px 4px,4px 4px; background-position:0 0,2px 2px; opacity:0.07; pointer-events:none; }
+/* ===== Tabs / Topbar ===== */
+body.ark-mode .topbar { border-bottom:2px solid #fff; }
+body.ark-mode .tab { background:#000; color:#fff; border-right:1px solid #fff; font-size:9px; letter-spacing:0.5px; }
+body.ark-mode .tab:hover { background:#111; }
+body.ark-mode .tab.active { background:#fff; color:#000; border-bottom:2px solid #000; font-weight:bold; }
+/* ===== Buttons ===== */
+body.ark-mode .btn { background:#000; color:#fff; border:1px solid #fff; box-shadow:none; }
+body.ark-mode .btn:hover { background:#111; }
+body.ark-mode .btn.primary { background:#fff; color:#000; }
+body.ark-mode .btn.primary:hover { background:#e5e5e5; }
+/* ===== Knobs ===== */
+body.ark-mode .knob-face { background:#000; border:1px solid #fff; box-shadow:none; }
+body.ark-mode .knob-tick { background:#fff; opacity:0.3; }
+body.ark-mode .knob-tick:nth-child(3n) { opacity:0.75; }
+body.ark-mode .knob-step { background:#fff; opacity:1; }
+body.ark-mode .knob-pointer { background:#fff; width:2px; height:16px; margin:-16px 0 0 -1px; }
+body.ark-mode .knob-center { background:#000; box-shadow:0 0 0 1px #fff inset; }
+body.ark-mode .ctrl:hover { filter:none; transform:none; }
+/* Orbit overlay */
+/* === Flat Ark Knob Redesign (no orbit) === */
+body.ark-mode .knob-face.ark-flat { position:relative; }
+body.ark-mode .ark-seg-ring { position:absolute; inset:0; pointer-events:none; }
+body.ark-mode .ark-seg { position:absolute; top:50%; left:50%; width:4px; height:10px; margin:-5px 0 0 -2px; background:#fff; opacity:0.18; }
+body.ark-mode .ark-seg.on { opacity:1; }
+body.ark-mode .ark-seg:nth-child(2n) { height:12px; margin-top:-6px; }
+body.ark-mode .ark-core { position:absolute; top:50%; left:50%; width:16px; height:16px; margin:-8px 0 0 -8px; background:#000; border:1px solid #fff; box-shadow:0 0 0 1px #000, inset 0 0 0 1px #fff; }
+body.ark-mode .ark-step-marker { position:absolute; top:50%; left:50%; width:2px; height:6px; margin:-3px 0 0 -1px; background:#fff; }
+/* ===== Main Area Pattern ===== */
+body.ark-mode .main-area { background:#000; background-image: repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 2px), repeating-linear-gradient(90deg,#fff 0 1px,transparent 1px 2px); background-size:4px 4px; }
+/* ===== Lists ===== */
+body.ark-mode .list-item { background:#000; border-bottom:1px solid #111; }
+body.ark-mode .list-item:hover { background:#111; }
+body.ark-mode .list-item.active { background:#fff; color:#000; font-weight:bold; }
+/* ===== Breadcrumb ===== */
+body.ark-mode .breadcrumb-item:last-child { background:#fff; color:#000; padding:2px 4px; }
+/* ===== Inputs ===== */
+body.ark-mode input, body.ark-mode select { background:#000; color:#fff; border:1px solid #fff; box-shadow:none; }
+body.ark-mode input:focus, body.ark-mode select:focus { outline:1px solid #fff; }
+/* ===== Misc Components ===== */
+body.ark-mode .synth-section { border-top:2px solid #fff; }
+body.ark-mode .pedal-chassis { box-shadow:none; border:1px solid #fff; }
+body.ark-mode .pedal-wrap { border:2px solid #fff; }
+/* ===== Scrollbars ===== */
+body.ark-mode ::-webkit-scrollbar-thumb { background:#111; border:1px solid #fff; }
+/* ===== Typography smoothing off ===== */
+body.ark-mode .pixel-text { -webkit-font-smoothing:none; font-smooth:never; }

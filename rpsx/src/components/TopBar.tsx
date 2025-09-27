@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { rpc } from '../rpc'
 import type { ViewName } from '../types/ui'
+import { useBrowser } from '../store/browser'
 
 type Props = {
   active: ViewName
@@ -16,6 +17,7 @@ const TABS: Array<{ key: ViewName; label: string; hotkey: string }> = [
 ]
 
 export default function TopBar({ active, onSelect }: Props) {
+  const s: any = useBrowser();
   const [bpm, setBpm] = useState<number>(120);
   // Reflect tempo changes from Shell hotkey and local edits
   useEffect(() => {
@@ -32,23 +34,10 @@ export default function TopBar({ active, onSelect }: Props) {
     rpc.setTempo(clamped);
     try { window.dispatchEvent(new CustomEvent('tempo-change', { detail: { bpm: clamped } })); } catch {}
   };
-  const [low, setLow] = React.useState<boolean>(false);
-  React.useEffect(() => {
-    const saved = localStorage.getItem('theme.low');
-    const isLow = saved === '1';
-    setLow(isLow);
-    if (isLow) document.documentElement.setAttribute('data-theme', 'low');
-    else document.documentElement.removeAttribute('data-theme');
-  }, []);
-  const toggle = () => {
-    const next = !low;
-    setLow(next);
-    if (next) { document.documentElement.setAttribute('data-theme', 'low'); localStorage.setItem('theme.low', '1'); }
-    else { document.documentElement.removeAttribute('data-theme'); localStorage.removeItem('theme.low'); }
-  };
+  // Removed legacy low-contrast & ark toggles; UI now always Ark-styled.
   return (
-    <div className="topbar pixel-text" role="tablist" aria-label="Views" style={{ display: 'flex', alignItems: 'stretch' }}>
-      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+    <div className="topbar pixel-text" role="tablist" aria-label="Views">
+      <div className="topbar-tabs" style={{ display:'flex', alignItems:'stretch' }}>
         {TABS.map(t => {
           const isActive = t.key === active
           return (
@@ -66,9 +55,9 @@ export default function TopBar({ active, onSelect }: Props) {
           )
         })}
       </div>
-      <div style={{ flex: 1 }} />
-      <div className="tempo" style={{ display: 'flex', alignItems: 'center', gap: 6, paddingRight: 6 }}>
-        <button className="tab" onClick={() => setTempo(bpm - 1)} title="Tempo -1">-</button>
+      <div style={{ flex:1 }} />
+      <div className="tempo" style={{ display:'flex', alignItems:'center', gap:'var(--space-1)', paddingRight:'var(--space-2)' }}>
+        <button className="tab" onClick={() => setTempo(bpm - 1)} title="Tempo -1" aria-label="Tempo down">-</button>
         <input
           aria-label="Tempo"
           className="tab"
@@ -81,14 +70,12 @@ export default function TopBar({ active, onSelect }: Props) {
             const v = parseInt(e.target.value || '0', 10);
             setTempo(Number.isFinite(v) ? v : bpm);
           }}
-          style={{ width: 64, textAlign: 'right', padding: '0 6px' }}
+          style={{ width:64, textAlign:'right', padding:'0 var(--space-2)' }}
         />
-        <span style={{ paddingRight: 6 }}>BPM</span>
-        <button className="tab" onClick={() => setTempo(bpm + 1)} title="Tempo +1">+</button>
+        <span style={{ paddingRight:'var(--space-2)' }}>BPM</span>
+        <button className="tab" onClick={() => setTempo(bpm + 1)} title="Tempo +1" aria-label="Tempo up">+</button>
       </div>
-      <button onClick={toggle} title="Toggle Low-Contrast Theme" className="tab" style={{ borderLeft: '1px solid var(--line)', background: low ? 'rgba(var(--accent-rgb),0.12)' : 'transparent' }}>
-        LC
-      </button>
+  {/* Ark mode permanent - buttons removed */}
     </div>
   )
 }

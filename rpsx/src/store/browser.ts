@@ -108,6 +108,7 @@ export interface BrowserState {
   // recompute pages when conditions change (e.g., sampler playback type toggles LOOP availability)
   refreshSynthPages?: () => void;
   setActiveView?: (view: ViewName) => void;
+  // Ark design language now always on (previous arkMode flag removed)
 }
 
 // Simple no-deps store with subscribe/get/set
@@ -197,6 +198,7 @@ const state: InternalState = {
   _presetApplied: {},
   moduleKindById: {},
   setActiveView: () => {},
+  // arkMode removed
 };
 
 function set(partial: Partial<InternalState>) {
@@ -607,6 +609,8 @@ state.setActiveView = (view: ViewName) => {
     })();
   }
 };
+
+// Ark mode persistence removed; always active via App
 
 // Public helper to recompute pages and keep selection in bounds
 state.refreshSynthPages = () => {

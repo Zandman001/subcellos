@@ -14,6 +14,14 @@
   --over: #ffffff;
   --glow: #ffffff;
   --topbar-h: 32px;
+  --focus-ring: 1px dashed rgba(255,255,255,0.85);
+  --panel-padding: 8px;
+  --transition-fast: 120ms;
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
 }
 
 html, body, #root { height: 100%; }
@@ -27,6 +35,100 @@ body {
   -moz-osx-font-smoothing: grayscale;
   font-family: 'Press Start 2P', monospace;
 }
+
+/* ===== Generic Panel & Layout Utilities ===== */
+.panel { border: 1px solid var(--line); background: var(--neutral-1); box-sizing: border-box; position: relative; }
+.panel.focused { border-color: var(--accent); }
+.panel-header { padding: var(--panel-padding) calc(var(--panel-padding) + 2px); border-bottom: 1px solid var(--line); font-size: 10px; display:flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.panel-footer { padding: 6px 10px; border-top:1px solid var(--line); font-size:10px; display:flex; align-items:center; gap:8px; color: var(--text-soft); background:transparent; }
+.panel-scroll { overflow-y:auto; scrollbar-width: thin; }
+
+/* Custom scrollbars (still monochrome) */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border:1px solid rgba(255,255,255,0.35); }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+
+/* ===== Breadcrumb ===== */
+.breadcrumb { font-size:10px; letter-spacing:0.5px; display:flex; align-items:center; flex-wrap:nowrap; white-space:nowrap; overflow:hidden; }
+.breadcrumb-item { color: var(--text-soft); position:relative; }
+.breadcrumb-item:last-child { color: var(--accent); font-weight:bold; }
+.breadcrumb-sep { margin: 0 6px; opacity:0.55; }
+
+/* ===== List (Browser) Items ===== */
+.list-item { padding: 6px 8px; border-bottom:1px solid var(--line); position:relative; cursor: default; }
+.list-item:last-child { margin-bottom: 0; }
+.list-item:hover { background: rgba(255,255,255,0.06); }
+.list-item.active { background: var(--accent); color: var(--bg); font-weight:bold; }
+.list-item.active:hover { background: var(--accent); }
+
+/* Focus ring utility */
+.focus-visible:focus-visible { outline: var(--focus-ring); outline-offset:2px; }
+
+/* ===== Overlays (Pickers / Dialogs) ===== */
+.overlay-box { position:absolute; left:10%; width:80%; background: var(--bg); color: var(--text); border:1px solid var(--line); box-shadow:0 0 0 2px var(--bg); }
+.overlay-box.danger { border-color: var(--accent-2); }
+.overlay-header { padding:8px 10px; border-bottom:1px solid var(--line); font-size:10px; font-weight:bold; }
+.overlay-footer { padding:6px 10px; border-top:1px solid var(--line); font-size:10px; text-align:center; color: var(--text-soft); }
+.picker-item { padding:6px 8px; border-bottom:1px solid var(--line); transition: background var(--transition-fast) linear, color var(--transition-fast) linear; }
+.picker-item.selected { background:#fff; color:#000; font-weight:bold; }
+
+/* ===== Subtle Transitions ===== */
+.fade-in { animation: fadeIn 240ms ease; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(2px);} to { opacity:1; transform:translateY(0);} }
+
+/* ===== Micro Interactions ===== */
+.pressable { transition: transform var(--transition-fast) ease, background var(--transition-fast) ease; }
+.pressable:active { transform: translateY(1px); }
+
+/* ===== Buttons ===== */
+.btn { background: var(--bg); color: var(--text); border:1px solid var(--line); font-family: 'Press Start 2P', monospace; font-size:10px; padding: var(--space-1) var(--space-2); cursor:pointer; letter-spacing:0.5px; text-transform:uppercase; position:relative; transition: background var(--transition-fast) ease, color var(--transition-fast) ease, border-color var(--transition-fast) ease; }
+.btn:hover { background: rgba(255,255,255,0.08); border-color: var(--accent); }
+.btn:active { background: rgba(255,255,255,0.18); }
+.btn:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
+.btn.primary { background: var(--accent); color: var(--bg); }
+.btn.primary:hover { background: #fff; color:#000; }
+.btn.danger { border-color: var(--accent-2); }
+.btn.danger:hover { background: rgba(255,255,255,0.15); }
+
+/* Ghost button variant */
+.btn.ghost { background: transparent; border-color: var(--line); }
+.btn.ghost:hover { background: rgba(255,255,255,0.06); }
+
+/* Disabled state */
+.btn[disabled] { opacity:0.4; pointer-events:none; }
+
+/* ===== Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
+  .blink-cursor::after { animation: none !important; }
+}
+
+/* ===== Synth Sections ===== */
+.synth-section { padding: var(--space-2); border-top: 3px solid var(--accent); }
+.synth-section > .section-bar, .synth-section-bar { height:2px; background: var(--accent); }
+.synth-row { display:flex; gap: var(--space-3); }
+
+/* ===== Center Utility ===== */
+.center { display:flex; align-items:center; justify-content:center; }
+
+/* ===== Pedal Board (FX) ===== */
+.pedal-wrap { display:inline-flex; flex-direction:column; align-items:center; padding:6px; border:3px solid var(--accent); background:var(--bg); }
+.pedal-wrap.selected { border-color: var(--accent-2); }
+.pedal-chassis { width:90px; height:58px; background:var(--bg); box-shadow: inset 0 0 0 3px var(--accent); display:flex; align-items:center; justify-content:center; }
+.pedal-label { font-size:10px; margin-top: var(--space-1); color: var(--text); }
+
+/* ===== Focus Ring Minimization for Active Tabs ===== */
+.tab.active:focus-visible { outline: none; }
+
+/* ===== Text helpers ===== */
+.muted { color: var(--text-soft); }
+.mono { font-family: 'Press Start 2P', monospace; }
+
+/* ===== Reduce inline repetition in components ===== */
+.noselect { user-select:none; }
+
+/* ===== Blink cursor (moved lower for ordering clarity) ===== */
 
 .app {
   height: 100%;
@@ -152,17 +254,8 @@ body {
 /* scanline removed */
 
 /* Hover effects for interactive controls - monochrome fun */
-.tab:hover { 
-  background: rgba(var(--accent-rgb), 0.1);
-  border-bottom: 1px solid var(--accent);
-  transform: translateY(-1px);
-  transition: all 0.15s ease;
-}
-.ctrl:hover { 
-  transform: translateY(-2px);
-  transition: transform 0.1s ease;
-  filter: invert(1);
-}
+.tab:hover { background: rgba(var(--accent-rgb), 0.1); border-bottom: 1px solid var(--accent); transform: translateY(-1px); transition: all 0.15s ease; }
+.ctrl:hover { transform: translateY(-2px); transition: transform 0.1s ease; filter: invert(1); }
 
 /* Droplets/water simulation removed */
 

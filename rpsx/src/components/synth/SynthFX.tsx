@@ -84,19 +84,15 @@ export default function SynthFX() {
 
 function Page({ title, children }: { title: string, children: React.ReactNode }) {
   return (
-    <div style={{ padding: 8, borderTop: '3px solid var(--accent)' }}>
-      <div style={{ height: 2, background: 'var(--accent)' }} />
-      <div style={{ fontSize: 12, margin: '6px 0 8px' }}>{title}</div>
+    <div className="synth-section" style={{ padding:'var(--space-2)', borderTop:'3px solid var(--accent)' }}>
+      <div style={{ height:2, background:'var(--accent)' }} />
+      <div style={{ fontSize:12, margin:'6px 0 8px' }}>{title}</div>
       {children}
     </div>
   );
 }
 
-function Row({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', gap: 12 }}>{children}</div>
-  )
-}
+function Row({ children }: { children: React.ReactNode }) { return <div style={{ display:'flex', gap:'var(--space-3)' }}>{children}</div>; }
 
 function updateFx(s: any, key: 'fx1'|'fx2'|'fx3'|'fx4', patch: Partial<{type:number;p1:number;p2:number;p3:number}>) {
   s.updateSynthUI((ui: any) => ({ ...ui, [key]: { ...(ui as any)[key], ...patch } }));
@@ -106,7 +102,7 @@ function updateFx(s: any, key: 'fx1'|'fx2'|'fx3'|'fx4', patch: Partial<{type:num
 function Pedal({ typeIdx, label, selected }: { typeIdx: number; label: string; selected?: boolean }) {
   const muted = typeIdx === 0;
   return (
-    <div style={{ marginBottom: 6 }}>
+  <div style={{ marginBottom: 'var(--space-2)' }}>
       <div 
         style={{
           display: 'inline-flex',
@@ -118,19 +114,10 @@ function Pedal({ typeIdx, label, selected }: { typeIdx: number; label: string; s
           borderRadius: 0,
         }}
       >
-        <div style={{
-          width: 90,
-          height: 58,
-          background: 'var(--bg)',
-          borderRadius: 0,
-          boxShadow: 'inset 0 0 0 3px var(--accent)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
+  <div style={{ width:90, height:58, background:'var(--bg)', borderRadius:0, boxShadow:'inset 0 0 0 3px var(--accent)', display:'flex', alignItems:'center', justifyContent:'center' }}>
           <FxIcon typeIdx={typeIdx} invert={false} muted={muted} />
         </div>
-        <div style={{ fontSize: 10, marginTop: 4, color: 'var(--text)' }}>{label}</div>
+  <div style={{ fontSize:10, marginTop:'var(--space-1)', color:'var(--text)' }}>{label}</div>
       </div>
     </div>
   );

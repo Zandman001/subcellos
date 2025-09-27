@@ -1,0 +1,11 @@
+/* Placeholder font pipeline for Ark 1-bit UI. Replace with generated bitmap font later. */
+@font-face {
+  font-family: 'ArkMono';
+  src: local('Press Start 2P'), local('Courier New'), monospace;
+  font-display: swap;
+}
+
+.ark-font { font-family: 'ArkMono', monospace; font-smooth: never; -webkit-font-smoothing: none; -moz-osx-font-smoothing: grayscale; }
+
+/* Pixel alignment helpers */
+.ark-pixel { image-rendering: pixelated; }

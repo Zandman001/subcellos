@@ -33,26 +33,14 @@ export default function RightPane({ view }: { view: ViewName }) {
   // Droplets removed: no overlay triggers
 
   return (
-    <div style={{
-      flex: 1,
-      border: '1px solid',
-      borderColor: focused ? 'var(--accent)' : 'var(--line)',
-      boxSizing: 'border-box',
-      color: 'var(--text)',
-  background: 'var(--bg)',
-  fontFamily: "'Press Start 2P', monospace",
-      height: '100%',
-      padding: 0,
-      position: 'relative',
-      overflow: 'hidden',
-    }}>
+    <div className={`panel ${focused ? 'focused' : ''}`} style={{ flex:1, height:'100%', display:'flex', flexDirection:'column', fontFamily: "'Press Start 2P', monospace", overflow:'hidden' }}>
   {/* Droplets removed */}
       
       {view === 'Sounds' && (
         level === 'synth'
           ? (
-            <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ flex: 1 }}>
+            <div style={{ height:'100%', display:'flex', flexDirection:'column' }}>
+              <div style={{ flex:1, minHeight:0 }}>
                 {renderSynthPage(s.synthPages[s.synthPageIndex])}
               </div>
             </div>
@@ -64,16 +52,16 @@ export default function RightPane({ view }: { view: ViewName }) {
       {view === 'Sequencer' && (
         level === 'pattern' && selectedSoundId && items[selected]
           ? (
-            <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '8px 0' }}>
-                <button className="tab" onClick={() => seq?.toggleLocalPlay()}>
+            <div style={{ height:'100%', display:'flex', flexDirection:'column' }}>
+              <div style={{ display:'flex', justifyContent:'center', gap:'var(--space-2)', padding:'var(--space-2) 0' }}>
+                <button className="btn ghost" onClick={() => seq?.toggleLocalPlay()}>
                   {seq?.playingLocal ? 'Pause Local' : 'Play Local'}
                 </button>
-                <button className="tab" onClick={() => seq?.toggleGlobalPlay()}>
+                <button className="btn ghost" onClick={() => seq?.toggleGlobalPlay()}>
                   {seq?.playingGlobal ? 'Pause Global' : 'Play Global'}
                 </button>
               </div>
-              <div style={{ flex: 1, minHeight: 0 }}>
+              <div style={{ flex:1, minHeight:0 }}>
                 <SequencerRow soundId={selectedSoundId} part={typeof selectedSoundPart === 'number' ? selectedSoundPart : 0} />
               </div>
             </div>
@@ -91,11 +79,7 @@ export default function RightPane({ view }: { view: ViewName }) {
 }
 
 function Center({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ fontSize: 16, textAlign: 'center' }}>{children}</div>
-    </div>
-  );
+  return <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:'var(--space-4)' }}><div style={{ fontSize:16, textAlign:'center' }}>{children}</div></div>;
 }
 
 function extractName(label: string): string {
