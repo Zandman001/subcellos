@@ -28,23 +28,23 @@ impl AudioEngine {
     // Pick config near 48k, 2 channels, f32
     let mut chosen_cfg: Option<cpal::SupportedStreamConfig> = None;
     if let Ok(mut supported) = device.supported_output_configs() {
-      // prefer 44100 first
+      // On Linux/ALSA, 48k is often more stable than 44.1k. Prefer 48k first, then 44.1k.
       for cfg_range in supported.by_ref() {
         if cfg_range.channels() != 2 { continue; }
         if cfg_range.sample_format() != cpal::SampleFormat::F32 { continue; }
-        let sr = 44_100u32;
+        let sr = 48_000u32;
         if cfg_range.min_sample_rate().0 <= sr && cfg_range.max_sample_rate().0 >= sr {
           chosen_cfg = Some(cfg_range.with_sample_rate(cpal::SampleRate(sr)));
           break;
         }
       }
-      // then 48000
+      // then 44100
       if chosen_cfg.is_none() {
         if let Ok(supported2) = device.supported_output_configs() {
           for cfg_range in supported2 {
             if cfg_range.channels() != 2 { continue; }
             if cfg_range.sample_format() != cpal::SampleFormat::F32 { continue; }
-            let sr = 48_000u32;
+            let sr = 44_100u32;
             if cfg_range.min_sample_rate().0 <= sr && cfg_range.max_sample_rate().0 >= sr {
               chosen_cfg = Some(cfg_range.with_sample_rate(cpal::SampleRate(sr)));
               break;
@@ -121,8 +121,8 @@ impl AudioEngine {
     }
     let config = if let Some(cfg) = chosen_cfg { cfg } else { device.default_output_config().map_err(|e| e.to_string())? };
     let mut cfg: cpal::StreamConfig = config.clone().into();
-    // Request a larger buffer for better stability; reduce underruns
-    cfg.buffer_size = cpal::BufferSize::Fixed(1024);
+  // Request a larger buffer for better stability; reduce underruns
+  cfg.buffer_size = cpal::BufferSize::Fixed(2048);
     self.sr = cfg.sample_rate.0 as f32;
 
     let rx = self.rx.clone();

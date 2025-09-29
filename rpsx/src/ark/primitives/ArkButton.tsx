@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { useGlitchFlash } from '../hooks/useGlitchFlash';
 
 export interface ArkButtonProps {
   children?: React.ReactNode;
@@ -10,13 +11,24 @@ export interface ArkButtonProps {
 }
 
 export const ArkButton: React.FC<ArkButtonProps> = ({ children, onClick, active=false, disabled=false, title, className='' }) => {
+  const { ref, trigger } = useGlitchFlash();
+  const onClickWrap = (e: React.MouseEvent) => {
+    trigger();
+    onClick?.(e);
+  };
   return (
     <button
       className={`ark-btn ark-font ${active ? 'is-active': ''} ${disabled? 'is-disabled': ''} ${className}`}
-      onClick={onClick}
+      onClick={onClickWrap}
       disabled={disabled}
       title={title}
-    >{children}</button>
+      onFocus={(e)=> e.currentTarget.classList.add('is-focus')}
+      onBlur={(e)=> e.currentTarget.classList.remove('is-focus')}
+      style={{ position:'relative' }}
+    >
+      {children}
+      <div className="ark-glitch-layer" ref={ref as any} aria-hidden />
+    </button>
   );
 };
 export default ArkButton;

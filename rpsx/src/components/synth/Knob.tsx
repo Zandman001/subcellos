@@ -92,7 +92,7 @@ export default function Knob({ label, value, onChange, step, format, disabled, d
   const stepTicks = step ? Array.from({ length: step }, (_, i) => i / (step - 1)) : [];
 
   return (
-  <div className={`ctrl${inactive ? ' inactive' : ''} ark-knob`} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 4, width: 72, opacity: disabled ? 0.5 : 1 }}>
+  <div className={`ctrl${inactive ? ' inactive' : ''} ark-knob`} style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 3, width: 60, opacity: disabled ? 0.5 : 1 }}>
       <div
         className="knob-shell"
         tabIndex={disabled ? -1 : 0}
@@ -117,19 +117,21 @@ export default function Knob({ label, value, onChange, step, format, disabled, d
                 <div
                   key={i}
                   className={`ark-seg ${on ? 'on' : ''}`}
-                  style={{ transform: `rotate(${a}deg) translateY(-20px)` }}
+                  style={{ transform: `rotate(${a}deg) translateY(-16px)` }}
                 />
               );
             })}
             {showSteps && stepTicks.map((sv, i) => {
               const a = ANG_MIN + sv * (ANG_MAX - ANG_MIN);
-              return <div key={'s'+i} className="ark-step-marker" style={{ transform: `rotate(${a}deg) translateY(-18px)` }} />
+              return <div key={'s'+i} className="ark-step-marker" style={{ transform: `rotate(${a}deg) translateY(-14px)` }} />
             })}
           </div>
           <div className="ark-core" />
         </div>
       </div>
-      <div style={{ fontSize: 11, textAlign: 'center', whiteSpace: 'nowrap', color: 'var(--text-soft)', fontVariant: 'small-caps' }}>{label}</div>
+      {label ? (
+        <div style={{ fontSize: 11, textAlign: 'center', whiteSpace: 'nowrap', color: 'var(--text-soft)', fontVariant: 'small-caps' }}>{label}</div>
+      ) : null}
       <div style={{ fontSize: 10, color: 'var(--accent)', animation: flashTick ? 'flash-value 250ms ease-out' : undefined as any }}>{valueText}</div>
     </div>
   );

@@ -51,7 +51,7 @@ export default function SynthFX() {
   });
   return (
     <Page title={`FX · ${which}` }>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+  <div style={{ display: 'flex', gap: 7, marginBottom: 8, justifyContent:'center' }}>
         {pedalTypes.map((tIdx, i) => (
           <Pedal 
             key={i} 
@@ -108,23 +108,23 @@ function Pedal({ typeIdx, label, selected }: { typeIdx: number; label: string; s
           display: 'inline-flex',
           flexDirection: 'column',
           alignItems: 'center',
-          padding: 6,
-          border: `3px solid ${selected ? 'var(--accent-2)' : 'var(--accent)'}`,
+          padding: 3,
+          border: `2px solid ${selected ? 'var(--accent-2)' : 'var(--accent)'}`,
           background: 'var(--bg)',
           borderRadius: 0,
         }}
       >
-  <div style={{ width:90, height:58, background:'var(--bg)', borderRadius:0, boxShadow:'inset 0 0 0 3px var(--accent)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <FxIcon typeIdx={typeIdx} invert={false} muted={muted} />
+  <div style={{ width:64, height:40, background:'var(--bg)', borderRadius:0, boxShadow:'inset 0 0 0 2px var(--accent)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+    <FxIcon typeIdx={typeIdx} invert={false} muted={muted} small />
         </div>
-  <div style={{ fontSize:10, marginTop:'var(--space-1)', color:'var(--text)' }}>{label}</div>
+  <div style={{ fontSize:7, marginTop:'var(--space-1)', color:'var(--text)' }}>{label}</div>
       </div>
     </div>
   );
 }
 
-function FxIcon({ typeIdx, invert, muted }: { typeIdx: number; invert?: boolean; muted?: boolean }) {
-  const size = 48;
+function FxIcon({ typeIdx, invert, muted, small }: { typeIdx: number; invert?: boolean; muted?: boolean; small?: boolean }) {
+  const size = small ? 40 : 48;
   const stroke = 'var(--accent)';
   const fillText = 'var(--accent)';
   const common = { stroke, fill: 'none', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' } as const;

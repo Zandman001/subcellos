@@ -249,24 +249,11 @@ export default function SynthEQView({ partIndex }: { partIndex?: number }) {
         <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0 }} />
         <canvas ref={specCanvasRef} style={{ position: 'absolute', inset: 0 }} />
       </div>
-      <div className="eq-readouts">
-        {[0,1,2,3].map((i) => {
-          const bandIdx = pageBase + i;
-          const db = eqGains[bandIdx] || 0;
-          const sign = db >= 0 ? '+' : '−';
-          return (
-            <div key={i} className="eq-readout">
-              <div>Band {bandIdx + 1}</div>
-              <span className="val">{sign}{Math.abs(db).toFixed(2)} dB</span>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
-        <Knob label={`K1 → Band ${pageBase+1}`} value={normFromDb(eqGains[pageBase+0] || 0)} onChange={(v)=> updateEqGain(pageBase+0, dbFromNorm(v))} step={33} format={() => ''} />
-        <Knob label={`K2 → Band ${pageBase+2}`} value={normFromDb(eqGains[pageBase+1] || 0)} onChange={(v)=> updateEqGain(pageBase+1, dbFromNorm(v))} step={33} format={() => ''} />
-        <Knob label={`K3 → Band ${pageBase+3}`} value={normFromDb(eqGains[pageBase+2] || 0)} onChange={(v)=> updateEqGain(pageBase+2, dbFromNorm(v))} step={33} format={() => ''} />
-        <Knob label={`K4 → Band ${pageBase+4}`} value={normFromDb(eqGains[pageBase+3] || 0)} onChange={(v)=> updateEqGain(pageBase+3, dbFromNorm(v))} step={33} format={() => ''} />
+      <div style={{ display: 'flex', gap: 12, marginTop: 6, justifyContent: 'center' }}>
+        <Knob label={`Band ${pageBase+1}`} value={normFromDb(eqGains[pageBase+0] || 0)} onChange={(v)=> updateEqGain(pageBase+0, dbFromNorm(v))} step={33} format={() => ''} />
+        <Knob label={`Band ${pageBase+2}`} value={normFromDb(eqGains[pageBase+1] || 0)} onChange={(v)=> updateEqGain(pageBase+1, dbFromNorm(v))} step={33} format={() => ''} />
+        <Knob label={`Band ${pageBase+3}`} value={normFromDb(eqGains[pageBase+2] || 0)} onChange={(v)=> updateEqGain(pageBase+2, dbFromNorm(v))} step={33} format={() => ''} />
+        <Knob label={`Band ${pageBase+4}`} value={normFromDb(eqGains[pageBase+3] || 0)} onChange={(v)=> updateEqGain(pageBase+3, dbFromNorm(v))} step={33} format={() => ''} />
       </div>
     </div>
   );

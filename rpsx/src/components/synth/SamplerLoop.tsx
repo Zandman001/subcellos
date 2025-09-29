@@ -253,9 +253,9 @@ export default function SamplerLoop() {
               {currentSamplePath && !waveform && <div className="waveform-text">Loading...</div>}
               {regionPath && (
                 <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="sampler-waveform-svg">
-                  <rect x={0} y={0} width={100} height={100} fill="#222" />
-                  <path d={regionPath} fill="#ffffff" fillOpacity={0.85} stroke="#ffffff" strokeWidth={0.25} />
-                  <line x1="0" y1="50" x2="100" y2="50" stroke="#555" strokeWidth={0.4} strokeDasharray="2 2" />
+                  <rect x={0} y={0} width={100} height={100} fill="#000" />
+                  <path d={regionPath} fill="#fff" fillOpacity={0.85} stroke="#fff" strokeWidth={0.25} />
+                  <line x1="0" y1="50" x2="100" y2="50" stroke="#fff" strokeOpacity={0.35} strokeWidth={0.4} strokeDasharray="2 2" />
                   {(() => {
                     const ls = Math.max(0, Math.min(1, lsRel));
                     const le = Math.max(ls + 0.0005, Math.min(1, leRel));
@@ -263,7 +263,7 @@ export default function SamplerLoop() {
                     const loopPlayheadX = ls + loopWidth * playhead; // relative 0..1 in region
                     return (
                       <g>
-                        <rect x={ls * 100} y={0} width={loopWidth * 100} height={100} fill="#ffffff" fillOpacity={0.08} />
+                        <rect x={ls * 100} y={0} width={loopWidth * 100} height={100} fill="#fff" fillOpacity={0.08} />
                         <line x1={ls * 100} y1={0} x2={ls * 100} y2={100} stroke="#ffffff" strokeOpacity={0.55} strokeWidth={0.6} />
                         <line x1={le * 100} y1={0} x2={le * 100} y2={100} stroke="#ffffff" strokeOpacity={0.55} strokeWidth={0.6} />
                         <rect x={ls*100 - 1.5} y={0} width={3} height={100} fill={editing==='start'? '#fff' : '#fff8'} />

@@ -3,45 +3,180 @@ body.ark-mode {
   background:#000 !important;
   color:#fff !important;
   font-family: 'Press Start 2P', monospace;
+  /* Map global size vars to Ark tokens */
+  --topbar-h: var(--ark-tab-h);
 }
 /* ===== Panels / Layout ===== */
-body.ark-mode .panel { border:1px solid #fff; background:#000; box-shadow:none !important; position:relative; }
-body.ark-mode .panel::before { content:""; position:absolute; inset:0; background-image: linear-gradient(45deg,#fff 0 1px,transparent 1px 4px), linear-gradient(45deg,#fff 0 1px,transparent 1px 4px); background-size:4px 4px,4px 4px; background-position:0 0,2px 2px; opacity:0.07; pointer-events:none; }
+body.ark-mode .panel { border: var(--ark-sep-w) solid #fff; background:#000; box-shadow:none !important; position:relative; }
+body.ark-mode .panel { overflow: hidden; }
+body.ark-mode .panel::before { content:""; position:absolute; top:50%; left:50%; width: var(--ark-panel-dot-cover, 240%); height: var(--ark-panel-dot-cover, 240%); pointer-events:none; transform: translate(-50%, -50%) rotate(var(--ark-dot-rotate)); transform-origin: 50% 50%; background:
+  radial-gradient(circle at 1px 1px, rgba(255,255,255,var(--ark-dot-alpha)) 0, rgba(255,255,255,var(--ark-dot-alpha)) var(--ark-dot-size), transparent calc(var(--ark-dot-size) + 1px)) 0 0 / var(--ark-dot-step) var(--ark-dot-step);
+}
+/* Thicker header/footer rules */
+body.ark-mode .panel-header { border-bottom: var(--ark-sep-w) solid #fff !important; }
+body.ark-mode .panel-footer { border-top: var(--ark-sep-w) solid #fff !important; }
+/* Sticky header/footer inside scrolling panels */
+body.ark-mode .panel { contain: layout paint; }
+body.ark-mode .panel-header { position: sticky; top: 0; background: #000; z-index: 1; }
+body.ark-mode .panel-footer { position: sticky; bottom: 0; background: #000; z-index: 1; }
+
+/* Utility: hide scrollbars but keep scrolling enabled */
+.no-scrollbars {
+  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none;   /* Firefox */
+}
+.no-scrollbars::-webkit-scrollbar { display: none; }
+/* Remove extra vertical spacing; rely on existing borders for separation */
+body.ark-mode .panel > * + * { margin-top: 0 !important; }
 /* ===== Tabs / Topbar ===== */
-body.ark-mode .topbar { border-bottom:2px solid #fff; }
-body.ark-mode .tab { background:#000; color:#fff; border-right:1px solid #fff; font-size:9px; letter-spacing:0.5px; }
-body.ark-mode .tab:hover { background:#111; }
-body.ark-mode .tab.active { background:#fff; color:#000; border-bottom:2px solid #000; font-weight:bold; }
+/* Top bar as full white strip with black accents */
+body.ark-mode .topbar { background:#fff; border-bottom: var(--ark-sep-w) solid #fff; }
+body.ark-mode .tab {
+  background:#fff;
+  color:#000;
+  border-right: var(--ark-sep-w) solid #fff;
+  font-size:14px;
+  letter-spacing:0.5px;
+  height: var(--topbar-h);
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  font-weight: 600;
+  text-shadow: none;
+}
+body.ark-mode .tab:hover { background: rgba(0,0,0,0.08); transform:none; border-bottom-width: var(--ark-sep-w); border-bottom-color:#fff; transition:none; }
+body.ark-mode .tab.active {
+  background:#000;
+  color:#fff;
+  border-top: var(--ark-sep-w) solid #fff;
+  border-bottom: var(--ark-sep-w) solid #fff;
+  border-left: var(--ark-sep-w) solid #fff;
+  border-right: var(--ark-sep-w) solid #fff;
+  font-weight: 700;
+}
+/* Ensure left-most tab still has left border when active */
+body.ark-mode .topbar-tabs > .tab:first-child { border-left: var(--ark-sep-w) solid #fff; }
+/* Inputs and buttons inside topbar use white borders */
+body.ark-mode .topbar input,
+body.ark-mode .topbar select,
+body.ark-mode .topbar .btn,
+body.ark-mode .topbar button { background:#fff; color:#000; border: var(--ark-sep-w) solid #fff; box-shadow:none; }
+body.ark-mode .topbar input:focus,
+body.ark-mode .topbar select:focus,
+body.ark-mode .topbar .btn:focus-visible,
+body.ark-mode .topbar button:focus-visible { outline: 1px dashed #000; outline-offset: 1px; }
 /* ===== Buttons ===== */
 body.ark-mode .btn { background:#000; color:#fff; border:1px solid #fff; box-shadow:none; }
-body.ark-mode .btn:hover { background:#111; }
+body.ark-mode .btn:hover { background: rgba(255,255,255,0.08); }
 body.ark-mode .btn.primary { background:#fff; color:#000; }
 body.ark-mode .btn.primary:hover { background:#e5e5e5; }
 /* ===== Knobs ===== */
 body.ark-mode .knob-face { background:#000; border:1px solid #fff; box-shadow:none; }
 body.ark-mode .knob-tick { background:#fff; opacity:0.3; }
 body.ark-mode .knob-tick:nth-child(3n) { opacity:0.75; }
-body.ark-mode .knob-step { background:#fff; opacity:1; }
-body.ark-mode .knob-pointer { background:#fff; width:2px; height:16px; margin:-16px 0 0 -1px; }
-body.ark-mode .knob-center { background:#000; box-shadow:0 0 0 1px #fff inset; }
-body.ark-mode .ctrl:hover { filter:none; transform:none; }
-/* Orbit overlay */
-/* === Flat Ark Knob Redesign (no orbit) === */
-body.ark-mode .knob-face.ark-flat { position:relative; }
-body.ark-mode .ark-seg-ring { position:absolute; inset:0; pointer-events:none; }
-body.ark-mode .ark-seg { position:absolute; top:50%; left:50%; width:4px; height:10px; margin:-5px 0 0 -2px; background:#fff; opacity:0.18; }
-body.ark-mode .ark-seg.on { opacity:1; }
-body.ark-mode .ark-seg:nth-child(2n) { height:12px; margin-top:-6px; }
-body.ark-mode .ark-core { position:absolute; top:50%; left:50%; width:16px; height:16px; margin:-8px 0 0 -8px; background:#000; border:1px solid #fff; box-shadow:0 0 0 1px #000, inset 0 0 0 1px #fff; }
-body.ark-mode .ark-step-marker { position:absolute; top:50%; left:50%; width:2px; height:6px; margin:-3px 0 0 -1px; background:#fff; }
 /* ===== Main Area Pattern ===== */
-body.ark-mode .main-area { background:#000; background-image: repeating-linear-gradient(0deg,#fff 0 1px,transparent 1px 2px), repeating-linear-gradient(90deg,#fff 0 1px,transparent 1px 2px); background-size:4px 4px; }
+body.ark-mode .main-area { position: relative; background:#000; overflow: hidden; }
+body.ark-mode .main-area::before { content:""; position:absolute; top:50%; left:50%; width: var(--ark-main-dot-cover, 280%); height: var(--ark-main-dot-cover, 280%); pointer-events:none; transform: translate(-50%, -50%) rotate(var(--ark-dot-rotate)); transform-origin: 50% 50%; background:
+  radial-gradient(circle at 1px 1px, rgba(255,255,255,var(--ark-dot-alpha)) 0, rgba(255,255,255,var(--ark-dot-alpha)) var(--ark-dot-size), transparent calc(var(--ark-dot-size) + 1px)) 0 0 / var(--ark-dot-step) var(--ark-dot-step);
+}
 /* ===== Lists ===== */
-body.ark-mode .list-item { background:#000; border-bottom:1px solid #111; }
+body.ark-mode .panel-title { font-size: 12px; letter-spacing: 0.5px; color:#fff; text-shadow: 0 1px 0 #000; }
+body.ark-mode .panel-meta { font-size: 10px; color: rgba(255,255,255,0.8); }
+body.ark-mode .panel-meta .count { opacity: 0.85; }
+body.ark-mode .level-pill { display:inline-flex; align-items:center; height: var(--ark-btn-h); padding: 0 6px; background:#fff; color:#000; border: var(--ark-sep-w) solid #fff; font-size: 10px; font-weight: 700; letter-spacing: 0.5px; }
+body.ark-mode .list-item { background:#000; border-bottom: var(--ark-sep-w) solid #fff; }
 body.ark-mode .list-item:hover { background:#111; }
 body.ark-mode .list-item.active { background:#fff; color:#000; font-weight:bold; }
+/* Single thick line between stacked children; remove vertical gaps */
+body.ark-mode .panel > * + * { margin-top: 0 !important; border-top: var(--ark-sep-w) solid #fff; }
+/* Common single-column wrapper case */
+body.ark-mode .panel > div:only-child > * + * { margin-top: 0 !important; border-top: var(--ark-sep-w) solid #fff; }
+/* Horizontal groups: single thick line between */
+body.ark-mode .panel.h-row > * + * { margin-left: 0 !important; border-left: var(--ark-sep-w) solid #fff; }
+/* Frame and split main area */
+body.ark-mode .main-area { border: var(--ark-sep-w) solid #fff; }
+body.ark-mode .main-area > * + * { border-left: var(--ark-sep-w) solid #fff; }
+/* Button neighbors share a single divider */
+body.ark-mode .btn + .btn { margin-left: 0 !important; border-left: var(--ark-sep-w) solid #fff; }
+/* Bottom scroll indicator (Project Browser) */
+body.ark-mode .scroll-indicator {
+  position: absolute;
+  /* Pin to bottom of visible panel area and span full width */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: auto;
+  height: 18px;
+  background: #000;
+  border: var(--ark-sep-w) solid #fff;
+  /* Square corners only */
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* don't block clicks/scroll */
+  z-index: 3;
+  box-sizing: border-box;
+}
+body.ark-mode .scroll-indicator__arrow {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 9px solid #fff; /* down arrow */
+}
 /* ===== Breadcrumb ===== */
-body.ark-mode .breadcrumb-item:last-child { background:#fff; color:#000; padding:2px 4px; }
+/* Breadcrumb: improved readability */
+body.ark-mode .breadcrumb {
+  align-items: center;
+  gap: 8px; /* more breathing room */
+  font-size: 12px; /* larger than global default */
+  letter-spacing: 0.5px;
+}
+/* Default crumb color in Ark header */
+body.ark-mode .breadcrumb-item {
+  color: rgba(255,255,255,0.85); /* stronger contrast */
+  max-width: 22ch; /* allow longer names before ellipsis */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 0 #000; /* subtle lift on noisy backdrops */
+}
+/* Final crumb: white chip with consistent height and a white outline */
+body.ark-mode .breadcrumb-item.final,
+body.ark-mode .breadcrumb-item:last-child {
+  background:#fff;
+  color:#000;
+  display:inline-flex;
+  align-items:center;
+  height: var(--ark-btn-h);
+  padding: 0 10px; /* slightly wider chip */
+  border: var(--ark-sep-w) solid #fff;
+  box-sizing: border-box;
+  font-size: 13px; /* bump for emphasis */
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  max-width: 60%; /* show more of the active name */
+  overflow: hidden;
+}
+/* Inner text of the chip can be translated for reveal */
+body.ark-mode .breadcrumb-item.final .bc-chip__text { display:inline-block; will-change: transform; }
+/* Reveal long final crumb only on focus (keyboard-first) to respect reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  body.ark-mode .breadcrumb-item.final:focus-within .bc-chip__text,
+  body.ark-mode .breadcrumb-item.final:hover .bc-chip__text {
+    animation: ark-bc-reveal 6s linear 1;
+  }
+}
+@keyframes ark-bc-reveal {
+  0% { transform: translateX(0); }
+  10% { transform: translateX(0); }
+  90% { transform: translateX(calc(-100% + 40%)); }
+  100% { transform: translateX(calc(-100% + 40%)); }
+}
+/* Breadcrumb separator tint */
+body.ark-mode .breadcrumb-sep { color: rgba(255,255,255,0.75); margin: 0 6px; }
 /* ===== Inputs ===== */
 body.ark-mode input, body.ark-mode select { background:#000; color:#fff; border:1px solid #fff; box-shadow:none; }
 body.ark-mode input:focus, body.ark-mode select:focus { outline:1px solid #fff; }
@@ -50,6 +185,51 @@ body.ark-mode .synth-section { border-top:2px solid #fff; }
 body.ark-mode .pedal-chassis { box-shadow:none; border:1px solid #fff; }
 body.ark-mode .pedal-wrap { border:2px solid #fff; }
 /* ===== Scrollbars ===== */
-body.ark-mode ::-webkit-scrollbar-thumb { background:#111; border:1px solid #fff; }
+body.ark-mode ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border:1px solid #fff; }
+/* Hide all scrollbars globally in Ark mode, but keep scrolling enabled */
+body.ark-mode * {
+  /* Firefox */
+  scrollbar-width: none !important;
+  /* IE/Edge Legacy */
+  -ms-overflow-style: none !important;
+}
+/* WebKit/Blink */
+body.ark-mode *::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+  background: transparent !important;
+}
 /* ===== Typography smoothing off ===== */
 body.ark-mode .pixel-text { -webkit-font-smoothing:none; font-smooth:never; }
+
+/* ===== Sequencer grid accents ===== */
+body.ark-mode .seq-step { border:1px solid #fff; background:#000; border-radius:9999px; position:relative; }
+@keyframes ark-step-select { 0% { box-shadow: 0 0 0 0 #fff inset; } 100% { box-shadow: 0 0 0 2px #fff inset; } }
+@keyframes ark-step-active-breath {
+  0% { transform: scale(1); }
+  50% { transform: scale(0.96); }
+  100% { transform: scale(1); }
+}
+body.ark-mode .seq-step.is-selected { background: rgba(255,255,255,0.12); border-width:2px; animation: ark-step-select var(--ark-speed-med) steps(2, end); }
+body.ark-mode .seq-step.is-active { background:#fff; color:#000; box-shadow:none; animation: ark-step-active-breath var(--ark-speed-slow) steps(2, end) infinite; }
+
+/* ===== Fixed 16:9 canvas scaling ===== */
+body.ark-mode.ark-fixed .app {
+  width: var(--ark-base-w, 1280px);
+  height: var(--ark-base-h, 720px);
+  /* Auto scale (smooth) as fallback; JS can override --ark-scale to an integer for crispness */
+  --ark-scale-auto: min(calc(100vw / var(--ark-base-w, 1280px)), calc(100vh / var(--ark-base-h, 720px)));
+  transform: translate(var(--ark-left, 0px), var(--ark-top, 0px)) scale(var(--ark-scale, var(--ark-scale-auto)));
+  transform-origin: top left;
+  overflow: hidden;
+}
+body.ark-mode .ark-fixed-frame {
+  position: fixed;
+  inset: 0;
+  background: #000; /* letterbox */
+  overflow: hidden; /* clamp any overshoot */
+}
+/* Clamp page scroll to viewport at all times to prevent window growth */
+html, body { height: 100%; overflow: hidden; }
+

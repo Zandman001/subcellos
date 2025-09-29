@@ -279,14 +279,14 @@ export default function Sampler() {
     return (
       <>
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="sampler-waveform-svg">
-        <rect x={0} y={0} width={100} height={100} fill="#222" />
-        {/* Top bar background */}
-        <rect x={0} y={0} width={100} height={topBarH} fill="#1a1a1a" />
+        <rect x={0} y={0} width={100} height={100} fill="#000" />
+        {/* Top bar background (white alpha over black, no gray hex) */}
+        <rect x={0} y={0} width={100} height={topBarH} fill="#fff" fillOpacity={0.08} />
         {/* Top time ruler and loop bar (within top bar) */}
   <g fontFamily="'Press Start 2P', monospace">
           {/* Loop bar above waveform; only show in Loop playback mode */}
           {playbackModeIndex === 1 && loopBarW > 0 && (
-            <rect x={loopBarX} y={0} width={loopBarW} height={Math.min(4, topBarH)} fill="#ffb300" fillOpacity={0.95} />
+            <rect x={loopBarX} y={0} width={loopBarW} height={Math.min(4, topBarH)} fill="#fff" fillOpacity={0.95} />
           )}
           {/* Tick marks */}
           {totalSeconds > 0 && ticks.map((t, i) => {
@@ -300,8 +300,8 @@ export default function Sampler() {
           })}
         </g>
         {/* Waveform and overlays below the top bar */}
-        <path d={croppedPath} fill="#ffffff" fillOpacity={0.85} stroke="#ffffff" strokeWidth={0.25} />
-        <line x1="0" y1={centerY} x2="100" y2={centerY} stroke="#555" strokeWidth={0.4} strokeDasharray="2 2" />
+  <path d={croppedPath} fill="#fff" fillOpacity={0.85} stroke="#fff" strokeWidth={0.25} />
+  <line x1="0" y1={centerY} x2="100" y2={centerY} stroke="#fff" strokeOpacity={0.35} strokeWidth={0.4} strokeDasharray="2 2" />
         {/* Selection highlight */}
         <rect x={localSelStart} y={waveTop} width={Math.max(0.5, localSelEnd - localSelStart)} height={waveH} fill="#ffffff" fillOpacity={0.06} />
         <line x1={localSelStart} y1={waveTop} x2={localSelStart} y2={waveBottom} stroke="#ffffff" strokeOpacity={0.6} strokeWidth={0.6} />
@@ -357,27 +357,11 @@ export default function Sampler() {
 
   return (
     <div className="synth-page">
-      <div className="page-header">
+      <div className="page-header compact">
         <h2>SAMPLER</h2>
-        <div className="sampler-controls">
-          <button className="record-btn">
-            Press R to Record
-          </button>
-          <button className="load-btn">
-            Press E to Load File
-          </button>
-          <button
-            className="clear-btn"
-            disabled={!currentSamplePath}
-            onClick={async () => {
-              const partIdx = s.selectedSoundPart ?? 0;
-              try { await rpc.clearSample(partIdx); } catch(e) { console.warn('clearSample failed', e); }
-              // Update UI state
-              s.updateSynthUI((ui: any) => ({ ...ui, sampler: { ...ui.sampler, current_sample: undefined }}));
-              // Persist preset with cleared sample using existing scheduleSavePreset flow
-              try { s.scheduleSavePreset?.(s.serializeCurrentPreset?.()); } catch {}
-            }}
-          >Clear</button>
+        <div className="sampler-controls compact">
+          <button className="record-btn">Press R to Record</button>
+          <button className="load-btn">Press W to Load File</button>
         </div>
       </div>
 

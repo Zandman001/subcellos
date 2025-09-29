@@ -108,7 +108,7 @@ Import the stylesheet and use the primitives; they remain namespaced under `ark-
 - Future: Replace per-canvas with atlas blitter or WebGL batch if many hundreds of labels required.
 
 ## 16. Preview Route
-- Navigate to `#ark` hash to view `ArkPreviewView` combining demo primitives and bitmap text examples.
+ - Ark preview route removed; the app always runs in Ark mode. Use Ark primitives within existing pages for demos.
 
 ## 17. Next Steps
 1. Add sprite sheet export pipeline (e.g. JSON + PNG) for hardware firmware.

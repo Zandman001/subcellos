@@ -1,16 +1,38 @@
 :root {
   --ark-bg: #000;
   --ark-fg: #fff;
+  /* Spacing scale (Ark) */
+  --ark-space-1: 2px;
+  --ark-space-2: 4px;
+  --ark-space-3: 8px;
+  --ark-space-4: 12px;
+  --ark-space-5: 16px;
   --ark-gap-1: 2px; /* micro spacing */
   --ark-gap-2: 4px; /* base grid */
   --ark-gap-3: 8px; /* group spacing */
+  /* Control sizes */
+  --ark-tab-h: 36px;
+  --ark-btn-h: 18px;
+  --ark-border-w: 1px;
+  --ark-sep-w: 3px; /* thick separator line */
   --ark-speed-fast: 80ms;
   --ark-speed-med: 160ms;
   --ark-speed-slow: 320ms;
+  /* Animation enable switch (honor reduced motion) */
+  --ark-anim-enable: 1;
   --ark-font-size-6: 6px;
   --ark-font-size-8: 8px;
   --ark-focus-ring: 1px solid #fff;
   --ark-encoder-size: 14px;
+  /* Dot array backdrop controls */
+  --ark-dot-size: 1px;    /* dot diameter */
+  --ark-dot-step: 4px;    /* grid pitch */
+  --ark-dot-alpha: 0.16;  /* dot opacity */
+  --ark-dot-rotate: 45deg; /* background dot grid rotation */
+  /* Overlay coverage (tunable) */
+  --ark-app-dot-cover: 240vmax;   /* app-level backdrop size */
+  --ark-panel-dot-cover: 240%;    /* panel/main backdrop size */
+  --ark-main-dot-cover: 280%;     /* main-area can be larger */
 }
 
 /* ===== Monochrome Base ===== */
@@ -23,6 +45,15 @@
 
 /* Used for pulse by toggling between a/b */
 @keyframes ark-pulse-alt { 0%,49% { background-position:0 0; } 50%,100% { background-position:1px 1px; } }
+
+/* Generic invert pulse (discrete) */
+@keyframes ark-invert-pulse { 0% { filter:none; } 50% { filter:invert(1); } 100% { filter:none; } }
+
+/* Sheen: diagonal stripes shifting one cell */
+@keyframes ark-sheen { 0% { background-position: 0 0, 2px 2px; } 100% { background-position: 4px 0, 6px 2px; } }
+
+/* Border flicker: toggles a strong outline briefly */
+@keyframes ark-border-flicker { 0% { box-shadow: none; } 50% { box-shadow: 0 0 0 2px #fff inset, 0 0 0 1px #fff; } 100% { box-shadow: none; } }
 
 /* ===== Glitch Flash ===== */
 @keyframes ark-glitch-flash { 0% { opacity:1; } 100% { opacity:0; } }
@@ -60,8 +91,11 @@
 .ark-focus { outline: var(--ark-focus-ring); outline-offset:1px; }
 
 /* ===== Buttons & Toggles ===== */
-.ark-btn { font: inherit; font-size:8px; letter-spacing:0.5px; padding:2px 4px; border:1px solid #fff; background:#000; color:#fff; cursor:pointer; display:inline-flex; align-items:center; gap:2px; position:relative; }
+.ark-btn { font: inherit; font-size:8px; letter-spacing:0.5px; padding:2px 4px; height: var(--ark-btn-h); border:1px solid #fff; background:#000; color:#fff; cursor:pointer; display:inline-flex; align-items:center; gap:2px; position:relative; }
 .ark-btn:active { filter:invert(1); }
+.ark-btn::after { content:""; position:absolute; inset:0; pointer-events:none; background-image: linear-gradient(45deg,#fff 0 1px,transparent 1px 4px), linear-gradient(45deg,#fff 0 1px,transparent 1px 4px); background-size:4px 4px,4px 4px; background-position:0 0,2px 2px; opacity:0; }
+.ark-btn:hover::after, .ark-btn.is-focus::after { opacity:0.08; animation: ark-sheen var(--ark-speed-slow) steps(4, end) infinite; }
+.ark-btn:focus-visible { outline: var(--ark-focus-ring); animation: ark-border-flicker var(--ark-speed-med) steps(2, end); }
 .ark-btn.is-active { background:#fff; color:#000; }
 .ark-btn.is-disabled { opacity:0.4; pointer-events:none; }
 
@@ -69,16 +103,17 @@
 .ark-toggle[data-state="on"] { background:#fff; }
 .ark-toggle[data-state="alt"] { background:#fff; }
 .ark-toggle[data-state="alt"]::after { content:""; position:absolute; left:3px; right:3px; top:6px; height:1px; background:#000; }
+.ark-toggle:active { animation: ark-invert-pulse var(--ark-speed-med) steps(2, end); }
 
 /* ===== Slider ===== */
 .ark-slider { width:80px; height:10px; position:relative; }
 .ark-slider-rail { position:absolute; left:0; right:0; top:50%; height:1px; background:#fff; }
-.ark-slider-handle { position:absolute; top:2px; width:6px; height:6px; background:#fff; }
+.ark-slider-handle { position:absolute; top:2px; width:6px; height:6px; background:#fff; transition: left var(--ark-speed-med) steps(12, end); }
 .ark-slider.is-focus .ark-slider-handle { outline:1px solid #fff; outline-offset:1px; }
 
 /* ===== Grid ===== */
 .ark-grid { display:grid; grid-template-columns: repeat(var(--cols), var(--cell-size)); grid-auto-rows: var(--cell-size); gap:1px; }
-.ark-grid-cell { width:var(--cell-size); height:var(--cell-size); border:1px solid #fff; position:relative; background:#000; }
+.ark-grid-cell { width:var(--cell-size); height:var(--cell-size); border:var(--ark-border-w) solid #fff; position:relative; background:#000; }
 .ark-grid-cell.is-on { background:#fff; color:#000; }
 .ark-grid-cell.is-pulse { animation: ark-pulse-alt 1s steps(2, end) infinite; }
 .ark-grid-cell .corner-accent { position:absolute; width:0; height:0; border-left:4px solid #fff; border-bottom:4px solid transparent; top:-1px; right:-1px; }
@@ -107,3 +142,19 @@
 /* ===== Encoder Value Flash ===== */
 @keyframes ark-value-flash { 0% { filter:invert(0); } 50% { filter:invert(1); } 100% { filter:invert(0); } }
 .ark-value-flash { animation: ark-value-flash 160ms steps(2, end); }
+
+/* ===== Reduced Motion Guard ===== */
+@media (prefers-reduced-motion: reduce) {
+  :root { --ark-anim-enable: 0; }
+  .ark-btn::after,
+  .ark-grid-cell.is-pulse,
+  .ark-value-flash,
+  .ark-tear-line,
+  .ark-glitch-active,
+  .ark-slider-handle,
+  .seq-step,
+  .ark-encoder-dot {
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -61,6 +61,9 @@ pub fn run() {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
+            // Reduce noisy library INFO logs while keeping our app logs visible.
+            .level_for("symphonia_core::probe", log::LevelFilter::Warn)
+            .level_for("symphonia_core", log::LevelFilter::Warn)
             .build(),
         )?;
       }

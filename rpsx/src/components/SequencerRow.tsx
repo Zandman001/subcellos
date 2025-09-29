@@ -226,16 +226,12 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
         return (
           <div
             key={i}
+            className={`seq-step ${selected ? 'is-selected' : ''} ${active ? 'is-active' : ''}`}
             style={{
               width: CIRCLE,
               height: CIRCLE,
               minWidth: CIRCLE,
-              border: selected ? '2px solid var(--accent)' : '1px solid var(--text)',
-              color: 'var(--text)',
-              borderRadius: CIRCLE,
-              position: 'relative',
               background: circleBg,
-              boxShadow: active ? '0 0 0 2px var(--accent)' : 'none'
             }}
           >
             {notes.map((n: SequencerNote, j: number) => {

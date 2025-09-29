@@ -22,7 +22,7 @@ export default function SynthMIXER() {
   
   return (
     <Page title={`MIXER`}>
-      <Row>
+    <Row style={{ justifyContent:'center' }}>
   <Knob label="Volume" value={mx.volume} step={49} onChange={(v)=> { updateMx(s, { volume: v }); s.setSynthParam(`part/0/mixer/volume`, v); }} />
   <Knob label="Pan" value={mx.pan} step={41} onChange={(v)=> { updateMx(s, { pan: v }); s.setSynthParam(`part/0/mixer/pan`, (v-0.5)*2); }} format={(v)=>`${Math.round((v-0.5)*200)/100}`} />
   <Knob label="Haas Mix" value={mx.haas ?? 0} step={49} onChange={(v)=> { updateMx(s, { haas: v }); s.setSynthParam(`part/0/mixer/haas`, v); }} />
@@ -34,32 +34,16 @@ export default function SynthMIXER() {
 
 function Page({ title, children }: { title: string, children: React.ReactNode }) {
   return (
-    <div style={{ 
-      padding: 8, 
-      borderTop: '3px solid var(--accent)',
-      background: 'rgba(var(--neutral-1), 0.4)',
-      backdropFilter: 'blur(10px)',
-      boxShadow: '0 0 20px rgba(var(--accent-rgb), 0.1), inset 0 1px 0 rgba(var(--accent-rgb), 0.2)'
-    }}>
-      <div style={{ 
-        height: 2, 
-        background: 'linear-gradient(90deg, var(--accent), var(--glow), var(--accent))',
-        boxShadow: '0 0 10px var(--accent)'
-      }} />
-      <div style={{ 
-        fontSize: 12, 
-        margin: '6px 0 8px',
-        color: 'var(--accent)',
-        textShadow: '0 0 8px currentColor'
-      }}>{title}</div>
+    <div style={{ padding: 8 }}>
+      <div style={{ fontSize: 12, margin: '0 0 8px', color: 'var(--accent)' }}>{title}</div>
       {children}
     </div>
   );
 }
 
-function Row({ children }: { children: React.ReactNode }) {
+function Row({ children, style }: { children: React.ReactNode, style?: React.CSSProperties }) {
   return (
-    <div style={{ display: 'flex', gap: 12 }}>{children}</div>
+    <div style={{ display: 'flex', gap: 12, ...(style || {}) }}>{children}</div>
   )
 }
 

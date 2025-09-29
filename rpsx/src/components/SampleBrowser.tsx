@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useBrowser, sampleBrowser } from '../store/browser'
 import { rpc } from '../rpc'
 
@@ -33,24 +33,33 @@ function SampleWaveform({ samplePath, selectionStart = 0, selectionEnd = 1 }: Sa
     pathD = `M ${top[0]} L ${top.slice(1).join(' ')} L ${bottom.reverse().join(' ')} Z`;
   }
 
+  // Choose an inner content width larger than the container to allow horizontal scroll
+  const innerWidth = React.useMemo(() => {
+    const n = waveform?.length ?? 0;
+    if (!n) return 900; // default width when unknown
+    return Math.max(900, Math.min(2400, Math.floor(n * 0.6)));
+  }, [waveform]);
+
   return (
-    <div style={{ position:'relative', height:72, background:'#161b1e', border:'1px solid #302c30', margin:'6px 8px 4px', borderRadius:2, overflow:'hidden' }}>
+    <div style={{ position:'relative', height:48, background:'#161b1e', border:'1px solid #302c30', margin:'6px auto 4px', borderRadius:2, overflowX:'auto', overflowY:'hidden', width:'72%' }}>
       {empty && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#555' }}>No sample</div>}
       {loading && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#555' }}>Loading…</div>}
       {noData && <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, color:'#555' }}>No waveform</div>}
       {pathD && (
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width:'100%', height:'100%' }}>
-          <rect x={0} y={0} width={100} height={100} fill="#222" />
-            <path d={pathD} fill="#ffffff" fillOpacity={0.85} stroke="#ffffff" strokeWidth={0.2} />
-            <line x1="0" y1="50" x2="100" y2="50" stroke="#555" strokeWidth={0.4} strokeDasharray="2 2" />
-            {selectionEnd > selectionStart && (
-              <g>
-                <rect x={selectionStart * 100} y={0} width={(selectionEnd - selectionStart) * 100} height={100} fill="#ffffff" fillOpacity={0.06} />
-                <line x1={selectionStart * 100} y1={0} x2={selectionStart * 100} y2={100} stroke="#ffffff" strokeOpacity={0.5} strokeWidth={0.5} />
-                <line x1={selectionEnd * 100} y1={0} x2={selectionEnd * 100} y2={100} stroke="#ffffff" strokeOpacity={0.5} strokeWidth={0.5} />
-              </g>
-            )}
-        </svg>
+        <div style={{ width: innerWidth, height: '100%' }}>
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ width:'100%', height:'100%' }}>
+            <rect x={0} y={0} width={100} height={100} fill="#222" />
+              <path d={pathD} fill="#ffffff" fillOpacity={0.85} stroke="#ffffff" strokeWidth={0.2} />
+              <line x1="0" y1="50" x2="100" y2="50" stroke="#555" strokeWidth={0.4} strokeDasharray="2 2" />
+              {selectionEnd > selectionStart && (
+                <g>
+                  <rect x={selectionStart * 100} y={0} width={(selectionEnd - selectionStart) * 100} height={100} fill="#ffffff" fillOpacity={0.06} />
+                  <line x1={selectionStart * 100} y1={0} x2={selectionStart * 100} y2={100} stroke="#ffffff" strokeOpacity={0.5} strokeWidth={0.5} />
+                  <line x1={selectionEnd * 100} y1={0} x2={selectionEnd * 100} y2={100} stroke="#ffffff" strokeOpacity={0.5} strokeWidth={0.5} />
+                </g>
+              )}
+          </svg>
+        </div>
       )}
     </div>
   );
@@ -66,6 +75,9 @@ export default function SampleBrowser() {
   const ui = browser.getSynthUI ? browser.getSynthUI() : undefined;
   const selStart = ui?.sampler?.sample_start ?? 0;
   const selEnd = ui?.sampler?.sample_end ?? 1;
+  // refs for auto-scroll to keep selection visible when navigating with arrows
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const deleteCurrent = async () => {
     if (!currentSample) return;
@@ -84,10 +96,12 @@ export default function SampleBrowser() {
     if (!sampleBrowserOpen) return;
     const onKey = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
-      if (['e','d','q','enter','a','w','r'].includes(k)) e.preventDefault();
+      if (['e','d','q','enter','a','w','r','arrowup','arrowdown'].includes(k)) e.preventDefault();
       switch (k) {
-        case 'e': sampleBrowserMoveUp(); break;
-        case 'd': sampleBrowserMoveDown(); break;
+        case 'e':
+        case 'arrowup': sampleBrowserMoveUp(); break;
+        case 'd':
+        case 'arrowdown': sampleBrowserMoveDown(); break;
         case 'q':
         case 'enter': loadSelectedSample(); break;
         case 'a': togglePreview(); break;
@@ -127,32 +141,40 @@ export default function SampleBrowser() {
 
   // Stop preview on selection change
   useEffect(() => { if (isPreviewPlaying) { (async()=>{ try { await rpc.stopPreview(); } catch {} setIsPreviewPlaying(false); })(); } }, [sampleBrowserSelected]);
+  // Ensure selected item stays visible in the list using the same logic as Project Browser
+  useEffect(() => {
+    const c = listRef.current; const sel = itemRefs.current[sampleBrowserSelected];
+    if (!c || !sel) return;
+    const cb = c.getBoundingClientRect();
+    const sb = sel.getBoundingClientRect();
+    if (sb.top < cb.top) {
+      c.scrollTop += (sb.top - cb.top) - 8; // scroll up with small padding
+    } else if (sb.bottom > cb.bottom) {
+      c.scrollTop += (sb.bottom - cb.bottom) + 8; // scroll down with small padding
+    }
+  }, [sampleBrowserSelected, sampleBrowserOpen]);
   // Stop when closing
   useEffect(() => { if (!sampleBrowserOpen && isPreviewPlaying) { (async()=>{ try { await rpc.stopPreview(); } catch {} setIsPreviewPlaying(false); })(); } }, [sampleBrowserOpen]);
 
   if (!sampleBrowserOpen) return null;
 
   return (
-    <div style={{ position:'absolute', top:60, left:'10%', width:'80%', border:'1px solid var(--line)', background:'var(--bg)', color:'var(--text)', boxShadow:'0 0 0 2px var(--bg)', zIndex:20 }}>
+    <div style={{ position:'absolute', top:40, left:'10%', width:'80%', height:216, display:'flex', flexDirection:'column', overflow:'hidden',
+      border:'1px solid var(--line)', background:'var(--bg)', color:'var(--text)', boxShadow:'0 0 0 2px var(--bg)', zIndex:20,
+      backgroundImage: 'radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)', backgroundSize:'6px 6px' }}>
       <div style={{ padding:'6px 8px', borderBottom:'1px solid var(--line)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <span style={{ fontWeight:'bold' }}>Samples</span>
         {isRecording && <span style={{ color:'#f33', fontSize:10, animation:'blink 1s steps(2,start) infinite' }}>● REC</span>}
       </div>
       {currentSample && (
-        <div style={{ padding:'6px 8px', borderBottom:'1px solid var(--line)', display:'flex', justifyContent:'space-between', alignItems:'center', background:'rgba(var(--accent-rgb),0.04)' }}>
-          <span style={{ fontSize:11, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:'70%' }}>{currentSample}</span>
-          <button onClick={togglePreview} style={{ fontSize:10, padding:'2px 6px', cursor:'pointer', background:isPreviewPlaying? 'var(--accent)' : 'transparent', color:isPreviewPlaying? 'var(--bg)' : 'var(--text)', border:'1px solid var(--line)' }}>{isPreviewPlaying? 'Stop' : 'Preview'}</button>
-        </div>
-      )}
-      {currentSample && (
         <SampleWaveform samplePath={currentSample} selectionStart={selStart} selectionEnd={selEnd} />
       )}
-      <div style={{ maxHeight:240, overflowY:'auto' }}>
+  <div ref={listRef} style={{ flex:'1 1 auto', minHeight: 0, overflowY:'auto' }}>
         {sampleBrowserItems.length === 0 && (
           <div style={{ padding:'6px 8px', color:'var(--text-soft)' }}>(no samples)</div>
         )}
         {sampleBrowserItems.map((item:string, i:number) => (
-          <div key={item} style={{
+          <div key={item} ref={(el)=>{ itemRefs.current[i] = el; }} style={{
             padding:'6px 8px',
             borderBottom:'1px solid var(--line)',
             background: i === sampleBrowserSelected ? 'rgba(var(--accent-rgb),0.14)' : 'transparent',

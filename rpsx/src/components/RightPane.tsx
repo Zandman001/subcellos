@@ -33,14 +33,14 @@ export default function RightPane({ view }: { view: ViewName }) {
   // Droplets removed: no overlay triggers
 
   return (
-    <div className={`panel ${focused ? 'focused' : ''}`} style={{ flex:1, height:'100%', display:'flex', flexDirection:'column', fontFamily: "'Press Start 2P', monospace", overflow:'hidden' }}>
+  <div className={`panel right-pane ${focused ? 'focused' : ''}`} style={{ flex:1, height:'100%', minHeight:0, display:'flex', flexDirection:'column', fontFamily: "'Press Start 2P', monospace", overflow:'hidden' }}>
   {/* Droplets removed */}
       
       {view === 'Sounds' && (
         level === 'synth'
           ? (
             <div style={{ height:'100%', display:'flex', flexDirection:'column' }}>
-              <div style={{ flex:1, minHeight:0 }}>
+              <div className="no-scrollbars" style={{ flex:1, minHeight:0, overflow:'auto' }}>
                 {renderSynthPage(s.synthPages[s.synthPageIndex])}
               </div>
             </div>
@@ -53,15 +53,7 @@ export default function RightPane({ view }: { view: ViewName }) {
         level === 'pattern' && selectedSoundId && items[selected]
           ? (
             <div style={{ height:'100%', display:'flex', flexDirection:'column' }}>
-              <div style={{ display:'flex', justifyContent:'center', gap:'var(--space-2)', padding:'var(--space-2) 0' }}>
-                <button className="btn ghost" onClick={() => seq?.toggleLocalPlay()}>
-                  {seq?.playingLocal ? 'Pause Local' : 'Play Local'}
-                </button>
-                <button className="btn ghost" onClick={() => seq?.toggleGlobalPlay()}>
-                  {seq?.playingGlobal ? 'Pause Global' : 'Play Global'}
-                </button>
-              </div>
-              <div style={{ flex:1, minHeight:0 }}>
+              <div className="no-scrollbars" style={{ flex:1, minHeight:0, overflow:'auto' }}>
                 <SequencerRow soundId={selectedSoundId} part={typeof selectedSoundPart === 'number' ? selectedSoundPart : 0} />
               </div>
             </div>
