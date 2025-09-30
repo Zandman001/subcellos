@@ -17,6 +17,9 @@ export default function ProjectBrowser() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const selRef = useRef<HTMLDivElement | null>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  // Module picker scroll refs
+  const modScrollRef = useRef<HTMLDivElement | null>(null);
+  const modSelRef = useRef<HTMLDivElement | null>(null);
 
   // Keep selected item in view on selection change
   useEffect(() => {
@@ -47,6 +50,20 @@ export default function ProjectBrowser() {
     return () => { c.removeEventListener('scroll', onScroll); window.removeEventListener('resize', update); };
   }, [state.items.length]);
 
+  // Keep selected module in view when module picker is open (same physics as Sample Browser)
+  useEffect(() => {
+    if (!(state.level === 'pattern' && state.modulePickerOpen)) return;
+    const c = modScrollRef.current; const sel = modSelRef.current;
+    if (!c || !sel) return;
+    const cb = c.getBoundingClientRect();
+    const sb = sel.getBoundingClientRect();
+    if (sb.top < cb.top) {
+      c.scrollTop += (sb.top - cb.top) - 8; // up with padding
+    } else if (sb.bottom > cb.bottom) {
+      c.scrollTop += (sb.bottom - cb.bottom) + 8; // down with padding
+    }
+  }, [state.modulePickerOpen, state.modulePickerIndex]);
+
   return (
   <div className={`panel ${focused ? 'focused' : ''}`} style={{ width: '25%', height: '100%', display:'flex', flexDirection:'column', fontFamily: "'Press Start 2P', monospace", minHeight: 0 }}>
   <div ref={scrollRef} className="panel-scroll no-scrollbars" style={{ flex: 1, minHeight: 0, overflow: 'auto', position:'relative' }}>
@@ -68,16 +85,19 @@ export default function ProjectBrowser() {
           <div className="scroll-indicator__arrow" />
         </div>
       )}
+
+      
       {/* Footer legend removed per request */}
       {state.level === 'pattern' && state.modulePickerOpen && (
-        <div className="overlay-box fade-in" style={{ top: 48, maxHeight: '60%', overflow: 'auto' }}>
-          {['Electricity', 'Acid 303', 'String Theory', 'Mushrooms', 'Sampler', 'Drubbles'].map((name, i) => {
-            const sel = i === state.modulePickerIndex;
-            return (
-              <div key={name} className={`picker-item ${sel ? 'selected' : ''}`}>{name}</div>
-            );
-          })}
-          <div className="overlay-footer">Q to add · A to cancel</div>
+        <div className="overlay-box fade-in" style={{ top: 48, maxHeight: '60%', display:'flex', flexDirection:'column', minHeight: 0 }}>
+          <div ref={modScrollRef} style={{ flex:'1 1 auto', overflowY:'auto', minHeight: 0 }}>
+            {['Electricity', 'Acid 303', 'String Theory', 'Mushrooms', 'Sampler', 'Drubbles'].map((name, i) => {
+              const sel = i === state.modulePickerIndex;
+              return (
+                <div ref={sel ? modSelRef : undefined} key={name} className={`picker-item ${sel ? 'selected' : ''}`}>{name}</div>
+              );
+            })}
+          </div>
         </div>
       )}
 

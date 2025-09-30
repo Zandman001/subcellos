@@ -243,18 +243,25 @@ export default function SynthEQView({ partIndex }: { partIndex?: number }) {
     active: true,
   });
 
+  // Detect global knob-hide flag to collapse the knob row entirely
+  const showKnobs = (() => {
+    try { return !document.body.classList.contains('hide-knobs'); } catch { return false; }
+  })();
+
   return (
-    <div className="eq-panel">
-      <div className="eq-canvas-wrap" ref={wrapRef} style={{ position: 'relative' }}>
+    <div className="eq-panel" style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column', gap: 0 }}>
+      <div className="eq-canvas-wrap" ref={wrapRef} style={{ position: 'relative', flex:1, minHeight:0 }}>
         <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0 }} />
         <canvas ref={specCanvasRef} style={{ position: 'absolute', inset: 0 }} />
       </div>
-      <div style={{ display: 'flex', gap: 12, marginTop: 6, justifyContent: 'center' }}>
-        <Knob label={`Band ${pageBase+1}`} value={normFromDb(eqGains[pageBase+0] || 0)} onChange={(v)=> updateEqGain(pageBase+0, dbFromNorm(v))} step={33} format={() => ''} />
-        <Knob label={`Band ${pageBase+2}`} value={normFromDb(eqGains[pageBase+1] || 0)} onChange={(v)=> updateEqGain(pageBase+1, dbFromNorm(v))} step={33} format={() => ''} />
-        <Knob label={`Band ${pageBase+3}`} value={normFromDb(eqGains[pageBase+2] || 0)} onChange={(v)=> updateEqGain(pageBase+2, dbFromNorm(v))} step={33} format={() => ''} />
-        <Knob label={`Band ${pageBase+4}`} value={normFromDb(eqGains[pageBase+3] || 0)} onChange={(v)=> updateEqGain(pageBase+3, dbFromNorm(v))} step={33} format={() => ''} />
-      </div>
+      {showKnobs && (
+        <div style={{ display: 'flex', gap: 12, marginTop: 6, justifyContent: 'center' }}>
+          <Knob label={`Band ${pageBase+1}`} value={normFromDb(eqGains[pageBase+0] || 0)} onChange={(v)=> updateEqGain(pageBase+0, dbFromNorm(v))} step={33} format={() => ''} />
+          <Knob label={`Band ${pageBase+2}`} value={normFromDb(eqGains[pageBase+1] || 0)} onChange={(v)=> updateEqGain(pageBase+1, dbFromNorm(v))} step={33} format={() => ''} />
+          <Knob label={`Band ${pageBase+3}`} value={normFromDb(eqGains[pageBase+2] || 0)} onChange={(v)=> updateEqGain(pageBase+2, dbFromNorm(v))} step={33} format={() => ''} />
+          <Knob label={`Band ${pageBase+4}`} value={normFromDb(eqGains[pageBase+3] || 0)} onChange={(v)=> updateEqGain(pageBase+3, dbFromNorm(v))} step={33} format={() => ''} />
+        </div>
+      )}
     </div>
   );
 }

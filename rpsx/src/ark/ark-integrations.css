@@ -233,3 +233,12 @@ body.ark-mode .ark-fixed-frame {
 /* Clamp page scroll to viewport at all times to prevent window growth */
 html, body { height: 100%; overflow: hidden; }
 
+
+/* ===== Hide Knobs (UI-less control via hotkeys) ===== */
+body.hide-knobs .ark-knob,
+body.hide-knobs [class*="knob"] .ark-knob,
+body.hide-knobs .knob-shell,
+body.hide-knobs .knob-face {
+  display: none !important;
+}
+

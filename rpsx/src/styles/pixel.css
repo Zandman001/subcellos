@@ -74,7 +74,8 @@
 }
 .eq-canvas-wrap {
   width: 100%;
-  height: 120px;
+  /* Let JS-controlled flex sizing determine height; keep a minimum for small windows */
+  min-height: 120px;
   border: 1px solid var(--line);
   background: var(--neutral-1);
   background-image: 

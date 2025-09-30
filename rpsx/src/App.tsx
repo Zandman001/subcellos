@@ -7,6 +7,7 @@ import './ark/ark-integrations.css'
 export default function App() {
   if (typeof document !== 'undefined') {
     document.body.classList.add('ark-mode');
+    document.body.classList.add('hide-knobs');
   }
   return (
     <ErrorBoundary>
