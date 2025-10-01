@@ -1,5 +1,6 @@
 import React from 'react'
 import Knob from './Knob'
+import DualVUMeter from './DualVUMeter'
 import { useBrowser } from '../../store/browser'
 import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
 
@@ -22,6 +23,7 @@ export default function SynthMIXER() {
   
   return (
     <Page title={`MIXER`}>
+  <DualVUMeter />
     <Row style={{ justifyContent:'center' }}>
   <Knob label="Volume" value={mx.volume} step={49} onChange={(v)=> { updateMx(s, { volume: v }); s.setSynthParam(`part/0/mixer/volume`, v); }} />
   <Knob label="Pan" value={mx.pan} step={41} onChange={(v)=> { updateMx(s, { pan: v }); s.setSynthParam(`part/0/mixer/pan`, (v-0.5)*2); }} format={(v)=>`${Math.round((v-0.5)*200)/100}`} />

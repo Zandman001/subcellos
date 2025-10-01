@@ -84,21 +84,7 @@ export default function Acid303() {
       background: 'var(--neutral-1)',
       margin: '8px'
     }}>
-      <div style={{ 
-        fontSize: 12, 
-        margin: '8px 0 10px',
-        color: 'var(--accent)',
-        fontWeight: 'bold'
-      }}>ACID303 · {label} · press W/R</div>
       {page === 0 ? knobs0 : knobs1}
-      <div style={{ 
-        marginTop: 10, 
-        opacity: 0.8, 
-        fontSize: 11,
-        color: 'var(--text-soft)'
-      }}>
-        Signal: Osc → LPF → Drive → (FX Rack) → Mixer → EQ
-      </div>
     </div>
   );
 }

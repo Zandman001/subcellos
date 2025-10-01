@@ -14,6 +14,8 @@ pub struct AudioEngine {
   params: Option<ParamStore>,
   stream: Option<cpal::Stream>,
   spec_tx: Option<Sender<Vec<f32>>>,
+  // Meter sender for RMS/peak (L/R)
+  meter_tx: Option<Sender<[f32; 4]>>,
   #[allow(dead_code)] spec_buf: Vec<f32>,
   #[allow(dead_code)] recording: bool,
   #[allow(dead_code)] recorded_samples: Vec<f32>,
@@ -72,6 +74,7 @@ impl AudioEngine {
       params: Some(ParamStore::new()),
       stream: None,
       spec_tx: None,
+    meter_tx: None,
       spec_buf: Vec::with_capacity(4096),
       recording: false,
       recorded_samples: Vec::new(),
@@ -79,6 +82,7 @@ impl AudioEngine {
   }
 
   pub fn set_spectrum_sender(&mut self, tx: Sender<Vec<f32>>) { self.spec_tx = Some(tx); }
+  pub fn set_meter_sender(&mut self, tx: Sender<[f32; 4]>) { self.meter_tx = Some(tx); }
 
   pub fn start(&mut self) -> Result<(), String> {
     if self.stream.is_some() { return Ok(()); }
@@ -130,9 +134,16 @@ impl AudioEngine {
     let mut graph = self.graph.take().unwrap_or_else(|| EngineGraph::new(self.sr));
     let mut params = self.params.take().unwrap_or_else(|| ParamStore::new());
   let spec_tx = self.spec_tx.clone();
+  let meter_tx = self.meter_tx.clone();
     let mut spec_buf = Vec::<f32>::with_capacity(4096);
     let mut recording = false;
     let mut recorded_samples = Vec::<f32>::new();
+  // Meter accumulators (separate from spectrum)
+  let mut m_sum_l_sq: f64 = 0.0;
+  let mut m_sum_r_sq: f64 = 0.0;
+  let mut m_peak_l: f32 = 0.0;
+  let mut m_peak_r: f32 = 0.0;
+  let mut m_count: usize = 0;
 
   let err_fn = |e| eprintln!("stream error: {e}");
     let mut playing = true;
@@ -157,6 +168,13 @@ impl AudioEngine {
           // accumulate mono for spectrum
           let mono = 0.5 * (l + r);
           if spec_buf.len() < 2048 { spec_buf.push(mono); }
+          // accumulate for metering (use a shorter window ~1024 samples)
+          m_sum_l_sq += (l as f64) * (l as f64);
+          m_sum_r_sq += (r as f64) * (r as f64);
+          let al = l.abs(); let ar = r.abs();
+          if al > m_peak_l { m_peak_l = al; }
+          if ar > m_peak_r { m_peak_r = ar; }
+          m_count += 1;
           
           // Record if recording is active
           if recording {
@@ -171,6 +189,17 @@ impl AudioEngine {
             let _ = tx.try_send(out);
           }
           spec_buf.clear();
+        }
+        // Emit meter roughly every 1024 samples to target ~40-50 Hz at common SRs
+        if m_count >= 1024 {
+          if let Some(mtx) = meter_tx.as_ref() {
+            let n = m_count as f32;
+            let rms_l = (m_sum_l_sq / (n as f64)).sqrt() as f32;
+            let rms_r = (m_sum_r_sq / (n as f64)).sqrt() as f32;
+            let payload = [rms_l.max(0.0), rms_r.max(0.0), m_peak_l.max(0.0), m_peak_r.max(0.0)];
+            let _ = mtx.try_send(payload);
+          }
+          m_sum_l_sq = 0.0; m_sum_r_sq = 0.0; m_peak_l = 0.0; m_peak_r = 0.0; m_count = 0;
         }
       } else {
         for frame in data.chunks_mut(2) {

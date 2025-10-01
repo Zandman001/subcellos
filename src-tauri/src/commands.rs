@@ -47,6 +47,34 @@ fn spawn_spectrum_emitter(app: tauri::AppHandle, rx: Receiver<Vec<f32>>) {
   });
 }
 
+fn spawn_meter_emitter(app: tauri::AppHandle, rx: Receiver<[f32;4]>) {
+  std::thread::spawn(move || {
+    // Simple smoothing for visual stability
+    let mut last: Option<[f32;4]> = None;
+    loop {
+      let payload = match rx.recv() { Ok(v) => v, Err(_) => break };
+      let smoothed = if let Some(prev) = last {
+        let a = 0.6f32; // weight previous more
+        [
+          a*prev[0] + (1.0-a)*payload[0],
+          a*prev[1] + (1.0-a)*payload[1],
+          payload[2].max(prev[2]*0.95), // slight decay to peak if not increasing
+          payload[3].max(prev[3]*0.95),
+        ]
+      } else { payload };
+      last = Some(smoothed);
+      // Convert to dBFS with floor
+      let db_min = -80.0f32;
+      let to_db = |x:f32| if x <= 1e-9 { db_min } else { 20.0 * x.log10().max(db_min/20.0) };
+      let rms_l_db = to_db(smoothed[0].max(1e-9));
+      let rms_r_db = to_db(smoothed[1].max(1e-9));
+      let peak_l_db = to_db(smoothed[2].max(1e-9));
+      let peak_r_db = to_db(smoothed[3].max(1e-9));
+      let _ = app.emit("vu_meter", (rms_l_db, rms_r_db, peak_l_db, peak_r_db));
+    }
+  });
+}
+
 #[tauri::command]
 pub fn start_audio(app: tauri::AppHandle) -> Result<(), String> {
   if ENGINE_TX.get().is_some() { return Ok(()); }
@@ -55,6 +83,10 @@ pub fn start_audio(app: tauri::AppHandle) -> Result<(), String> {
   let (stx, srx) = chan::<Vec<f32>>();
   engine.set_spectrum_sender(stx);
   spawn_spectrum_emitter(app.clone(), srx);
+  // Set up meter channel and emitter thread
+  let (mtx, mrx) = chan::<[f32;4]>();
+  engine.set_meter_sender(mtx);
+  spawn_meter_emitter(app.clone(), mrx);
   // no scope emitter
   let tx = engine.sender();
   engine.start()?;

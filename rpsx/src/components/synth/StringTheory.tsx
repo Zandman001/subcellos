@@ -52,12 +52,7 @@ export default function StringTheory() {
         <Knob label="Tune" value={karplus.tune} onChange={(v) => { update({ tune: v }); s.setSynthParam(`part/${part}/ks/tune`, v); }} format={(v) => `${(v * 12 - 6).toFixed(1)} st`} />
       </Row>
 
-      <div className="help-text">
-        <p><strong>Decay:</strong> String sustain - how long the pluck resonates</p>
-        <p><strong>Damp:</strong> High frequency damping - controls brightness decay</p>
-        <p><strong>Excite:</strong> Initial pluck intensity - affects attack brightness</p>
-        <p><strong>Tune:</strong> Fine pitch adjustment in semitones</p>
-      </div>
+  {/* Help text removed per spec */}
     </Page>
   );
 }
