@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { keyIs } from '../utils/key';
 import Knob from './synth/Knob';
 import { useSequencer, SequencerNote, chordNameFromMidiSet, SequencerStep } from '../store/sequencer';
 import { useBrowser } from '../store/browser';
@@ -6,7 +7,17 @@ import { useFourKnobHotkeys } from '../hooks/useFourKnobHotkeys';
 
 export default function SequencerRow({ soundId, part }: { soundId: string; part: number }) {
   const seq = useSequencer(soundId);
+  // Replace local menu state with store-backed flag so other UIs can reflect it
   const [menu, setMenu] = useState(false);
+  useEffect(() => {
+    // keep local mirror in sync with store
+    setMenu(!!(seq as any).uiMenuOpen);
+  }, [(seq as any).uiMenuOpen]);
+  const setMenuOpen = (open: boolean) => {
+    setMenu(!!open);
+    (seq as any).setMenuOpen?.(!!open);
+  };
+
   const browser = useBrowser() as any;
   const isDrum = (browser?.moduleKindById?.[soundId] === 'drum') || (/drum|drubbles/i.test(browser?.selectedSoundName || ''));
   const drumSamples: string[] = (browser?.drumSampleItems || []) as string[];
@@ -24,14 +35,12 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
   // Keyboard: Q add, A remove, W toggle menu; 1 local play/pause; 2 global play/pause
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const k = e.key.toLowerCase();
-      if (k === 'w') { e.preventDefault(); setMenu(m => !m); return; }
+      if (keyIs(e, ['KeyW'], ['w','W'])) { e.preventDefault(); setMenuOpen(!menu); return; }
       if (menu) return; // when in menu, ignore edit keys
-      if (k === 'q') { e.preventDefault(); seq.addNoteAtSelection(); return; }
-      if (k === 'a') { e.preventDefault(); seq.removeNoteAtSelection(); return; }
-  if (k === 'r') { e.preventDefault(); seq.toggleLegatoAtSelection(); return; }
-      if (k === '1') { e.preventDefault(); seq.toggleLocalPlay(); return; }
-      if (k === '2') { e.preventDefault(); seq.toggleGlobalPlay(); return; }
+      if (keyIs(e, ['KeyQ'], ['q','Q'])) { e.preventDefault(); seq.addNoteAtSelection(); return; }
+      if (keyIs(e, ['KeyA'], ['a','A'])) { e.preventDefault(); seq.removeNoteAtSelection(); return; }
+      if (keyIs(e, ['KeyR'], ['r','R'])) { e.preventDefault(); seq.toggleLegatoAtSelection(); return; }
+  // play controls moved to global (Shell): I = local, U = global
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -263,48 +272,48 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', padding: 8 }}>
       <div style={{ fontSize: 12, color: 'var(--accent)' }}>SEQUENCE OPTIONS</div>
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {/* Resolution: discrete 6-step */}
-            <Knob
-              label={`Step Res  ${resLabel(seq.resolution)}`}
-              value={seq.resolutionNorm}
-              onChange={(v)=> seq.setResolutionNorm(v)}
-              step={6}
-              format={() => resLabel(seq.resolution)}
-              onStepClick={(dir)=> {
-                const steps = ['1/4','1/8','1/16','1/32','1/8t','1/16t'] as const;
-                const idx = steps.indexOf(seq.resolution as any);
-                const next = Math.max(0, Math.min(steps.length - 1, idx + dir));
-                const norm = next / (steps.length - 1);
-                seq.setResolutionNorm(norm);
-              }}
-            />
-            {/* Length: 1..64 discrete */}
-            <Knob
-              label={`Steps  ${seq.length}`}
-              value={(seq.length - 1) / 63}
-              step={64}
-              onChange={(v)=> seq.setLength(1 + Math.round(v * 63))}
-              format={() => String(seq.length)}
-              onStepClick={(dir)=> seq.setLength(Math.max(1, Math.min(64, seq.length + dir)))}
-            />
-            {/* Mode: 2-position switch */}
-            <Knob
-              label={`Mode  ${seq.mode === 'tempo' ? 'Tempo' : 'Polyrhythm'}`}
-              value={seq.mode === 'tempo' ? 0 : 1}
-              step={2}
-              onChange={(v)=> seq.setMode(v < 0.5 ? 'tempo' : 'poly')}
-              format={() => (seq.mode === 'tempo' ? 'Tempo' : 'Poly')}
-              onStepClick={(dir)=> seq.setMode(seq.mode === 'tempo' ? 'poly' : 'tempo')}
-            />
-            {/* Local BPM: infinite drag mapped 40..240 */}
-            <Knob
-              label={`Local BPM  ${Math.round(seq.localBpm)}`}
-              value={(seq.localBpm - 40) / 200}
-              onChange={(v)=> seq.setLocalBpm(40 + v * 200)}
-              inactive={seq.mode !== 'poly'}
-              infinite
-              format={() => `${Math.round(seq.localBpm)} BPM`}
-            />
+        {/* Resolution: discrete 6-step */}
+        <Knob
+          label={`Step Res  ${resLabel(seq.resolution)}`}
+          value={seq.resolutionNorm}
+          onChange={(v)=> seq.setResolutionNorm(v)}
+          step={6}
+          format={() => resLabel(seq.resolution)}
+          onStepClick={(dir)=> {
+            const steps = ['1/4','1/8','1/16','1/32','1/8t','1/16t'] as const;
+            const idx = steps.indexOf(seq.resolution as any);
+            const next = Math.max(0, Math.min(steps.length - 1, idx + dir));
+            const norm = next / (steps.length - 1);
+            seq.setResolutionNorm(norm);
+          }}
+        />
+        {/* Length: 1..64 discrete */}
+        <Knob
+          label={`Steps  ${seq.length}`}
+          value={(seq.length - 1) / 63}
+          step={64}
+          onChange={(v)=> seq.setLength(1 + Math.round(v * 63))}
+          format={() => String(seq.length)}
+          onStepClick={(dir)=> seq.setLength(Math.max(1, Math.min(64, seq.length + dir)))}
+        />
+        {/* Mode: 2-position switch */}
+        <Knob
+          label={`Mode  ${seq.mode === 'tempo' ? 'Tempo' : 'Polyrhythm'}`}
+          value={seq.mode === 'tempo' ? 0 : 1}
+          step={2}
+          onChange={(v)=> seq.setMode(v < 0.5 ? 'tempo' : 'poly')}
+          format={() => (seq.mode === 'tempo' ? 'Tempo' : 'Poly')}
+          onStepClick={(dir)=> seq.setMode(seq.mode === 'tempo' ? 'poly' : 'tempo')}
+        />
+        {/* Local BPM: infinite drag mapped 40..240 */}
+        <Knob
+          label={`Local BPM  ${Math.round(seq.localBpm)}`}
+          value={(seq.localBpm - 40) / 200}
+          onChange={(v)=> seq.setLocalBpm(40 + v * 200)}
+          inactive={seq.mode !== 'poly'}
+          infinite
+          format={() => `${Math.round(seq.localBpm)} BPM`}
+        />
       </div>
       <div style={{ fontSize: 10, color: 'var(--text-soft)' }}>(Press W to return)</div>
     </div>

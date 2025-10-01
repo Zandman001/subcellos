@@ -51,5 +51,6 @@ function setEqGain(s: any, idx: number, v: number) {
     const nextG = ui.eq.gains.slice(); nextG[idx] = v;
     return { ...ui, eq: { gains: nextG } };
   });
-  s.setSynthParam(`part/0/eq/gain_db/b${idx+1}`, -12 + v*24);
+  const part = (s as any).selectedSoundPart ?? 0;
+  s.setSynthParam(`part/${part}/eq/gain_db/b${idx+1}`, -12 + v*24);
 }

@@ -1,8 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { sequencerSetPart } from './sequencer';
 import { fsClient, Pattern, Project, Sound } from "../fsClient";
 import { rpc } from "../rpc";
-import { sequencerSetCurrentPattern, sequencerStopAll } from '../store/sequencer';
+import { sequencerSetCurrentPattern, sequencerStopAll, sequencerDeleteForSound, sequencerSetPart } from '../store/sequencer';
 import { envTimeFromNorm, envTimeMsFromNorm, envTimeNormFromMilliseconds, envTimeNormFromSeconds } from "../utils/envTime";
 import type { ViewName } from "../types/ui";
 
@@ -45,6 +44,16 @@ export interface BrowserState {
   drumSampleSelected?: number;
   drumPreviewing?: boolean;
   isRecording: boolean;
+  // Project settings menu
+  projectSettingsOpen?: boolean;
+  projectSettingsIndex?: number; // which setting is selected (start with 0)
+  globalBpm?: number; // mirror of global tempo for UI
+  openProjectSettings?: () => void;
+  closeProjectSettings?: () => void;
+  projectSettingsMoveUp?: () => void;
+  projectSettingsMoveDown?: () => void;
+  projectSettingsInc?: (delta?: number) => void; // R increments
+  projectSettingsDec?: (delta?: number) => void; // W decrements
   closeSampleBrowser: () => void;
   openDrumPackBrowser?: () => Promise<void>;
   closeDrumPackBrowser?: () => void;
@@ -158,6 +167,9 @@ const state: InternalState = {
   drumSampleSelected: 0,
   drumPreviewing: false,
   isRecording: false,
+  projectSettingsOpen: false,
+  projectSettingsIndex: 0,
+  globalBpm: 120,
   closeSampleBrowser: () => {},
   confirmOpen: false,
   // placeholders, replaced below
@@ -229,6 +241,7 @@ state.confirmYes = async () => {
       set({ selected: Math.min(state.selected, Math.max(0, state.items.length - 1)) });
     } else if (state.confirmKind === 'module' && state.confirmProjectName && state.confirmSoundId) {
       await fsClient.deleteSound(state.confirmProjectName, state.confirmSoundId);
+  try { sequencerDeleteForSound(state.confirmSoundId, state.patternName); } catch {}
       await state.loadLevel();
       set({ selected: Math.max(0, Math.min(state.selected, Math.max(0, state.items.length - 1))) });
     }
@@ -334,6 +347,13 @@ state.loadLevel = async () => {
       set({ synthPages: pages, items: pages.slice(), selected: idx, synthPageIndex: idx });
   // Ensure engine module_kind matches current selection
   try { syncModuleKindToEngineForSelected(); } catch {}
+      // Ensure sequencer knows the current part and kind so local play works inside synth UI
+      try {
+        const id = state.selectedSoundId; const part = state.selectedSoundPart ?? 0;
+        const mk = getCurrentModuleKind();
+        const kind = mk === 4 ? 'sampler' : mk === 5 ? 'drum' : 'synth';
+        if (id) sequencerSetPart(id, part, kind as any);
+      } catch {}
       break;
     }
   }
@@ -611,6 +631,34 @@ state.setActiveView = (view: ViewName) => {
 };
 
 // Ark mode persistence removed; always active via App
+
+// --- Project Settings (Global) ---
+state.openProjectSettings = () => { set({ projectSettingsOpen: true, projectSettingsIndex: 0 }); };
+state.closeProjectSettings = () => { set({ projectSettingsOpen: false }); };
+state.projectSettingsMoveUp = () => {
+  if (!state.projectSettingsOpen) return;
+  const next = Math.max(0, (state.projectSettingsIndex || 0) - 1);
+  set({ projectSettingsIndex: next });
+};
+state.projectSettingsMoveDown = () => {
+  if (!state.projectSettingsOpen) return;
+  const next = Math.min(0, (state.projectSettingsIndex || 0) + 1); // only one item for now
+  set({ projectSettingsIndex: next });
+};
+state.projectSettingsInc = (delta = 1) => {
+  if (!state.projectSettingsOpen) return;
+  const cur = typeof state.globalBpm === 'number' ? state.globalBpm : 120;
+  const next = Math.max(20, Math.min(240, Math.round(cur + delta)));
+  set({ globalBpm: next });
+  try {
+    // Notify sequencer and engine
+    window.dispatchEvent(new CustomEvent('tempo-change', { detail: { bpm: next } }));
+  } catch {}
+  try { rpc.setTempo(next); } catch {}
+};
+state.projectSettingsDec = (delta = 1) => {
+  state.projectSettingsInc?.(-delta);
+};
 
 // Public helper to recompute pages and keep selection in bounds
 state.refreshSynthPages = () => {

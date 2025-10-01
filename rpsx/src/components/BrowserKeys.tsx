@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useBrowserStore } from "../store/browser";
+import { keyIs } from "../utils/key";
 
 export default function BrowserKeys() {
   useEffect(() => {
@@ -10,7 +11,7 @@ export default function BrowserKeys() {
 
     const onKey = (e: KeyboardEvent) => {
       const st = useBrowserStore.getState() as any;
-      if (e.key === 'Tab') { e.preventDefault(); st.toggleFocus(); return; }
+      if (keyIs(e, [], ['Tab'])) { e.preventDefault(); st.toggleFocus(); return; }
       if (st.focus !== 'browser') return;
       // prevent interfering with inputs
       const target = e.target as HTMLElement | null;
@@ -18,12 +19,12 @@ export default function BrowserKeys() {
         const tag = target.tagName;
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (target as any).isContentEditable) return;
       }
-      const k = e.key;
+  const k = (e.key || '').toLowerCase();
       
       // While sample browser is open, pause E/D navigation and let sample browser handle it
       if (st.sampleBrowserOpen) {
         // Allow only Escape to close the sample browser from here
-        if (k === 'Escape') {
+  if (keyIs(e, [], ['Escape', 'Esc', 'escape'])) {
           st.closeSampleBrowser?.();
           e.preventDefault();
         }
@@ -32,10 +33,10 @@ export default function BrowserKeys() {
       
       // While picker is open, only E/D/Q/S should act
       if (st.level === 'pattern' && st.modulePickerOpen) {
-        if (k === 'e') { st.moveUp(); e.preventDefault(); return; }
-        if (k === 'd') { st.moveDown(); e.preventDefault(); return; }
-        if (k === 'a') { st.goLeft(); e.preventDefault(); return; }
-        if (k === 'q') { st.add(); e.preventDefault(); return; }
+  if (k === 'e') { st.moveUp(); e.preventDefault(); return; }
+  if (k === 'd') { st.moveDown(); e.preventDefault(); return; }
+  if (k === 'a') { st.goLeft(); e.preventDefault(); return; }
+  if (k === 'q') { st.add(); e.preventDefault(); return; }
         return;
       }
 
@@ -50,7 +51,7 @@ export default function BrowserKeys() {
 
       // Preview notes inside synth level: 'a' (base), 'q' (+1 oct), and 'a'+'q' (+2 oct) for Electricity.
       // Suppress BOTH when current module is drum (Drubbles) – only Drubbles component handles 'a' for slot preview.
-      if (st.level === 'synth' && (k === 'a' || k === 'q')) {
+  if (st.level === 'synth' && (k === 'a' || k === 'q')) {
         if (st.currentSoundType === 'drum') {
           // Allow Q to fall through for pack browser open in Drubbles (handled in Drubbles component); prevent generic preview.
           if (k === 'a') e.preventDefault(); // prevent accidental remove action binding below
@@ -65,21 +66,21 @@ export default function BrowserKeys() {
         }
         return;
       }
-      if (k === 'e') { st.moveUp(); e.preventDefault(); return; }
-      if (k === 'd') { st.moveDown(); e.preventDefault(); return; }
-      if (k === 's') { st.goLeft(); e.preventDefault(); return; }
-      if (k === 'f') { st.goRight(); e.preventDefault(); return; }
+  if (k === 'e') { st.moveUp(); e.preventDefault(); return; }
+  if (k === 'd') { st.moveDown(); e.preventDefault(); return; }
+  if (k === 's') { st.goLeft(); e.preventDefault(); return; }
+  if (k === 'f') { st.goRight(); e.preventDefault(); return; }
       // Avoid interpreting 'a' as remove when in drum synth page (reserved for slot preview there)
-      if (k === 'q') { st.add(); e.preventDefault(); return; }
+  if (k === 'q') { st.add(); e.preventDefault(); return; }
       if (k === 'a') {
         if (st.currentSoundType === 'drum' && st.level === 'synth') { e.preventDefault(); return; }
         st.remove(); e.preventDefault(); return; }
-      if (k === 'w') { st.moveLeft(); e.preventDefault(); return; }
-      if (k === 'r') { st.moveRight(); e.preventDefault(); return; }
+  if (k === 'w') { st.moveLeft(); e.preventDefault(); return; }
+  if (k === 'r') { st.moveRight(); e.preventDefault(); return; }
       };
     const onKeyUp = (e: KeyboardEvent) => {
       const st = useBrowserStore.getState() as any;
-      const k = e.key;
+      const k = (e.key || '').toLowerCase();
       if (st.focus !== 'browser') return;
     if (k === 'a' || k === 'q') {
         if (st.level === 'synth') {

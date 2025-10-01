@@ -76,8 +76,9 @@ export default function Knob({ label, value, onChange, step, format, disabled, d
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
     const stepSize = step ? 1 / (step - 1) : 0.02;
-    if (['+', '=', 'ArrowUp', 'ArrowRight'].includes(e.key)) { e.preventDefault(); commit(v + stepSize); }
-    else if (['-', '_', 'ArrowDown', 'ArrowLeft'].includes(e.key)) { e.preventDefault(); commit(v - stepSize); }
+    const k = e.key;
+    if (['+', '=', 'ArrowUp', 'ArrowRight'].includes(k)) { e.preventDefault(); commit(v + stepSize); }
+    else if (['-', '_', 'ArrowDown', 'ArrowLeft'].includes(k)) { e.preventDefault(); commit(v - stepSize); }
     else if (e.key === 'Home') { e.preventDefault(); commit(0); }
     else if (e.key === 'End') { e.preventDefault(); commit(1); }
   };

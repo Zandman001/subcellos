@@ -1,4 +1,5 @@
 import React from 'react'
+import { keyIs } from '../../utils/key'
 import Knob from './Knob'
 import { useBrowser } from '../../store/browser'
 import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
@@ -22,8 +23,8 @@ export default function Mushrooms() {
   const [page, setPage] = React.useState<0|1|2|3>(0);
   React.useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
-      if (e.key === 'w' || e.key === 'W') setPage(prev => prev === 0 ? 3 : (prev - 1) as any);
-      if (e.key === 'r' || e.key === 'R') setPage(prev => (prev + 1) % 4 as any);
+  if (keyIs(e, ['KeyW'], ['w','W'])) setPage(prev => prev === 0 ? 3 : (prev - 1) as any);
+  if (keyIs(e, ['KeyR'], ['r','R'])) setPage(prev => (prev + 1) % 4 as any);
     };
     window.addEventListener('keydown', onDown as any);
     return () => window.removeEventListener('keydown', onDown as any);

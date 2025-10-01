@@ -17,17 +17,19 @@ export function useFourKnobHotkeys({ inc1, dec1, inc2, dec2, inc3, dec3, inc4, d
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
-      const k = e.key.toLowerCase();
-      switch (k) {
-        case '5': if (dec1) { e.preventDefault(); dec1(); } break;
-        case '6': if (inc1) { e.preventDefault(); inc1(); } break;
-        case 't': if (dec2) { e.preventDefault(); dec2(); } break;
-        case 'y': if (inc2) { e.preventDefault(); inc2(); } break;
-        case 'g': if (dec3) { e.preventDefault(); dec3(); } break;
-        case 'h': if (inc3) { e.preventDefault(); inc3(); } break;
-        case 'b': if (dec4) { e.preventDefault(); dec4(); } break;
-        case 'n': if (inc4) { e.preventDefault(); inc4(); } break;
+      const code = e.code;
+      const k = (e.key || '').toLowerCase();
+      const hit = (...vals: string[]) => vals.includes(code) || vals.includes(k);
+      if (hit('Digit5','Numpad5','5')) { if (dec1) { e.preventDefault(); dec1(); } return; }
+      if (hit('Digit6','Numpad6','6')) { if (inc1) { e.preventDefault(); inc1(); } return; }
+      if (hit('KeyT','t')) { if (dec2) { e.preventDefault(); dec2(); } return; }
+      if (hit('KeyY','y','KeyZ','z')) { // support QWERTZ where physical Y may report 'z'
+        if (inc2) { e.preventDefault(); inc2(); } return;
       }
+      if (hit('KeyG','g')) { if (dec3) { e.preventDefault(); dec3(); } return; }
+      if (hit('KeyH','h')) { if (inc3) { e.preventDefault(); inc3(); } return; }
+      if (hit('KeyB','b')) { if (dec4) { e.preventDefault(); dec4(); } return; }
+      if (hit('KeyN','n')) { if (inc4) { e.preventDefault(); inc4(); } return; }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

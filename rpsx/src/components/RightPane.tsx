@@ -238,20 +238,24 @@ function FooterHints({ page }: { page: string }) {
       Math.max(0, Math.min(1, Number(lf.drive) || 0)),
     ];
   } else if (lower === 'osc') {
-    const a = ui?.oscA || { shape:0, detune:0.5, fm:0, level:0.7 };
-    const b = ui?.oscB || { shape:1, detune:0.5, fm:0, level:0.7 };
-    labels = ['A Shape', 'A Detune', 'B Shape', 'B Level'];
+    // Mirror the four knobs from SynthOSC for the currently selected oscillator
+    const which = (s as any).oscSelect === 1 ? 'B' : 'A';
+    const o = which === 'A' ? (ui?.oscA || { shape:0, detune:0.5, fm:0, level:0.7 })
+                             : (ui?.oscB || { shape:1, detune:0.5, fm:0, level:0.7 });
+    const shapeName = (v:number) => ['sine','saw','square','tri','pulse','Noise W','Noise P','Noise B'][Math.max(0, Math.min(7, Math.round((Number(v)||0)*7)))] || 'sine';
+    const detuneCents50 = (v:number) => Math.round(((Number(v)||0) - 0.5) * 100); // ±50c (matches SynthOSC knob)
+    labels = ['Shape', 'Detune', 'FM Amt', 'Level'];
     values = [
-      `${Math.round((a.shape ?? 0)*7)}`,
-      `${Math.round(detuneCents(a.detune ?? 0))} ct`,
-      `${Math.round((b.shape ?? 1)*7)}`,
-      pct(b.level ?? 0.7),
+      shapeName(o.shape ?? 0),
+      `${detuneCents50(o.detune ?? 0)}c`,
+      pct(o.fm ?? 0),
+      pct(o.level ?? 0.7),
     ] as any;
     norms = [
-      Math.max(0, Math.min(1, Number(a.shape) || 0)),
-      Math.max(0, Math.min(1, Number(a.detune) || 0.5)),
-      Math.max(0, Math.min(1, Number(b.shape) || 1)),
-      Math.max(0, Math.min(1, Number(b.level) || 0.7)),
+      Math.max(0, Math.min(1, Number(o.shape) || 0)),
+      Math.max(0, Math.min(1, Number(o.detune) || 0.5)),
+      Math.max(0, Math.min(1, Number(o.fm) || 0)),
+      Math.max(0, Math.min(1, Number(o.level) || 0.7)),
     ];
   } else if (lower === 'env') {
     const which = (s.envSelect ?? 0) === 1 ? 'modEnv' : 'ampEnv';
@@ -277,18 +281,33 @@ function FooterHints({ page }: { page: string }) {
       Math.max(0, Math.min(1, Number(fx.p3) || 0)),
     ];
   } else if (lower === 'sequencer' || lower === 'sequencerrow') {
-    labels = ['Step', 'Note', 'Pitch', 'Velocity'];
-    const step = (seq?.stepIndex ?? 0); const len = (seq?.length ?? 0);
-    const notes = (seq?.steps?.[step]?.notes || []);
-    const ni = Math.max(0, Math.min(notes.length - 1, seq?.noteIndex ?? 0));
-    const nn = notes[ni];
-    values = [`${step+1}/${len}`, notes.length ? `${ni+1}/${notes.length}` : '0/0', midiToName(nn?.midi), (typeof nn?.vel === 'number') ? `${Math.round((nn.vel||0)*100)}%` : '—'];
-    norms = [
-      (len > 1) ? Math.max(0, Math.min(1, step / (len - 1))) : 0,
-      (notes.length > 1) ? Math.max(0, Math.min(1, ni / (notes.length - 1))) : 0,
-      (typeof nn?.midi === 'number') ? Math.max(0, Math.min(1, nn.midi / 127)) : 0.5,
-      (typeof nn?.vel === 'number') ? Math.max(0, Math.min(1, nn.vel)) : 0,
-    ];
+    if ((seq as any)?.uiMenuOpen) {
+      // When Sequencer Options menu is open, mirror its four controls
+      labels = ['Res', 'Steps', 'Mode', 'Local BPM'];
+      const items = ['1/4','1/8','1/16','1/32','1/8t','1/16t'];
+      const res = String(seq?.resolution ?? '1/16').toUpperCase();
+      values = [res, String(seq?.length ?? 16), (seq?.mode === 'poly' ? 'Poly' : 'Tempo'), `${Math.round(seq?.localBpm ?? 120)}`] as any;
+      const resIdx = Math.max(0, Math.min(items.length - 1, items.indexOf((seq?.resolution as any) || '1/16')));
+      norms = [
+        (typeof seq?.resolutionNorm === 'number') ? Math.max(0, Math.min(1, seq.resolutionNorm)) : (resIdx / (items.length - 1)),
+        (typeof seq?.length === 'number') ? Math.max(0, Math.min(1, ((seq.length - 1) / 63))) : 0,
+        (seq?.mode === 'poly') ? 1 : 0,
+        (typeof seq?.localBpm === 'number') ? Math.max(0, Math.min(1, ((seq.localBpm - 40) / 200))) : 0.4,
+      ] as any;
+    } else {
+      labels = ['Step', 'Note', 'Pitch', 'Velocity'];
+      const step = (seq?.stepIndex ?? 0); const len = (seq?.length ?? 0);
+      const notes = (seq?.steps?.[step]?.notes || []);
+      const ni = Math.max(0, Math.min(notes.length - 1, seq?.noteIndex ?? 0));
+      const nn = notes[ni];
+      values = [`${step+1}/${len}`, notes.length ? `${ni+1}/${notes.length}` : '0/0', midiToName(nn?.midi), (typeof nn?.vel === 'number') ? `${Math.round((nn.vel||0)*100)}%` : '—'];
+      norms = [
+        (len > 1) ? Math.max(0, Math.min(1, step / (len - 1))) : 0,
+        (notes.length > 1) ? Math.max(0, Math.min(1, ni / (notes.length - 1))) : 0,
+        (typeof nn?.midi === 'number') ? Math.max(0, Math.min(1, nn.midi / 127)) : 0.5,
+        (typeof nn?.vel === 'number') ? Math.max(0, Math.min(1, nn.vel)) : 0,
+      ];
+    }
   } else if (lower === 'mod') {
     // Mod Matrix compact controls mirror
     const lRow = ui?.mod?.lfoRow ?? 0;

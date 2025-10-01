@@ -4,12 +4,18 @@ import ProjectBrowser from './components/ProjectBrowser'
 import RightPane from './components/RightPane'
 import BrowserKeys from './components/BrowserKeys'
 import SampleBrowser from './components/SampleBrowser'
+import ProjectSettings from './components/ProjectSettings'
 import type { ViewName } from './types/ui'
 import { rpc } from './rpc'
-import { sampleBrowser, useBrowserStore } from './store/browser'
+import { sampleBrowser, useBrowser, useBrowserStore } from './store/browser'
+import { useSequencer, sequencerToggleLocalFor, sequencerSetPart } from './store/sequencer'
+import { keyIs } from './utils/key'
 
 export default function Shell() {
   const [view, setView] = useState<ViewName>('Sounds')
+  const browser = useBrowser() as any;
+  const selectedSoundId = browser?.selectedSoundId || '__none__';
+  const seq = useSequencer(selectedSoundId);
   const viewOrder: ViewName[] = useMemo(() => ['Sounds', 'Sequencer', 'Arrangement', 'Perform'], [])
   // Fixed-canvas base resolution presets (16:9)
   const basePresets = useMemo(() => ([
@@ -69,73 +75,135 @@ export default function Shell() {
         const tag = target.tagName
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (target as any).isContentEditable) return
       }
-      switch (e.key) {
-        case '7': { // Dot alpha
+      const code = (e as any).code as string | undefined;
+      const key = e.key;
+      // If Project Settings overlay is open, only allow closing with 'O' here; let overlay handle the rest
+      try {
+        const bs = useBrowserStore.getState() as any;
+        if (bs.projectSettingsOpen) {
+          if (keyIs(e, ['KeyO'], ['o','O'])) { e.preventDefault(); bs.closeProjectSettings?.(); }
+          return;
+        }
+      } catch {}
+      const isDigit = (d: string) => code === `Digit${d}` || code === `Numpad${d}` || key === d;
+      // Global: Tabs 1..4 (Sounds, Sequencer, Arrangement, Perform)
+      if (isDigit('1')) { e.preventDefault(); setView('Sounds'); return; }
+      if (isDigit('2')) { e.preventDefault(); setView('Sequencer'); return; }
+      if (isDigit('3')) { e.preventDefault(); setView('Arrangement'); return; }
+      if (isDigit('4')) { e.preventDefault(); setView('Perform'); return; }
+      // Global: Open Project Settings with 'O'
+      if (keyIs(e, ['KeyO'], ['o','O'])) { e.preventDefault(); try { useBrowserStore.getState().openProjectSettings?.(); } catch {} return; }
+      // Global: Transport — I = Local, U = Global
+      if (keyIs(e, ['KeyI'], ['i','I'])) {
+        e.preventDefault();
+        try {
+          // Ensure routing is set before toggling local play
+          const s = useBrowserStore.getState() as any;
+          // Only allow local play when at sound-selection or synth levels
+          const lvl = s.level as string | undefined;
+          const atSoundLevel = lvl === 'pattern' || lvl === 'synth';
+          if (!atSoundLevel) {
+            // Ignore I outside sound levels (e.g., projects/project/patterns)
+            return;
+          }
+          let sid = s.selectedSoundId;
+          // Fallback: if no selected id (e.g., in sound picker focus), use the highlighted item
+          if (!sid && Array.isArray(s.soundIdsAtLevel)) {
+            const idx = Math.max(0, Math.min((s.items?.length||0)-1, s.selected||0));
+            sid = s.soundIdsAtLevel[idx];
+            if (sid) {
+              // Also sync selectedSoundId so UI reflects it
+              (s as any).selectedSoundId = sid;
+              (s as any).selectedSoundPart = (s.soundPartsAtLevel||[])[idx] ?? 0;
+            }
+          }
+          if (sid) {
+            const part = typeof s.selectedSoundPart === 'number' ? s.selectedSoundPart : 0;
+            const mk = s.moduleKindById?.[sid];
+            // Push routing to sequencer store for this sound so local play has proper context
+            sequencerSetPart(sid, part, mk === 'drum' ? 'drum' : mk === 'sampler' ? 'sampler' : 'synth');
+            // Toggle local for that specific sound
+            sequencerToggleLocalFor(sid);
+          } else {
+            // Fallback to current hook-based instance
+            seq.toggleLocalPlay?.();
+          }
+        } catch {}
+        return;
+      }
+      if (keyIs(e, ['KeyU'], ['u','U'])) {
+        e.preventDefault();
+        try {
+          const s = useBrowserStore.getState() as any;
+          // Gate: allow global play at patterns list, pattern, or synth
+          const lvl = s.level as string | undefined;
+          const allowGlobal = lvl === 'patterns' || lvl === 'pattern' || lvl === 'synth';
+          if (!allowGlobal) return; // ignore behind patterns (projects/project)
+          // Ensure routing is set before toggling global play
+          const sid = s.selectedSoundId;
+          if (sid) {
+            const part = s.selectedSoundPart;
+            if (typeof part === 'number') seq.setPart?.(part);
+            const mk = s.moduleKindById?.[sid];
+            if (mk === 'drum') seq.setModuleKind?.('drum');
+            else if (mk === 'sampler') seq.setModuleKind?.('sampler');
+            else seq.setModuleKind?.('synth');
+          }
+          seq.toggleGlobalPlay?.();
+        } catch {}
+        return;
+      }
+      switch (true) {
+        case isDigit('7'): { // Dot alpha
           e.preventDefault();
           themeState.dotAlphaIdx = (themeState.dotAlphaIdx + 1) % dotAlphaPresets.length;
           const val = dotAlphaPresets[themeState.dotAlphaIdx];
           applyCssVars({ '--ark-dot-alpha': String(val) });
           break;
         }
-        case '8': { // Dot step (density)
+        case isDigit('8'): { // Dot step (density)
           e.preventDefault();
           themeState.dotStepIdx = (themeState.dotStepIdx + 1) % dotStepPresets.length;
           const val = dotStepPresets[themeState.dotStepIdx];
           applyCssVars({ '--ark-dot-step': val });
           break;
         }
-        case '9': { // Dot size
+        case isDigit('9'): { // Dot size
           e.preventDefault();
           themeState.dotSizeIdx = (themeState.dotSizeIdx + 1) % dotSizePresets.length;
           const val = dotSizePresets[themeState.dotSizeIdx];
           applyCssVars({ '--ark-dot-size': val });
           break;
         }
-        case '0': { // Separator thickness
+        case isDigit('0'): { // Separator thickness
           e.preventDefault();
           themeState.sepWIdx = (themeState.sepWIdx + 1) % sepWPresets.length;
           const val = sepWPresets[themeState.sepWIdx];
           applyCssVars({ '--ark-sep-w': val });
           break;
         }
-        case '3':
+        case isDigit('3'):
           e.preventDefault()
           moveView(-1)
           break
-        case '4':
+        case isDigit('4'):
           e.preventDefault()
           moveView(1)
           break
-        case '[': {
+        case key === '[': {
           // Cycle to a smaller base (UI appears larger)
           e.preventDefault();
           setBaseIdx(i => Math.max(0, i - 1));
           break;
         }
-        case ']': {
+        case key === ']': {
           // Cycle to a larger base (more detail if space allows)
           e.preventDefault();
           setBaseIdx(i => Math.min(basePresets.length - 1, i + 1));
           break;
         }
-        // Space is used elsewhere; no global toggle now
-        default: {
-          // no-op
-        }
-        case 't':
-        case 'T': {
-          // Quick tempo toggle example: cycle between a few tempos
-          const s = useBrowserStore.getState();
-          const cur = (s as any)._lastTempo ?? 120;
-          const next = cur >= 140 ? 100 : cur >= 120 ? 140 : 120;
-          (s as any)._lastTempo = next;
-          rpc.setTempo(next);
-          // Notify UI
-          try { window.dispatchEvent(new CustomEvent('tempo-change', { detail: { bpm: next } })); } catch {}
-          break;
-        }
-        case 'r':
-        case 'R': {
+  // Space is used elsewhere; no global toggle now
+        case key === 'r' || key === 'R': {
           // Start recording only if in Sounds view AND current module is sampler
             if (view === 'Sounds') {
               const s = useBrowserStore.getState();
@@ -147,8 +215,7 @@ export default function Shell() {
             }
             break;
         }
-        case 'w':
-        case 'W': {
+        case key === 'w' || key === 'W': {
           if (view === 'Sounds') {
             const s = useBrowserStore.getState();
             const selectedSoundId = s.selectedSoundId;
@@ -167,6 +234,9 @@ export default function Shell() {
           }
           break;
         }
+        default: {
+          // no-op
+        }
       }
     }
 
@@ -176,9 +246,10 @@ export default function Shell() {
         const tag = target.tagName
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (target as any).isContentEditable) return
       }
-      switch (e.key) {
-        case 'r':
-        case 'R': {
+      const code = (e as any).code as string | undefined;
+      const key = e.key;
+      switch (true) {
+        case (code === 'KeyR' || key === 'r' || key === 'R'): {
           if (view === 'Sounds') {
             const s = useBrowserStore.getState();
             const selectedSoundId = s.selectedSoundId;
@@ -238,6 +309,7 @@ export default function Shell() {
       </div>
       <BrowserKeys />
       <SampleBrowser />
+  <ProjectSettings />
       </div>
     </div>
   )

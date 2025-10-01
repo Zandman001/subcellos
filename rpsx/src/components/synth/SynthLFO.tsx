@@ -7,6 +7,7 @@ export default function SynthLFO() {
   const s = useBrowser() as any;
   const ui = s.getSynthUI();
   const lfo = ui.lfo;
+  const part = s.selectedSoundPart ?? 0;
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
   const rafRef = React.useRef<number | null>(null);
@@ -75,10 +76,10 @@ export default function SynthLFO() {
     const ni = Math.max(0, Math.min(steps-1, i + dir));
     return (steps===1)?0:(ni / (steps-1));
   };
-  const setShape = (nv:number)=> { const v = clamp01(nv); s.updateSynthUI((ui:any)=>({ ...ui, lfo: { ...ui.lfo, shape: v } })); s.setSynthParam(`part/0/lfo/shape`, Math.round(v*3), 'I32'); };
-  const setRate = (nv:number)=> { const v = clamp01(nv); s.updateSynthUI((ui:any)=>({ ...ui, lfo: { ...ui.lfo, rate: v } })); s.setSynthParam(`part/0/lfo/rate_hz`, mapRate(v)); };
-  const setAmount = (nv:number)=> { const v = clamp01(nv); s.updateSynthUI((ui:any)=>({ ...ui, lfo: { ...ui.lfo, amount: v } })); s.setSynthParam(`part/0/lfo/amount`, v); };
-  const setDrive = (nv:number)=> { const v = clamp01(nv); s.updateSynthUI((ui:any)=>({ ...ui, lfo: { ...ui.lfo, drive: v } })); s.setSynthParam(`part/0/lfo/drive`, v); };
+  const setShape = (nv:number)=> { const v = clamp01(nv); s.updateSynthUI((ui:any)=>({ ...ui, lfo: { ...ui.lfo, shape: v } })); s.setSynthParam(`part/${part}/lfo/shape`, Math.round(v*3), 'I32'); };
+  const setRate = (nv:number)=> { const v = clamp01(nv); s.updateSynthUI((ui:any)=>({ ...ui, lfo: { ...ui.lfo, rate: v } })); s.setSynthParam(`part/${part}/lfo/rate_hz`, mapRate(v)); };
+  const setAmount = (nv:number)=> { const v = clamp01(nv); s.updateSynthUI((ui:any)=>({ ...ui, lfo: { ...ui.lfo, amount: v } })); s.setSynthParam(`part/${part}/lfo/amount`, v); };
+  const setDrive = (nv:number)=> { const v = clamp01(nv); s.updateSynthUI((ui:any)=>({ ...ui, lfo: { ...ui.lfo, drive: v } })); s.setSynthParam(`part/${part}/lfo/drive`, v); };
   useFourKnobHotkeys({
     dec1: ()=> setShape(stepDiscrete(lfo.shape||0, 4, -1)), inc1: ()=> setShape(stepDiscrete(lfo.shape||0, 4, +1)),
     dec2: ()=> setRate((lfo.rate||0) - step), inc2: ()=> setRate((lfo.rate||0) + step),
@@ -93,10 +94,10 @@ export default function SynthLFO() {
         <canvas ref={canvasRef} style={{ width: '100%', height: 60, display: 'block' }} />
       </div>
       <Row>
-  <Knob label="Shape" value={lfo.shape} step={4} onChange={(v)=> { updateLfo(s, { shape: v }); s.setSynthParam(`part/0/lfo/shape`, Math.round(v*3), 'I32'); }} format={(v)=>['sine','saw','square','tri'][Math.round(v*3)]} />
-  <Knob label="Rate" value={lfo.rate} step={49} onChange={(v)=> { updateLfo(s, { rate: v }); s.setSynthParam(`part/0/lfo/rate_hz`, mapRate(v)); }} format={(v)=>`${mapRate(v).toFixed(2)} Hz`} />
-  <Knob label="Amount" value={lfo.amount ?? 1} step={49} onChange={(v)=> { updateLfo(s, { amount: v }); s.setSynthParam(`part/0/lfo/amount`, v); }} format={(v)=>`${Math.round(v*100)}%`} />
-  <Knob label="Drive" value={lfo.drive} step={49} onChange={(v)=> { updateLfo(s, { drive: v }); s.setSynthParam(`part/0/lfo/drive`, v); }} format={(v)=>`${Math.round(v*100)}%`} />
+  <Knob label="Shape" value={lfo.shape} step={4} onChange={(v)=> { updateLfo(s, { shape: v }); s.setSynthParam(`part/${part}/lfo/shape`, Math.round(v*3), 'I32'); }} format={(v)=>['sine','saw','square','tri'][Math.round(v*3)]} />
+  <Knob label="Rate" value={lfo.rate} step={49} onChange={(v)=> { updateLfo(s, { rate: v }); s.setSynthParam(`part/${part}/lfo/rate_hz`, mapRate(v)); }} format={(v)=>`${mapRate(v).toFixed(2)} Hz`} />
+  <Knob label="Amount" value={lfo.amount ?? 1} step={49} onChange={(v)=> { updateLfo(s, { amount: v }); s.setSynthParam(`part/${part}/lfo/amount`, v); }} format={(v)=>`${Math.round(v*100)}%`} />
+  <Knob label="Drive" value={lfo.drive} step={49} onChange={(v)=> { updateLfo(s, { drive: v }); s.setSynthParam(`part/${part}/lfo/drive`, v); }} format={(v)=>`${Math.round(v*100)}%`} />
       </Row>
     </Page>
   );

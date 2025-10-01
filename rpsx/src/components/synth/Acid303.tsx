@@ -24,8 +24,9 @@ export default function Acid303() {
   const [page, setPage] = React.useState<0|1>(0);
   React.useEffect(() => {
     const onDown = (e: KeyboardEvent) => {
-      if (e.key === 'w' || e.key === 'W') setPage(0);
-      if (e.key === 'r' || e.key === 'R') setPage(1);
+      const code = e.code; const k = (e.key||'').toLowerCase();
+      if (code === 'KeyW' || k === 'w') setPage(0);
+      if (code === 'KeyR' || k === 'r') setPage(1);
     };
     window.addEventListener('keydown', onDown as any);
     return () => window.removeEventListener('keydown', onDown as any);

@@ -26,6 +26,8 @@ type Seq = {
   playheadFrac: number; // 0..1 across total row
   playheadStep: number; // integer index of the step under the playhead
   lastTriggered: boolean; // flash marker
+  // UI (transient)
+  uiMenuOpen?: boolean; // true when the Sequencer Options menu (W) is shown
 };
 
 // Pattern-scoped sequences. Composite key: `${patternId}::${soundId}`.
@@ -93,6 +95,7 @@ function getDefault(): Seq {
     playheadFrac: 0,
     playheadStep: -1,
     lastTriggered: false,
+  uiMenuOpen: false,
   }
 }
 
@@ -133,6 +136,15 @@ let lastT = 0; // ms
 let globalStart = 0;
 let globalPlaying = false;
 let globalBpm = 120;
+let localPlayingId: string | undefined;
+function emitTransport() {
+  try {
+    (window as any).__seqGlobalPlaying = globalPlaying;
+    (window as any).__seqGlobalStart = globalStart;
+    (window as any).__seqLocalPlayingId = localPlayingId;
+    window.dispatchEvent(new CustomEvent('seq-transport', { detail: { globalPlaying, localPlayingId } }));
+  } catch {}
+}
 // Preview debounce
 let lastPreviewAt = 0;
 const PREVIEW_THROTTLE_MS = 60;
@@ -168,6 +180,32 @@ export function sequencerStopAll() {
   });
   try { (window as any).__seqGlobalPlaying = false; } catch {}
   globalPlaying = false;
+  localPlayingId = undefined;
+  emitTransport();
+  notify();
+}
+
+// Remove sequencer state for a sound id (optionally only for a specific pattern)
+export function sequencerDeleteForSound(soundId: string, patternId?: string) {
+  const keys = Object.keys(seqMap);
+  const suffix = `::${soundId}`;
+  for (const k of keys) {
+    const pat = patternFromKey(k);
+    if ((patternId && pat !== (patternId || 'default')) || !k.endsWith(suffix)) continue;
+    const s = seqMap[k];
+    // Release any held notes
+    try {
+      const held: Set<number> = (s as any)._held || new Set<number>();
+      const part = typeof s.part === 'number' ? s.part : undefined;
+      if (typeof part === 'number') {
+        for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} }
+      }
+    } catch {}
+    delete seqMap[k];
+    delete versions[k];
+    delete snapshots[k];
+    try { if (typeof window !== 'undefined') localStorage.removeItem(`seq:${k}`); } catch {}
+  }
   notify();
 }
 // High-resolution step scheduler (interval based) to reduce rAF jitter
@@ -209,15 +247,15 @@ function tick(ts: number) {
   Object.keys(seqMap).forEach(id => {
     if (patternFromKey(id) !== currentPatternId) return;
     const s = seqMap[id];
-    const followGlobal = (s.mode === 'tempo') && s.playingGlobal;
-    const isActive = followGlobal || s.playingLocal; // in polyrhythm mode, allow local when global running
-    const bpm = followGlobal ? globalBpm : (s.localBpm || 120);
+    const usingGlobalClock = (s.mode !== 'poly');
+    const isActive = !!(s.playingLocal || s.playingGlobal);
+    const bpm = usingGlobalClock ? globalBpm : (s.localBpm || 120);
     const stMs = stepTimeMs(s.resolution, bpm);
     if (!isActive) return; // paused entirely
     if (stMs <= 0 || s.length <= 0) return;
     // If scheduler mode is active, only update fractional playhead here; step edges handled by scheduler.
     if ((s as any)._schedulerMode) {
-      const startTime = followGlobal ? globalStart : (s as any)._localStart || globalStart;
+      const startTime = usingGlobalClock ? globalStart : (s as any)._localStart || globalStart;
       const elapsed = now - startTime;
       const totalMs = stMs * s.length;
       const loopPos = elapsed % totalMs;
@@ -229,8 +267,8 @@ function tick(ts: number) {
       if (nowMs - last > 33) { lastFracNotify[id] = nowMs; touch(id); notify(); }
       return;
     }
-    const elapsed = followGlobal ? gElapsed : (s as any)._localStart ? (now - (s as any)._localStart) : 0;
-    if (!followGlobal && !(s as any)._localStart) { (s as any)._localStart = now; }
+    const elapsed = usingGlobalClock ? gElapsed : (s as any)._localStart ? (now - (s as any)._localStart) : 0;
+    if (!usingGlobalClock && !(s as any)._localStart) { (s as any)._localStart = now; }
     // Position in steps
   const totalMs = stMs * s.length;
   const loopPos = elapsed % totalMs;
@@ -331,8 +369,8 @@ function scheduleSteps() {
     if (patternFromKey(id) !== currentPatternId) return;
     const s = seqMap[id];
     if (!(s.playingLocal || s.playingGlobal)) return;
-    const followGlobal = (s.mode === 'tempo') && s.playingGlobal;
-    const bpm = followGlobal ? globalBpm : (s.localBpm || 120);
+  const usingGlobalClock = (s.mode !== 'poly');
+  const bpm = usingGlobalClock ? globalBpm : (s.localBpm || 120);
     const stMs = stepTimeMs(s.resolution, bpm);
     if (!stMs || stMs <= 0 || s.length <= 0) return;
     if (!(s as any)._schedulerMode) return; // only for scheduler-enabled sequences
@@ -350,7 +388,7 @@ function scheduleSteps() {
       (s as any)._lastStepTime = (s as any)._nextStepTime;
       (s as any)._nextStepTime += stMs;
       // Update playheadFrac immediately after step for snappy UI
-      const loopElapsed = ((s as any)._lastStepTime - (followGlobal ? globalStart : (s as any)._localStart || globalStart));
+  const loopElapsed = ((s as any)._lastStepTime - (usingGlobalClock ? globalStart : (s as any)._localStart || globalStart));
       const totalMs = stMs * s.length;
       s.playheadFrac = Math.max(0, Math.min(1, (loopElapsed % totalMs) / totalMs));
       touch(id); notify();
@@ -508,8 +546,33 @@ export function useSequencer(soundId: string) {
       const len = Math.max(1, Math.min(64, Math.round(n)));
       set(soundId, { length: len });
     },
-    setMode: (m: 'tempo' | 'poly') => set(soundId, { mode: m }),
+    setMode: (m: 'tempo' | 'poly') => {
+      const st = get(soundId);
+      // Apply mode
+      set(soundId, { mode: m });
+      // If currently playing, reset scheduler anchors so timing changes apply immediately
+      const isPlaying = !!(st.playingLocal || st.playingGlobal);
+      if (!isPlaying) return;
+      const now = performance.now();
+      if (m === 'poly') {
+        // Switch to local tempo: ensure local start and next step times are based on local clock
+        (st as any)._localStart = now;
+        (st as any)._schedulerMode = true;
+        (st as any)._nextStepTime = now;
+        (st as any)._lastStepIdx = -1;
+      } else {
+        // Switch to tempo mode: follow global if available, else keep local running
+        const followGlobal = globalPlaying;
+        (st as any)._schedulerMode = true;
+        (st as any)._lastStepIdx = -1;
+        (st as any)._nextStepTime = followGlobal ? globalStart : now;
+        if (!followGlobal) { (st as any)._localStart = now; }
+      }
+    },
     setLocalBpm: (bpm: number) => set(soundId, { localBpm: Math.max(20, Math.min(240, Math.round(bpm))) }),
+  // UI state
+  setMenuOpen: (open: boolean) => set(soundId, { uiMenuOpen: !!open }),
+  toggleMenuOpen: () => set(soundId, { uiMenuOpen: !get(soundId).uiMenuOpen }),
     toggleLocalPlay: () => {
       const cur = get(soundId);
       const next = !cur.playingLocal;
@@ -540,7 +603,11 @@ export function useSequencer(soundId: string) {
             set(id, { playingLocal: false });
           }
         });
-        // Start this local
+  // Ensure a valid part routing; default to 0 if unset
+  if (typeof cur.part !== 'number') cur.part = 0;
+  // Warm up audio engine
+  try { rpc.startAudio(); } catch {}
+  // Start this local
   const start = performance.now();
   (cur as any)._localStart = start;
   cur.playheadFrac = 0; cur.playheadStep = -1; cur.lastTriggered = false;
@@ -553,7 +620,10 @@ export function useSequencer(soundId: string) {
         if (typeof part === 'number') { for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} } }
         (cur as any)._held = new Set<number>();
       }
-      set(soundId, { playingLocal: next });
+  set(soundId, { playingLocal: next });
+  // Mirror local transport id and emit event
+  localPlayingId = next ? (soundId.includes('::') ? soundId.split('::')[1] : soundId) : undefined;
+  emitTransport();
     },
     toggleGlobalPlay: () => {
       const wantStart = !globalPlaying;
@@ -572,19 +642,29 @@ export function useSequencer(soundId: string) {
         // Start global
   globalPlaying = true;
   globalStart = performance.now();
-  try { (window as any).__seqGlobalPlaying = true; (window as any).__seqGlobalStart = globalStart; } catch {}
+  localPlayingId = undefined;
+  emitTransport();
         Object.keys(seqMap).forEach(id => {
           if (patternFromKey(id) !== currentPatternId) return;
           const s = get(id);
+          if (typeof s.part !== 'number') s.part = 0;
           s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
           (s as any)._schedulerMode = true;
-          (s as any)._nextStepTime = globalStart; (s as any)._lastStepIdx = -1;
+          if (s.mode !== 'poly') {
+            // tempo mode: follow global clock
+            (s as any)._nextStepTime = globalStart;
+          } else {
+            // poly mode: start in sync with global press, then run at local tempo
+            (s as any)._localStart = globalStart;
+            (s as any)._nextStepTime = globalStart;
+          }
+          (s as any)._lastStepIdx = -1;
           set(id, { playingGlobal: true });
         });
       } else {
         // Stop global and release held notes
   globalPlaying = false;
-  try { (window as any).__seqGlobalPlaying = false; } catch {}
+  emitTransport();
         Object.keys(seqMap).forEach(id => {
           if (patternFromKey(id) !== currentPatternId) return;
           const s = get(id);
@@ -636,6 +716,128 @@ export function sequencerSetPart(soundId: string, part: number, kind?: 'synth'|'
         s.playingGlobal = true;
       }
     } catch {}
+  }
+}
+
+// External helper: toggle local playback for a specific sound without using the hook
+export function sequencerToggleLocalFor(soundId: string) {
+  const cur = get(soundId);
+  const next = !cur.playingLocal;
+  if (next) {
+    // Stop global if running
+    if (globalPlaying) {
+      globalPlaying = false;
+      try { (window as any).__seqGlobalPlaying = false; } catch {}
+      Object.keys(seqMap).forEach(id => {
+        const s = get(id);
+        const held: Set<number> = (s as any)._held || new Set<number>();
+        const part = typeof s.part === 'number' ? s.part : undefined;
+        if (typeof part === 'number') { for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} } }
+        (s as any)._held = new Set<number>();
+        if (s.playingGlobal) set(id, { playingGlobal: false });
+      });
+    }
+    // Stop other locals
+    Object.keys(seqMap).forEach(id => {
+      if (id === keyFor(soundId) || id === soundId) return;
+      const s = get(id);
+      if (s.playingLocal) {
+        const held: Set<number> = (s as any)._held || new Set<number>();
+        const part = typeof s.part === 'number' ? s.part : undefined;
+        if (typeof part === 'number') { for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} } }
+        (s as any)._held = new Set<number>();
+        set(id, { playingLocal: false });
+      }
+    });
+    // Ensure routing
+    if (typeof cur.part !== 'number') cur.part = 0;
+    try { rpc.startAudio(); } catch {}
+    const start = performance.now();
+    (cur as any)._localStart = start;
+    cur.playheadFrac = 0; cur.playheadStep = -1; cur.lastTriggered = false;
+    (cur as any)._schedulerMode = true;
+    (cur as any)._nextStepTime = start; (cur as any)._lastStepIdx = -1;
+  } else {
+    // Release held notes for this local
+    const held: Set<number> = (cur as any)._held || new Set<number>();
+    const part = typeof cur.part === 'number' ? cur.part : undefined;
+    if (typeof part === 'number') { for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} } }
+    (cur as any)._held = new Set<number>();
+  }
+  set(soundId, { playingLocal: next });
+  localPlayingId = next ? (soundId.includes('::') ? soundId.split('::')[1] : soundId) : undefined;
+  emitTransport();
+}
+
+// External helper: toggle global transport without a hook
+export function sequencerToggleGlobalPlay() {
+  const wantStart = !globalPlaying;
+  if (wantStart) {
+    // Stop all locals first
+    Object.keys(seqMap).forEach(id => {
+      const s = get(id);
+      if (s.playingLocal) {
+        const held: Set<number> = (s as any)._held || new Set<number>();
+        const part = typeof s.part === 'number' ? s.part : undefined;
+        if (typeof part === 'number') { for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} } }
+        (s as any)._held = new Set<number>();
+        set(id, { playingLocal: false });
+      }
+    });
+    globalPlaying = true;
+    globalStart = performance.now();
+    localPlayingId = undefined;
+    emitTransport();
+    Object.keys(seqMap).forEach(id => {
+      if (patternFromKey(id) !== currentPatternId) return;
+      const s = get(id);
+      if (typeof s.part !== 'number') s.part = 0;
+      s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
+      (s as any)._schedulerMode = true;
+      if (s.mode !== 'poly') {
+        (s as any)._nextStepTime = globalStart;
+      } else {
+        (s as any)._localStart = globalStart;
+        (s as any)._nextStepTime = globalStart;
+      }
+      (s as any)._lastStepIdx = -1;
+      set(id, { playingGlobal: true });
+    });
+  } else {
+    // Stop global
+    globalPlaying = false;
+    emitTransport();
+    Object.keys(seqMap).forEach(id => {
+      if (patternFromKey(id) !== currentPatternId) return;
+      const s = get(id);
+      const held: Set<number> = (s as any)._held || new Set<number>();
+      const part = typeof s.part === 'number' ? s.part : undefined;
+      if (typeof part === 'number') { for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} } }
+      (s as any)._held = new Set<number>();
+      set(id, { playingGlobal: false });
+    });
+  }
+}
+
+// External helper: stop any currently playing local
+export function sequencerStopLocalPlaying() {
+  if (!localPlayingId) return;
+  const sid = localPlayingId;
+  try {
+    const sids = Object.keys(seqMap).filter(k => k.endsWith(`::${sid}`) || k === sid);
+    for (const k of sids) {
+      const s = get(k);
+      if (s.playingLocal) {
+        const held: Set<number> = (s as any)._held || new Set<number>();
+        const part = typeof s.part === 'number' ? s.part : undefined;
+        if (typeof part === 'number') { for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} } }
+        (s as any)._held = new Set<number>();
+        set(k, { playingLocal: false });
+      }
+    }
+  } finally {
+    localPlayingId = undefined;
+    emitTransport();
   }
 }
 

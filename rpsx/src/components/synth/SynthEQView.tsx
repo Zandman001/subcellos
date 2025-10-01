@@ -3,6 +3,7 @@ import Knob from './Knob'
 import { useSynthEqState, setEqPage, updateEqGain } from '../../store/browser'
 import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
 import { listen } from '@tauri-apps/api/event'
+import { keyIs } from '../../utils/key'
 
 const FREQS = [50, 100, 200, 400, 800, 1600, 3200, 6400];
 const FMIN = 20, FMAX = 20000;
@@ -23,11 +24,11 @@ export default function SynthEQView({ partIndex }: { partIndex?: number }) {
     if (w.__eq_keys_registered__) return;
     w.__eq_keys_registered__ = true;
     const onDown = (e: KeyboardEvent) => {
-      if (e.key === 'Shift') w.__eq_shift__ = true;
-      if (e.key === 'w' || e.key === 'W') setEqPage(0);
-      if (e.key === 'r' || e.key === 'R') setEqPage(1);
+      if (keyIs(e, ['ShiftLeft','ShiftRight'], ['Shift'])) w.__eq_shift__ = true;
+      if (keyIs(e, ['KeyW'], ['w','W'])) setEqPage(0);
+      if (keyIs(e, ['KeyR'], ['r','R'])) setEqPage(1);
     };
-    const onUp = (e: KeyboardEvent) => { if (e.key === 'Shift') w.__eq_shift__ = false; };
+    const onUp = (e: KeyboardEvent) => { if (keyIs(e, ['ShiftLeft','ShiftRight'], ['Shift'])) w.__eq_shift__ = false; };
     window.addEventListener('keydown', onDown, { passive: true } as any);
     window.addEventListener('keyup', onUp, { passive: true } as any);
     return () => {

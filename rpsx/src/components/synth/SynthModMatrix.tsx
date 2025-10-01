@@ -3,6 +3,7 @@ import Knob from './Knob'
 import ModMatrixTable, { MOD_DEST_LIST } from './ModMatrixTable'
 import { useBrowser } from '../../store/browser'
 import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
+import { keyIs } from '../../utils/key'
 
 export default function SynthModMatrix() {
   const s = useBrowser() as any;
@@ -13,8 +14,8 @@ export default function SynthModMatrix() {
 
   // Key modifier: hold R to edit amounts
   React.useEffect(() => {
-    const down = (e: KeyboardEvent) => { if ((e.key === 'r' || e.key === 'R') && !s.isRDown) s.setIsRDown(true); };
-    const up = (e: KeyboardEvent) => { if (e.key === 'r' || e.key === 'R') s.setIsRDown(false); };
+  const down = (e: KeyboardEvent) => { if (keyIs(e, ['KeyR'], ['r','R']) && !s.isRDown) s.setIsRDown(true); };
+  const up = (e: KeyboardEvent) => { if (keyIs(e, ['KeyR'], ['r','R'])) s.setIsRDown(false); };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };

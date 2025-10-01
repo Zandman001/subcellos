@@ -1,4 +1,5 @@
 import React from 'react';
+import { keyIs } from '../../utils/key';
 import { useBrowser } from '../../store/browser';
 import Knob from './Knob';
 import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys';
@@ -16,7 +17,7 @@ export default function Drubbles() {
 
   React.useEffect(()=>{
     const onKey = (e: KeyboardEvent) => {
-      const k = e.key.toLowerCase();
+      const k = (e.key || '').toLowerCase();
       if (packBrowserOpen) {
         if(['q','e','d','w','r','escape'].includes(k)) e.preventDefault();
         switch(k){

@@ -3,6 +3,7 @@ import Knob from './Knob'
 import ModMatrixTable, { MOD_DEST_LIST } from './ModMatrixTable'
 import { useBrowser, useBrowserStore } from '../../store/browser'
 import { useFourKnobHotkeys } from '../../hooks/useFourKnobHotkeys'
+import { keyIs } from '../../utils/key'
 
 export default function SynthMOD() {
   const s = useBrowser() as any;
@@ -20,7 +21,7 @@ export default function SynthMOD() {
   // Toggle R mode on key press (no need to hold)
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'r' || e.key === 'R') {
+  if (keyIs(e, ['KeyR'], ['r','R'])) {
         if (e.repeat) return; // ignore auto-repeat
         const cur = useBrowserStore.getState().isRDown;
         useBrowserStore.getState().setIsRDown(!cur);
