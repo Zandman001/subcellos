@@ -32,10 +32,12 @@ type Seq = {
 
 // Pattern-scoped sequences. Composite key: `${patternId}::${soundId}`.
 let currentPatternId: string = 'default';
+try { if (typeof window !== 'undefined') { (window as any).__seqCurrentPattern = currentPatternId; } } catch {}
 const seqMap: Record<string, Seq> = {};
 
 export function sequencerSetCurrentPattern(pid: string) {
   currentPatternId = pid || 'default';
+  try { if (typeof window !== 'undefined') { (window as any).__seqCurrentPattern = currentPatternId; } } catch {}
 }
 
 function keyFor(soundId: string): string { return `${currentPatternId}::${soundId}`; }
@@ -192,6 +194,29 @@ export function sequencerDeleteForSound(soundId: string, patternId?: string) {
   for (const k of keys) {
     const pat = patternFromKey(k);
     if ((patternId && pat !== (patternId || 'default')) || !k.endsWith(suffix)) continue;
+    const s = seqMap[k];
+    // Release any held notes
+    try {
+      const held: Set<number> = (s as any)._held || new Set<number>();
+      const part = typeof s.part === 'number' ? s.part : undefined;
+      if (typeof part === 'number') {
+        for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} }
+      }
+    } catch {}
+    delete seqMap[k];
+    delete versions[k];
+    delete snapshots[k];
+    try { if (typeof window !== 'undefined') localStorage.removeItem(`seq:${k}`); } catch {}
+  }
+  notify();
+}
+
+// Remove all sequencer state for a given pattern id across all sounds
+export function sequencerDeleteForPattern(patternId: string) {
+  const keys = Object.keys(seqMap);
+  for (const k of keys) {
+    const pat = patternFromKey(k);
+    if (pat !== (patternId || 'default')) continue;
     const s = seqMap[k];
     // Release any held notes
     try {

@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { fsClient, Pattern, Project, Sound } from "../fsClient";
 import { rpc } from "../rpc";
-import { sequencerSetCurrentPattern, sequencerStopAll, sequencerDeleteForSound, sequencerSetPart } from '../store/sequencer';
+import { sequencerSetCurrentPattern, sequencerStopAll, sequencerDeleteForSound, sequencerDeleteForPattern, sequencerSetPart } from '../store/sequencer';
 import { envTimeFromNorm, envTimeMsFromNorm, envTimeNormFromMilliseconds, envTimeNormFromSeconds } from "../utils/envTime";
 import type { ViewName } from "../types/ui";
 
@@ -236,6 +236,8 @@ state.confirmYes = async () => {
       await state.loadLevel();
       set({ selected: Math.min(state.selected, Math.max(0, state.items.length - 1)) });
     } else if (state.confirmKind === 'pattern' && state.confirmProjectName && state.confirmLabel) {
+      // Purge any stored sequences for this pattern name so reusing the number starts clean
+      try { sequencerDeleteForPattern(state.confirmLabel); } catch {}
       await fsClient.deletePattern(state.confirmProjectName, state.confirmLabel);
       await state.loadLevel();
       set({ selected: Math.min(state.selected, Math.max(0, state.items.length - 1)) });

@@ -8,7 +8,7 @@ import ProjectSettings from './components/ProjectSettings'
 import type { ViewName } from './types/ui'
 import { rpc } from './rpc'
 import { sampleBrowser, useBrowser, useBrowserStore } from './store/browser'
-import { useSequencer, sequencerToggleLocalFor, sequencerSetPart } from './store/sequencer'
+import { useSequencer, sequencerToggleLocalFor, sequencerSetPart, sequencerSetCurrentPattern } from './store/sequencer'
 import { keyIs } from './utils/key'
 
 export default function Shell() {
@@ -139,6 +139,13 @@ export default function Shell() {
           const lvl = s.level as string | undefined;
           const allowGlobal = lvl === 'patterns' || lvl === 'pattern' || lvl === 'synth';
           if (!allowGlobal) return; // ignore behind patterns (projects/project)
+          // If at patterns level, set current pattern to selected before toggling
+          if (lvl === 'patterns') {
+            const patternName = Array.isArray(s.items) ? s.items[s.selected] : undefined;
+            if (typeof patternName === 'string' && patternName.length > 0) {
+              try { sequencerSetCurrentPattern(patternName); } catch {}
+            }
+          }
           // Ensure routing is set before toggling global play
           const sid = s.selectedSoundId;
           if (sid) {

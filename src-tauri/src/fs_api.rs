@@ -198,12 +198,23 @@ pub fn fs_list_patterns(project: String) -> Result<Vec<String>, String> {
 pub fn fs_create_pattern(project: String) -> Result<String, String> {
   let pdir = patterns_dir(&project)?;
   fs::create_dir_all(&pdir).map_err(|e| format!("mk patterns: {e}"))?;
-  let mut n = 1;
-  let name = loop {
-    let candidate = format!("pattern {}", n);
-    if !pdir.join(&candidate).exists() { break candidate; }
-    n += 1;
-  };
+  // Choose the next highest number (max+1) so new patterns always append at the end
+  let mut max_n: u32 = 0;
+  for entry in std::fs::read_dir(&pdir).map_err(|e| format!("read patterns: {e}"))? {
+    if let Ok(ent) = entry {
+      let path = ent.path();
+      if path.is_dir() {
+        if let Some(os_name) = path.file_name() {
+          if let Some(name) = os_name.to_str() {
+            if let Some(suffix) = name.strip_prefix("pattern ") {
+              if let Ok(n) = suffix.trim().parse::<u32>() { if n > max_n { max_n = n; } }
+            }
+          }
+        }
+      }
+    }
+  }
+  let name = format!("pattern {}", max_n.saturating_add(1));
   let dir = pdir.join(&name);
   fs::create_dir_all(&dir).map_err(|e| format!("mk pattern: {e}"))?;
   let pat = Pattern::default();
