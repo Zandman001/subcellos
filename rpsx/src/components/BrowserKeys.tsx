@@ -41,7 +41,7 @@ export default function BrowserKeys() {
       }
 
       // Confirm dialog: Q confirm, A cancel
-      if (st.confirmOpen) {
+  if (st.confirmOpen) {
         if (k === 'q') { st.confirmYes?.(); e.preventDefault(); return; }
         if (k === 'a') { st.confirmNo?.(); e.preventDefault(); return; }
         // swallow other keys while open
@@ -69,10 +69,17 @@ export default function BrowserKeys() {
   if (k === 'e') { st.moveUp(); e.preventDefault(); return; }
   if (k === 'd') { st.moveDown(); e.preventDefault(); return; }
   if (k === 's') { st.goLeft(); e.preventDefault(); return; }
-  if (k === 'f') { st.goRight(); e.preventDefault(); return; }
+  // In Arrangement view, allow F except when at the patterns level (stop there)
+  if (k === 'f') {
+        if (st.currentView === 'Arrangement' && st.level === 'patterns') { e.preventDefault(); return; }
+        st.goRight(); e.preventDefault(); return;
+      }
       // Avoid interpreting 'a' as remove when in drum synth page (reserved for slot preview there)
-  if (k === 'q') { st.add(); e.preventDefault(); return; }
+      // In Arrangement view, allow Q to be handled by ArrangementView for insert (do not trigger global add)
+      if (k === 'q') { if (st.currentView === 'Arrangement') { e.preventDefault(); return; } st.add(); e.preventDefault(); return; }
       if (k === 'a') {
+            // Still block deletes globally while in Arrangement
+            if (st.currentView === 'Arrangement') { e.preventDefault(); return; }
         if (st.currentSoundType === 'drum' && st.level === 'synth') { e.preventDefault(); return; }
         st.remove(); e.preventDefault(); return; }
   if (k === 'w') { st.moveLeft(); e.preventDefault(); return; }

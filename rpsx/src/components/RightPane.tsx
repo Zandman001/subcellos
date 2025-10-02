@@ -21,6 +21,7 @@ import { MOD_DEST_LIST } from "./synth/ModMatrixTable";
 import SequencerRow from "./SequencerRow";
 import { useSequencer } from "../store/sequencer";
 import { useSynthEqState } from "../store/browser";
+import ArrangementView from "../views/ArrangementView";
 
 export default function RightPane({ view }: { view: ViewName }) {
   const s = useBrowser();
@@ -65,7 +66,11 @@ export default function RightPane({ view }: { view: ViewName }) {
           : <Center>Nothing to sequence, please select a sound</Center>
       )}
       {view === 'Arrangement' && (
-        <div>Arrangement</div>
+        <div style={{ height:'100%', display:'flex', flexDirection:'column' }}>
+          <div className="no-scrollbars" style={{ flex:1, minHeight:0, overflow:'hidden' }}>
+            <ArrangementView />
+          </div>
+        </div>
       )}
       {view === 'Perform' && (
         <div>Perform</div>
