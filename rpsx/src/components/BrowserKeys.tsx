@@ -12,7 +12,6 @@ export default function BrowserKeys() {
     const onKey = (e: KeyboardEvent) => {
       const st = useBrowserStore.getState() as any;
       if (keyIs(e, [], ['Tab'])) { e.preventDefault(); st.toggleFocus(); return; }
-      if (st.focus !== 'browser') return;
       // prevent interfering with inputs
       const target = e.target as HTMLElement | null;
       if (target) {
@@ -20,6 +19,23 @@ export default function BrowserKeys() {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || (target as any).isContentEditable) return;
       }
   const k = (e.key || '').toLowerCase();
+
+      // Always allow synth preview with A/Q regardless of focus, as long as we're at synth level and not on drum
+      if (st.level === 'synth' && (k === 'a' || k === 'q')) {
+        if (st.currentSoundType !== 'drum') {
+          e.preventDefault();
+          const pressed = st._pressedQA || { q: false, a: false };
+          if (k === 'a') {
+            if (!pressed.a) { st.setPressedQA(null, true); st.updatePreviewFromPressed(); }
+          } else { // 'q'
+            if (!pressed.q) { st.setPressedQA(true, null); st.updatePreviewFromPressed(); }
+          }
+          return;
+        }
+        // If drum at synth level, fall through to existing handling (reserved in Drubbles UI)
+      }
+
+      if (st.focus !== 'browser') return;
       
       // While sample browser is open, pause E/D navigation and let sample browser handle it
       if (st.sampleBrowserOpen) {
@@ -49,23 +65,7 @@ export default function BrowserKeys() {
         return;
       }
 
-      // Preview notes inside synth level: 'a' (base), 'q' (+1 oct), and 'a'+'q' (+2 oct) for Electricity.
-      // Suppress BOTH when current module is drum (Drubbles) – only Drubbles component handles 'a' for slot preview.
-  if (st.level === 'synth' && (k === 'a' || k === 'q')) {
-        if (st.currentSoundType === 'drum') {
-          // Allow Q to fall through for pack browser open in Drubbles (handled in Drubbles component); prevent generic preview.
-          if (k === 'a') e.preventDefault(); // prevent accidental remove action binding below
-          return;
-        }
-        e.preventDefault();
-        const pressed = st._pressedQA || { q: false, a: false };
-        if (k === 'a') {
-          if (!pressed.a) { st.setPressedQA(null, true); st.updatePreviewFromPressed(); }
-        } else { // 'q'
-          if (!pressed.q) { st.setPressedQA(true, null); st.updatePreviewFromPressed(); }
-        }
-        return;
-      }
+  // (Preview is handled above irrespective of focus.)
   if (k === 'e') { st.moveUp(); e.preventDefault(); return; }
   if (k === 'd') { st.moveDown(); e.preventDefault(); return; }
   if (k === 's') { st.goLeft(); e.preventDefault(); return; }

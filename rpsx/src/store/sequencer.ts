@@ -36,8 +36,41 @@ try { if (typeof window !== 'undefined') { (window as any).__seqCurrentPattern =
 const seqMap: Record<string, Seq> = {};
 
 export function sequencerSetCurrentPattern(pid: string) {
-  currentPatternId = pid || 'default';
+  const prev = currentPatternId;
+  const next = pid || 'default';
+  currentPatternId = next;
   try { if (typeof window !== 'undefined') { (window as any).__seqCurrentPattern = currentPatternId; } } catch {}
+  // Notify subscribers so useSequencer re-subscribes to the new pattern
+  notify();
+  // If global transport is running, switch active sequences from prev to new pattern
+  if (globalPlaying) {
+    // Stop sequences from the previous pattern: release held notes and mark not playingGlobal
+    Object.keys(seqMap).forEach(id => {
+      if (patternFromKey(id) !== prev) return;
+      const s = get(id);
+      const held: Set<number> = (s as any)._held || new Set<number>();
+      const part = typeof s.part === 'number' ? s.part : undefined;
+      if (typeof part === 'number') { for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} } }
+      (s as any)._held = new Set<number>();
+      if (s.playingGlobal) set(id, { playingGlobal: false });
+    });
+    // Start sequences in the new pattern aligned to globalStart
+    Object.keys(seqMap).forEach(id => {
+      if (patternFromKey(id) !== currentPatternId) return;
+      const s = get(id);
+      if (typeof s.part !== 'number') s.part = 0;
+      s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
+      (s as any)._schedulerMode = true;
+      if (s.mode !== 'poly') {
+        (s as any)._nextStepTime = globalStart;
+      } else {
+        (s as any)._localStart = globalStart;
+        (s as any)._nextStepTime = globalStart;
+      }
+      (s as any)._lastStepIdx = -1;
+      set(id, { playingGlobal: true });
+    });
+  }
 }
 
 function keyFor(soundId: string): string { return `${currentPatternId}::${soundId}`; }
@@ -111,7 +144,8 @@ function get(soundId: string): Seq {
   if (!seqMap[k]) {
     const base = getDefault();
     const loaded = loadSeq(k);
-    seqMap[k] = loaded ? { ...base, ...loaded } : base;
+    const s = loaded ? { ...base, ...loaded } : base;
+    seqMap[k] = s;
   }
   return seqMap[k];
 }
@@ -664,6 +698,8 @@ export function useSequencer(soundId: string) {
             set(id, { playingLocal: false });
           }
         });
+  // Warm up audio engine to avoid first-note drop
+  try { rpc.startAudio(); } catch {}
         // Start global
   globalPlaying = true;
   globalStart = performance.now();
@@ -809,6 +845,8 @@ export function sequencerToggleGlobalPlay() {
         set(id, { playingLocal: false });
       }
     });
+    // Warm up audio engine
+    try { rpc.startAudio(); } catch {}
     globalPlaying = true;
     globalStart = performance.now();
     localPlayingId = undefined;

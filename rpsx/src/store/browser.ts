@@ -265,6 +265,20 @@ async function loadPattern(project: string, pattern: string) {
   try { sequencerSetCurrentPattern(pattern); } catch {}
   const pat = await fsClient.readPattern(project, pattern);
   state._patternData = pat;
+  // Ensure sequencer entries exist for this pattern and have proper routing
+  try {
+    const sounds = await fsClient.listSounds(project);
+    const byId = new Map(sounds.map(s => [s.id, s] as const));
+    for (const id of (pat?.soundRefs || [])) {
+      const s = byId.get(id);
+      if (!s) continue;
+      const part = (s as any).part_index ?? 0;
+      let kind: 'synth'|'sampler'|'drum' = 'synth';
+      const t = String(s.type || '').toLowerCase();
+      if (t.includes('drum')) kind = 'drum'; else if (t.includes('sampler')) kind = 'sampler'; else kind = 'synth';
+      try { sequencerSetPart(id, part, kind); } catch {}
+    }
+  } catch {}
 }
 
 async function refreshPatternItems() {
@@ -337,6 +351,11 @@ state.loadLevel = async () => {
     }
     case "pattern": {
       if (!state.projectName) return;
+      // Keep sequencer scoped to this pattern id proactively
+      const patName = state.patternName || state.items[state.selected];
+      if (typeof patName === 'string' && patName) {
+        try { sequencerSetCurrentPattern(patName); } catch {}
+      }
       await refreshPatternItems();
       set({ items: state.items.slice() });
       break;
@@ -500,6 +519,8 @@ state.add = async () => {
   }
   if (state.level === "patterns" && state.projectName) {
     const name = await fsClient.createPattern(state.projectName);
+  // Ensure no stale sequencer data is carried over if this pattern name existed before
+  try { sequencerDeleteForPattern(name); } catch {}
     await state.loadLevel();
     const idx = state.items.findIndex((i) => i === name);
     set({ selected: idx >= 0 ? idx : state.selected });
@@ -973,11 +994,12 @@ state.updatePreviewFromPressed = async () => {
   if (desired === cur) return;
 
   try {
+  // Warm engine before toggling preview notes to avoid first-note being dropped
+  try { await rpc.startAudio(); } catch {}
     if (cur !== undefined) {
       await rpc.noteOff(state.selectedSoundPart ?? 0, cur);
     }
     if (desired !== undefined) {
-      await rpc.startAudio();
       await rpc.noteOn(state.selectedSoundPart ?? 0, desired, 0.9);
     }
     set({ currentPreview: desired });

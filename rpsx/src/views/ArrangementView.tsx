@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { sequencerSetCurrentPattern, useSequencer } from '../store/sequencer'
 import { useBrowser, useBrowserStore } from '../store/browser'
 import { fsClient } from '../fsClient'
 import { useFourKnobHotkeys } from '../hooks/useFourKnobHotkeys'
@@ -8,6 +9,8 @@ type ArrItem = { id: string; label: string; len: number };
 export default function ArrangementView() {
   const s = useBrowser() as any;
   const project = s.projectName as string | undefined;
+  const selectedSoundId: string = s?.selectedSoundId || '__none__';
+  const seq = useSequencer(selectedSoundId);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ w: 800, h: 260 });
   const [allPatterns, setAllPatterns] = useState<string[]>([]);
@@ -73,7 +76,50 @@ export default function ArrangementView() {
     return () => ro.disconnect();
   }, []);
 
-  // keyboard: W/R nav; Q inserts from patterns; A removes selected instance
+  // Arrangement playback state
+  const [isArrPlaying, setArrPlaying] = useState(false);
+  const [arrPlayIdx, setArrPlayIdx] = useState<number>(sel);
+  const lastStepRef = useRef<number>(-1);
+
+  // Listen for global play transport events
+  useEffect(() => {
+    const onTransport = (e: any) => {
+      const playing = !!(e?.detail?.globalPlaying);
+      if (playing && arr.length > 0) {
+        // Start arrangement playback from selected pattern
+        setArrPlaying(true);
+        setArrPlayIdx(sel);
+        sequencerSetCurrentPattern(arr[sel]?.id);
+      } else {
+        setArrPlaying(false);
+        lastStepRef.current = -1;
+      }
+    };
+    window.addEventListener('seq-transport', onTransport);
+    return () => window.removeEventListener('seq-transport', onTransport);
+  }, [arr, sel]);
+
+  // Listen for step completion via sequencer hook and advance pattern
+  useEffect(() => {
+    if (!isArrPlaying || arr.length === 0) return;
+    if (!seq || !seq.playingGlobal) return;
+    // Ensure we're tracking the active arrangement pattern
+    const activePid = arr[arrPlayIdx]?.id;
+    // If currentPattern changed elsewhere, ignore until transport handler re-syncs
+    // Detect last-step edge
+    const step = Number(seq.playheadStep);
+    const len = Math.max(1, Number(seq.length || 0));
+    if (!Number.isFinite(step) || !Number.isFinite(len)) return;
+    if (step !== lastStepRef.current) {
+      lastStepRef.current = step;
+      if (step === len - 1) {
+        let nextIdx = arrPlayIdx + 1;
+        if (nextIdx >= arr.length) nextIdx = 0;
+        setArrPlayIdx(nextIdx);
+        sequencerSetCurrentPattern(arr[nextIdx]?.id);
+      }
+    }
+  }, [isArrPlaying, seq.playingGlobal, seq.playheadStep, seq.length, arrPlayIdx, arr]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const curView = (useBrowserStore.getState() as any).currentView;
@@ -112,6 +158,23 @@ export default function ArrangementView() {
     });
     // Always keep selection centered on the arc
     setOffset(0);
+    // If arrangement is playing, update play index and pattern
+    if (isArrPlaying && arr.length > 0) {
+      // Try to find the next arrangement entry that has sequences
+      let hop = d;
+      let tries = 0;
+      let nextIdx = sel;
+      const win = window as any;
+      while (tries < arr.length) {
+        nextIdx = (nextIdx + hop + arr.length) % arr.length;
+        const pid = arr[nextIdx]?.id;
+        const hasSeq = Object.keys((win && win.__seqKeys) || {}).some((k: string) => (k||'').startsWith(`${pid}::`));
+        if (hasSeq) break;
+        tries++;
+      }
+      setArrPlayIdx(nextIdx);
+      sequencerSetCurrentPattern(arr[nextIdx]?.id);
+    }
   }
   function removeSelected() {
     setArr(cur => {

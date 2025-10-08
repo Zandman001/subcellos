@@ -13,6 +13,7 @@ pub struct AudioEngine {
   graph: Option<EngineGraph>,
   params: Option<ParamStore>,
   stream: Option<cpal::Stream>,
+  last_device_name: Option<String>,
   spec_tx: Option<Sender<Vec<f32>>>,
   // Meter sender for RMS/peak (L/R)
   meter_tx: Option<Sender<[f32; 4]>>,
@@ -73,6 +74,7 @@ impl AudioEngine {
       graph: Some(EngineGraph::new(sr)),
       params: Some(ParamStore::new()),
       stream: None,
+  last_device_name: None,
       spec_tx: None,
     meter_tx: None,
       spec_buf: Vec::with_capacity(4096),
@@ -85,9 +87,20 @@ impl AudioEngine {
   pub fn set_meter_sender(&mut self, tx: Sender<[f32; 4]>) { self.meter_tx = Some(tx); }
 
   pub fn start(&mut self) -> Result<(), String> {
-    if self.stream.is_some() { return Ok(()); }
+    // If a stream exists but default output device changed (e.g., Bluetooth headphones),
+    // re-create the stream on the new default.
     let host = cpal::default_host();
     let device = host.default_output_device().ok_or_else(|| "no output device".to_string())?;
+    let device_name = device.name().unwrap_or_else(|_| "unknown".to_string());
+    if let (Some(_stream), Some(prev)) = (self.stream.as_ref(), self.last_device_name.as_ref()) {
+      if &device_name == prev {
+        // Already bound to the current default device
+        return Ok(());
+      } else {
+        // Drop old stream to allow rebinding
+        self.stream.take();
+      }
+    }
     let mut chosen_cfg: Option<cpal::SupportedStreamConfig> = None;
     if let Ok(mut supported) = device.supported_output_configs() {
       // prefer 44100 first
@@ -127,7 +140,7 @@ impl AudioEngine {
     let mut cfg: cpal::StreamConfig = config.clone().into();
   // Request a larger buffer for better stability; reduce underruns
   cfg.buffer_size = cpal::BufferSize::Fixed(2048);
-    self.sr = cfg.sample_rate.0 as f32;
+  self.sr = cfg.sample_rate.0 as f32;
 
     let rx = self.rx.clone();
     // Move engine state into the audio thread. Keep None in self.
@@ -207,8 +220,9 @@ impl AudioEngine {
         }
       }
     }, err_fn, None).map_err(|e| e.to_string())?;
-    stream.play().map_err(|e| e.to_string())?;
-    self.stream = Some(stream);
+  stream.play().map_err(|e| e.to_string())?;
+  self.last_device_name = Some(device_name);
+  self.stream = Some(stream);
     Ok(())
   }
 
