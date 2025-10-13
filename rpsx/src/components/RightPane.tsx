@@ -70,6 +70,7 @@ export default function RightPane({ view }: { view: ViewName }) {
           <div className="no-scrollbars" style={{ flex:1, minHeight:0, overflow:'hidden' }}>
             <ArrangementView />
           </div>
+          <FooterHints page={'ARRANGEMENT'} />
         </div>
       )}
       {view === 'Perform' && (
@@ -129,6 +130,11 @@ function FooterHints({ page }: { page: string }) {
     if (typeof m !== 'number' || !Number.isFinite(m)) return '—';
     const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
     const pc = ((m % 12)+12)%12; const oct = Math.floor(m/12) - 1; return `${names[pc]}${oct}`;
+  };
+  const formatPatternLabel = (name: string): string => {
+    const m = (name || '').match(/(\d+)/);
+    const n = m ? parseInt(m[1], 10) : 1;
+    return `P${String(Math.max(0, n)).padStart(2, '0')}`;
   };
   // Map functions (align with synth components)
   const mapCutoff = (v: number) => 20 * Math.pow(10, v * Math.log10(18000/20));
@@ -395,6 +401,34 @@ function FooterHints({ page }: { page: string }) {
       s.drumPreviewing ? 'On' : '—',
     ] as any;
     norms = [0.5, Math.min(1, (samples.length || 0) / 16), samples.length ? Math.max(0, Math.min(1, sampleSel / Math.max(1, samples.length - 1))) : 0.5, s.drumPreviewing ? 1 : 0.0];
+  } else if (lower === 'arrangement') {
+    // Mirror the Arrangement view’s 4 knobs with live context published by ArrangementView
+    labels = ['Position', 'Pattern', 'Length', 'Scroll'];
+    try {
+      const ctx = (window as any).__arrCtx || {};
+      const total = Math.max(0, Number(ctx.total) || 0);
+      const sel = Math.max(0, Number(ctx.selectedIndex) || 0);
+      const bars = Math.max(1, Math.min(8, Number(ctx.bars) || 1));
+      const pat = String(ctx.pattern || '') || '—';
+      const patIdx = Math.max(0, Number(ctx.patternIdx) || 0);
+      const patTotal = Math.max(0, Number(ctx.patternTotal) || 0);
+      const off = Number(ctx.offsetNorm);
+      values = [
+        (total > 0) ? `P${String(sel + 1).padStart(2,'0')}` : 'P00',
+        patTotal > 1 ? `${formatPatternLabel(pat)} (${patIdx + 1}/${patTotal})` : formatPatternLabel(pat),
+        `${bars} bar${bars === 1 ? '' : 's'}`,
+        Number.isFinite(off) ? `${Math.round(off * 100)}%` : '—',
+      ] as any;
+      norms = [
+        (total > 1) ? Math.max(0, Math.min(1, sel / (total - 1))) : 0.0,
+        (patTotal > 1) ? Math.max(0, Math.min(1, patIdx / Math.max(1, patTotal - 1))) : 0.0,
+        (bars - 1) / 7,
+        Number.isFinite(off) ? Math.max(0, Math.min(1, off)) : 0.5,
+      ] as any;
+    } catch {
+      values = ['—','—','—','—'] as any;
+      norms = [0.5,0.5,0.5,0.5] as any;
+    }
   }
 
   const ANG_MIN = -135; const ANG_MAX = 135;

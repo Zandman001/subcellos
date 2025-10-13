@@ -257,6 +257,13 @@ state.confirmYes = async () => {
 async function loadProject(project: string) {
   const pj = await fsClient.readProject(project);
   state._projectData = pj;
+  // Restore global tempo if present in project
+  const bpm = Math.max(20, Math.min(240, Number((pj as any)?.globalBpm || (pj as any)?.global_bpm || state.globalBpm || 120)));
+  if (Number.isFinite(bpm)) {
+    set({ globalBpm: bpm });
+    try { window.dispatchEvent(new CustomEvent('tempo-change', { detail: { bpm } })); } catch {}
+    try { rpc.setTempo(bpm); } catch {}
+  }
 }
 
 async function loadPattern(project: string, pattern: string) {
@@ -678,6 +685,12 @@ state.projectSettingsInc = (delta = 1) => {
     window.dispatchEvent(new CustomEvent('tempo-change', { detail: { bpm: next } }));
   } catch {}
   try { rpc.setTempo(next); } catch {}
+  // Persist tempo into project.json
+  try {
+    const pj = state._projectData || { sounds: [] };
+    const data = { ...(pj as any), globalBpm: next };
+    if (state.projectName) fsClient.writeProject(state.projectName, data as any);
+  } catch {}
 };
 state.projectSettingsDec = (delta = 1) => {
   state.projectSettingsInc?.(-delta);

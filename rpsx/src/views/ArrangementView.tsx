@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { sequencerSetCurrentPattern, useSequencer } from '../store/sequencer'
+import { sequencerSetCurrentPattern, useSequencer, sequencerEstimatePatternBars } from '../store/sequencer'
 import { useBrowser, useBrowserStore } from '../store/browser'
 import { fsClient } from '../fsClient'
 import { useFourKnobHotkeys } from '../hooks/useFourKnobHotkeys'
+import Knob from '../components/synth/Knob'
 
 type ArrItem = { id: string; label: string; len: number };
 
@@ -29,22 +30,32 @@ export default function ArrangementView() {
         const list = await fsClient.listPatterns(project);
         if (!alive) return;
         setAllPatterns(list);
-        // Try restore from localStorage first
-        const key = `arrangement::${project}`;
+        // Try restore from Tauri first, fallback to localStorage
         let restored: { items?: { id: string; len: number }[]; order?: string[]; lengths?: Record<string, number> } | undefined;
-        try { const raw = localStorage.getItem(key); if (raw) restored = JSON.parse(raw); } catch {}
+        try { const a = await fsClient.readArrangement(project); restored = a as any; } catch {}
+        if (!restored || !Array.isArray((restored as any).items)) {
+          try { const raw = localStorage.getItem(`arrangement::${project}`); if (raw) restored = JSON.parse(raw); } catch {}
+        }
         let items: ArrItem[] = [];
         if (Array.isArray(restored?.items)) {
           items = restored!.items!
             .filter(it => typeof it?.id === 'string' && list.includes(it.id))
-            .map(it => ({ id: it.id, label: it.id, len: Math.max(1, Math.min(8, Math.round(it.len || 1))) }));
+            .map(it => {
+              const est = sequencerEstimatePatternBars(it.id);
+              const fallback = est || 1;
+              return ({ id: it.id, label: it.id, len: Math.max(1, Math.min(8, Math.round(it.len || fallback))) });
+            });
         } else if (Array.isArray(restored?.order)) {
           const lens = restored?.lengths || {};
           items = restored!.order!
             .filter(n => list.includes(n))
-            .map(n => ({ id: n, label: n, len: Math.max(1, Math.min(8, Math.round((lens as any)[n] || 1))) }));
+            .map(n => {
+              const est = sequencerEstimatePatternBars(n);
+              const fallback = est || 1;
+              return ({ id: n, label: n, len: Math.max(1, Math.min(8, Math.round((lens as any)[n] || fallback))) });
+            });
         } else {
-          items = list.map(n => ({ id: n, label: n, len: 1 }));
+          items = list.map(n => ({ id: n, label: n, len: sequencerEstimatePatternBars(n) || 1 }));
         }
         setArr(items);
         setSel(0);
@@ -60,9 +71,12 @@ export default function ArrangementView() {
   useEffect(() => {
     if (!project) return;
     try {
-      const key = `arrangement::${project}`;
-      const data = { items: arr.map(a=>({ id: a.id, len: a.len })) };
-      localStorage.setItem(key, JSON.stringify(data));
+      const data = { items: arr.map(a=>({ id: a.id, len: a.len })) } as any;
+      // Write to Tauri if possible
+      fsClient.writeArrangement(project, data).catch(()=>{
+        // fallback to localStorage when not in Tauri
+        try { localStorage.setItem(`arrangement::${project}`, JSON.stringify(data)); } catch {}
+      });
     } catch {}
   }, [project, arr]);
 
@@ -76,10 +90,14 @@ export default function ArrangementView() {
     return () => ro.disconnect();
   }, []);
 
+  
+
   // Arrangement playback state
   const [isArrPlaying, setArrPlaying] = useState(false);
   const [arrPlayIdx, setArrPlayIdx] = useState<number>(sel);
   const lastStepRef = useRef<number>(-1);
+  const barsRemainingRef = useRef<number>(1);
+  const queuedNextIdxRef = useRef<number | null>(null);
 
   // Listen for global play transport events
   useEffect(() => {
@@ -89,37 +107,90 @@ export default function ArrangementView() {
         // Start arrangement playback from selected pattern
         setArrPlaying(true);
         setArrPlayIdx(sel);
+        barsRemainingRef.current = Math.max(1, arr[sel]?.len || 1);
         sequencerSetCurrentPattern(arr[sel]?.id);
+        queuedNextIdxRef.current = null;
       } else {
         setArrPlaying(false);
         lastStepRef.current = -1;
+        barsRemainingRef.current = 1;
+        queuedNextIdxRef.current = null;
       }
     };
     window.addEventListener('seq-transport', onTransport);
     return () => window.removeEventListener('seq-transport', onTransport);
   }, [arr, sel]);
 
-  // Listen for step completion via sequencer hook and advance pattern
+  // Expose arrangement context to FooterHints (live values)
   useEffect(() => {
-    if (!isArrPlaying || arr.length === 0) return;
-    if (!seq || !seq.playingGlobal) return;
-    // Ensure we're tracking the active arrangement pattern
-    const activePid = arr[arrPlayIdx]?.id;
-    // If currentPattern changed elsewhere, ignore until transport handler re-syncs
-    // Detect last-step edge
-    const step = Number(seq.playheadStep);
-    const len = Math.max(1, Number(seq.length || 0));
-    if (!Number.isFinite(step) || !Number.isFinite(len)) return;
-    if (step !== lastStepRef.current) {
-      lastStepRef.current = step;
-      if (step === len - 1) {
-        let nextIdx = arrPlayIdx + 1;
-        if (nextIdx >= arr.length) nextIdx = 0;
-        setArrPlayIdx(nextIdx);
-        sequencerSetCurrentPattern(arr[nextIdx]?.id);
+    try {
+      const bars = Math.max(1, Math.min(8, (arr[sel]?.len ?? 1)));
+      const pattern = arr[sel]?.id || '';
+      const total = Math.max(0, arr.length);
+      const patternIdx = Math.max(0, allPatterns.indexOf(pattern));
+      const patternTotal = Math.max(0, allPatterns.length);
+      const offsetNorm = 0.5 + (offset / 10);
+      (window as any).__arrCtx = {
+        total,
+        selectedIndex: sel,
+        bars,
+        pattern,
+        patternIdx,
+        patternTotal,
+        isPlaying: !!isArrPlaying,
+        playIndex: arrPlayIdx,
+        offsetNorm: Math.max(0, Math.min(1, isFinite(offsetNorm) ? offsetNorm : 0.5)),
+      };
+    } catch {}
+  }, [arr, sel, allPatterns, isArrPlaying, arrPlayIdx, offset]);
+
+  // Listen to global step events to coordinate pattern switches precisely
+  useEffect(() => {
+    const onStep = (e: any) => {
+      if (!isArrPlaying || arr.length === 0) return;
+      const d = e?.detail || {};
+      const pid = String(d.patternId || '');
+      const step = Number(d.step);
+      const len = Number(d.length);
+      const activePid = arr[arrPlayIdx]?.id;
+      if (!activePid || pid !== activePid) return;
+      if (!Number.isFinite(step) || !Number.isFinite(len)) return;
+      if (step !== lastStepRef.current) {
+        lastStepRef.current = step;
+        if (queuedNextIdxRef.current != null && step === 0) {
+          const idx = queuedNextIdxRef.current;
+          queuedNextIdxRef.current = null;
+          setArrPlayIdx(idx);
+          barsRemainingRef.current = Math.max(1, arr[idx!]?.len || 1);
+          sequencerSetCurrentPattern(arr[idx!]?.id);
+          return;
+        }
+        if (step === len - 1) {
+          const rem0 = Math.max(1, barsRemainingRef.current || 1);
+          const rem = rem0 - 1;
+          if (rem > 0) {
+            barsRemainingRef.current = rem;
+          } else {
+            let nextIdx = arrPlayIdx + 1;
+            if (nextIdx >= arr.length) nextIdx = 0;
+            try {
+              const win: any = window as any;
+              const hasSeqFor = (p?: string) => !!p && !!Object.keys(win.__seqKeys || {}).some((k: string) => (k||'').startsWith(`${p}::`));
+              if (!hasSeqFor(arr[nextIdx]?.id)) {
+                for (let i = 0; i < arr.length; i++) {
+                  const cand = (nextIdx + i) % arr.length;
+                  if (hasSeqFor(arr[cand]?.id)) { nextIdx = cand; break; }
+                }
+              }
+            } catch {}
+            queuedNextIdxRef.current = nextIdx;
+          }
+        }
       }
-    }
-  }, [isArrPlaying, seq.playingGlobal, seq.playheadStep, seq.length, arrPlayIdx, arr]);
+    };
+    window.addEventListener('seq-pattern-step', onStep as any);
+    return () => window.removeEventListener('seq-pattern-step', onStep as any);
+  }, [isArrPlaying, arrPlayIdx, arr]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const curView = (useBrowserStore.getState() as any).currentView;
@@ -137,17 +208,20 @@ export default function ArrangementView() {
 
   // no animation cleanup needed
 
-  // Encoders via hotkeys: 5/6 (scroll), T/Y (big scroll), G/H (length), B/N (swap id)
+  // Encoders via hotkeys: 5/6 (position select), T/Y (pattern change), G/H (length), B/N (unused now)
   useFourKnobHotkeys({
     active: s.currentView === 'Arrangement',
-    dec1: () => setOffset(o => o - 0.2),
-    inc1: () => setOffset(o => o + 0.2),
-    dec2: () => setOffset(o => o - 3),
-    inc2: () => setOffset(o => o + 3),
+    // 5/6 behave like W/R: change position
+    dec1: () => moveSel(-1),
+    inc1: () => moveSel(1),
+    // T/Y now change pattern at current position
+    dec2: () => swapPattern(-1),
+    inc2: () => swapPattern(1),
     dec3: () => adjustLength(-1),
     inc3: () => adjustLength(1),
-    dec4: () => swapPattern(-1),
-    inc4: () => swapPattern(1),
+    // 4th knob reserved for scroll; keyboard B/N unchanged to avoid conflict
+    dec4: () => setOffset(o => o - 0.2),
+    inc4: () => setOffset(o => o + 0.2),
   });
 
   function moveSel(d: number) {
@@ -196,9 +270,10 @@ export default function ArrangementView() {
       if (typeof name !== 'string' || !name) return;
       setArr(cur => {
         const n = [...cur];
-  // Insert AFTER the currently selected item
-  const idx = Math.max(0, Math.min(sel + 1, n.length));
-  n.splice(idx, 0, { id: name, label: name, len: 1 });
+        // Insert AFTER the currently selected item
+        const idx = Math.max(0, Math.min(sel + 1, n.length));
+        const est = sequencerEstimatePatternBars(name) || 1;
+        n.splice(idx, 0, { id: name, label: name, len: est });
   // Move selection to the newly inserted instance
   setSel(idx);
         return n;
@@ -313,8 +388,94 @@ export default function ArrangementView() {
           );
         })}
       </svg>
-      <div className="pixel-text" style={{ position:'absolute', bottom:4, left:8, fontSize:10, color:'var(--text-soft)' }}>
-        W/R move · Q insert from patterns · A remove · 5/6 scroll · T/Y jump · G/H length · B/N swap
+      {/* Contextual 4-knob bar */}
+      <div style={{ position:'absolute', left:0, right:0, bottom:0, height:84, borderTop:'1px solid var(--line)', background:'var(--bg)', display:'flex', alignItems:'center', justifyContent:'space-around', padding:'6px 10px', boxSizing:'border-box' }}>
+        {/* Knob 1: Position (PO 1..N) */}
+        <Knob
+          label="PO"
+          value={(() => {
+            const n = arr.length; if (n <= 1) return 0;
+            return Math.max(0, Math.min(1, (sel || 0) / (n - 1)));
+          })()}
+          onChange={(nv) => {
+            const n = arr.length; if (n <= 0) return;
+            const target = Math.max(0, Math.min(n - 1, Math.round(nv * (n - 1))));
+            const cur = sel;
+            if (target === cur) return;
+            const forward = (target - cur + n) % n;
+            const backward = (cur - target + n) % n;
+            const delta = forward <= backward ? forward : -backward;
+            moveSel(delta);
+          }}
+          step={arr.length > 1 ? arr.length : 1}
+          format={() => `P${String(arr.length ? (sel + 1) : 0).padStart(2, '0')}`}
+        />
+        {/* Knob 2: Pattern for current position */}
+        <Knob
+          label="PATTERN"
+          value={(() => {
+            const item = arr[sel]; const n = allPatterns.length;
+            if (!item || n <= 1) return 0;
+            const idx = Math.max(0, allPatterns.indexOf(item.id));
+            return Math.max(0, Math.min(1, idx / Math.max(1, n - 1)));
+          })()}
+          onChange={(nv) => {
+            const n = allPatterns.length; if (n <= 0) return;
+            const idx = Math.max(0, Math.min(n - 1, Math.round(nv * (n - 1))));
+            const next = allPatterns[idx]; if (!next) return;
+            setArr(cur => {
+              if (!cur.length) return cur;
+              const list = [...cur];
+              const curLen = Math.max(1, Math.min(8, (list[sel]?.len || 1)));
+              list[sel] = { id: next, label: next, len: curLen } as any;
+              return list;
+            });
+            if (isArrPlaying && arrPlayIdx === sel) {
+              sequencerSetCurrentPattern(next);
+            }
+          }}
+          step={Math.max(1, allPatterns.length)}
+          format={() => {
+            const item = arr[sel];
+            return item ? formatPatternLabel(item.id) : '';
+          }}
+        />
+        {/* Knob 3: Length (1..8 bars) */}
+        <Knob
+          label="LENGTH"
+          value={(() => {
+            const item = arr[sel];
+            const bars = Math.max(1, Math.min(8, item?.len || 1));
+            return (bars - 1) / 7;
+          })()}
+          onChange={(nv) => {
+            const bars = Math.max(1, Math.min(8, Math.round(1 + nv * 7)));
+            setArr(cur => {
+              if (!cur.length) return cur;
+              const n = [...cur];
+              const it = { ...(n[sel] || {}) } as any;
+              it.len = bars; n[sel] = it;
+              return n;
+            });
+          }}
+          step={8}
+          format={(v) => `${Math.max(1, Math.min(8, Math.round(1 + v * 7)))} bar${Math.max(1, Math.min(8, Math.round(1 + v * 7))) === 1 ? '' : 's'}`}
+        />
+        {/* Knob 4: Scroll (visual arc offset) */}
+        <Knob
+          label="SCROLL"
+          value={(() => {
+            const v = 0.5 + (offset / 10);
+            return Math.max(0, Math.min(1, isFinite(v) ? v : 0.5));
+          })()}
+          onChange={(nv) => {
+            const off = (nv - 0.5) * 10;
+            setOffset(off);
+          }}
+          infinite
+          dragScale={1.2}
+          format={() => `${Math.round((0.5 + (offset/10)) * 100)}%`}
+        />
       </div>
     </div>
   )

@@ -61,13 +61,21 @@ export function sequencerSetCurrentPattern(pid: string) {
       if (typeof s.part !== 'number') s.part = 0;
       s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
       (s as any)._schedulerMode = true;
-      if (s.mode !== 'poly') {
-        (s as any)._nextStepTime = globalStart;
-      } else {
-        (s as any)._localStart = globalStart;
-        (s as any)._nextStepTime = globalStart;
-      }
-      (s as any)._lastStepIdx = -1;
+      // Switch occurs at a bar boundary; fire step 0 immediately to avoid a perceptible gap.
+      const now = performance.now();
+      try {
+        const len = Math.max(1, s.length|0);
+        const prevIdx = (len + 0 - 1) % len; // last step wraps to step 0
+        triggerStepEdge(s, id, prevIdx, 0);
+      } catch {}
+      // Schedule the following step precisely one step later
+      const stMs = stepTimeMs(s.resolution, globalBpm);
+      (s as any)._nextStepTime = now + (stMs || 0);
+      // For poly sequences, still keep a local anchor but we follow global step timing during global playback
+      (s as any)._localStart = globalStart;
+      (s as any)._lastStepIdx = 0;
+      s.playheadStep = 0;
+      touch(id); notify();
       set(id, { playingGlobal: true });
     });
   }
@@ -146,6 +154,8 @@ function get(soundId: string): Seq {
     const loaded = loadSeq(k);
     const s = loaded ? { ...base, ...loaded } : base;
     seqMap[k] = s;
+    // Track keys on window for cross-module queries (Arrangement view)
+    try { if (typeof window !== 'undefined') { const w: any = window as any; w.__seqKeys = w.__seqKeys || {}; w.__seqKeys[k] = true; } } catch {}
   }
   return seqMap[k];
 }
@@ -240,6 +250,7 @@ export function sequencerDeleteForSound(soundId: string, patternId?: string) {
     delete seqMap[k];
     delete versions[k];
     delete snapshots[k];
+    try { if (typeof window !== 'undefined') { const w: any = window as any; if (w.__seqKeys) delete w.__seqKeys[k]; } } catch {}
     try { if (typeof window !== 'undefined') localStorage.removeItem(`seq:${k}`); } catch {}
   }
   notify();
@@ -263,6 +274,7 @@ export function sequencerDeleteForPattern(patternId: string) {
     delete seqMap[k];
     delete versions[k];
     delete snapshots[k];
+    try { if (typeof window !== 'undefined') { const w: any = window as any; if (w.__seqKeys) delete w.__seqKeys[k]; } } catch {}
     try { if (typeof window !== 'undefined') localStorage.removeItem(`seq:${k}`); } catch {}
   }
   notify();
@@ -297,6 +309,33 @@ function stepTimeMs(res: SequencerResolution, bpm: number): number {
   }
 }
 
+function stepsPerBar(res: SequencerResolution): number {
+  switch (res) {
+    case '1/4': return 4;   // 4 steps per 4/4 bar
+    case '1/8': return 8;   // 8 steps per bar
+    case '1/16': return 16; // 16 steps per bar
+    case '1/32': return 32; // 32 steps per bar
+    case '1/8t': return 12; // 12 eighth-triplets per bar (3 per beat * 4)
+    case '1/16t': return 24; // 24 sixteenth-triplets per bar
+  }
+}
+
+// Estimate bar length of a pattern (max across its sequences, rounded up, clamped 1..8)
+export function sequencerEstimatePatternBars(patternId: string): number {
+  let bars = 0;
+  const pid = patternId || 'default';
+  Object.keys(seqMap).forEach(k => {
+    if (patternFromKey(k) !== pid) return;
+    const s = seqMap[k];
+    const spb = stepsPerBar(s.resolution);
+    if (!spb || spb <= 0) return;
+    const b = Math.ceil(Math.max(1, s.length) / spb);
+    if (b > bars) bars = b;
+  });
+  if (bars <= 0) bars = 1;
+  return Math.max(1, Math.min(8, bars));
+}
+
 function tick(ts: number) {
   if (!lastT) { lastT = ts; globalStart = ts; }
   const dt = ts - lastT; lastT = ts;
@@ -306,7 +345,7 @@ function tick(ts: number) {
   Object.keys(seqMap).forEach(id => {
     if (patternFromKey(id) !== currentPatternId) return;
     const s = seqMap[id];
-    const usingGlobalClock = (s.mode !== 'poly');
+    const usingGlobalClock = globalPlaying ? true : (s.mode !== 'poly');
     const isActive = !!(s.playingLocal || s.playingGlobal);
     const bpm = usingGlobalClock ? globalBpm : (s.localBpm || 120);
     const stMs = stepTimeMs(s.resolution, bpm);
@@ -428,7 +467,7 @@ function scheduleSteps() {
     if (patternFromKey(id) !== currentPatternId) return;
     const s = seqMap[id];
     if (!(s.playingLocal || s.playingGlobal)) return;
-  const usingGlobalClock = (s.mode !== 'poly');
+  const usingGlobalClock = globalPlaying ? true : (s.mode !== 'poly');
   const bpm = usingGlobalClock ? globalBpm : (s.localBpm || 120);
     const stMs = stepTimeMs(s.resolution, bpm);
     if (!stMs || stMs <= 0 || s.length <= 0) return;
@@ -451,6 +490,13 @@ function scheduleSteps() {
       const totalMs = stMs * s.length;
       s.playheadFrac = Math.max(0, Math.min(1, (loopElapsed % totalMs) / totalMs));
       touch(id); notify();
+      // Emit a global step event for arrangement tracking
+      try {
+        const pid = patternFromKey(id);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('seq-pattern-step', { detail: { patternId: pid, step: nextIdx, length: s.length } }));
+        }
+      } catch {}
       if (((s as any)._nextStepTime - now) > stMs * 4) break; // safety
     }
   });

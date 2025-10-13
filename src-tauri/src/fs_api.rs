@@ -20,10 +20,12 @@ pub struct Sound {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Project {
   pub sounds: Vec<Sound>,
+  #[serde(default, alias = "global_bpm", rename = "globalBpm")]
+  pub global_bpm: Option<u32>,
 }
 
 impl Default for Project {
-  fn default() -> Self { Self { sounds: Vec::new() } }
+  fn default() -> Self { Self { sounds: Vec::new(), global_bpm: Some(120) } }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +52,7 @@ fn project_dir(name: &str) -> Result<PathBuf, String> {
 }
 
 fn project_file(name: &str) -> Result<PathBuf, String> { Ok(project_dir(name)?.join("project.json")) }
+fn arrangement_file(project: &str) -> Result<PathBuf, String> { Ok(project_dir(project)?.join("arrangement.json")) }
 fn patterns_dir(project: &str) -> Result<PathBuf, String> { Ok(project_dir(project)?.join("patterns")) }
 fn pattern_dir(project: &str, pattern: &str) -> Result<PathBuf, String> { Ok(patterns_dir(project)?.join(pattern)) }
 fn pattern_file(project: &str, pattern: &str) -> Result<PathBuf, String> { Ok(pattern_dir(project, pattern)?.join("pattern.json")) }
@@ -377,4 +380,26 @@ pub fn load_sound_preset(project: String, sound_id: String) -> Result<String, St
 pub fn save_sound_preset(project: String, sound_id: String, json: String) -> Result<(), String> {
   let file = sound_preset_file(&project, &sound_id)?;
   schedule_write(file, json.into_bytes())
+}
+
+// --- Arrangement persistence ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArrangementItem { pub id: String, pub len: u32 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Arrangement { pub items: Vec<ArrangementItem> }
+
+#[tauri::command]
+pub fn read_arrangement(project: String) -> Result<Arrangement, String> {
+  let file = arrangement_file(&project)?;
+  if !file.exists() { return Ok(Arrangement::default()); }
+  let data: Arrangement = read_json(&file)?;
+  Ok(data)
+}
+
+#[tauri::command]
+pub fn write_arrangement(project: String, json: Arrangement) -> Result<(), String> {
+  let file = arrangement_file(&project)?;
+  write_json_atomic(&file, &json)
 }

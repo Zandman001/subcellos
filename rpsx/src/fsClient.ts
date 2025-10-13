@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 export type Sound = { id: string; type: "Synth" | "Sampler" | "Drum" | "DrumSampler"; name: string; part_index: number };
 export type Project = { sounds: Sound[] };
 export type Pattern = { soundRefs: string[] };
+export type ArrangementItem = { id: string; len: number };
+export type Arrangement = { items: ArrangementItem[] };
 
 function isTauri(): boolean {
   const g: any = globalThis as any;
@@ -40,6 +42,9 @@ export const fsClient = {
 
   readPattern: (project: string, pattern: string) => safeInvoke<Pattern>("fs_read_pattern", { project, pattern }, { soundRefs: [] }),
   writePattern: (project: string, pattern: string, data: Pattern) => safeInvoke<void>("fs_write_pattern", { project, pattern, data }),
+  // Arrangement per project
+  readArrangement: (project: string) => safeInvoke<Arrangement>("read_arrangement", { project }, { items: [] }),
+  writeArrangement: (project: string, data: Arrangement) => safeInvoke<void>("write_arrangement", { project, json: data }),
 
   listSounds: (project: string) => safeInvoke<Sound[]>("fs_list_sounds", { project }, []),
   createSound: (projectName: string, soundType: string) => safeInvoke<Sound>(

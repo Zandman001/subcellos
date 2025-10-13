@@ -41,6 +41,9 @@ pub fn run() {
       delete_sound,
       load_sound_preset,
       save_sound_preset,
+  // Arrangement persistence
+  read_arrangement,
+  write_arrangement,
       // Recording and Sample Management
       start_recording,
       stop_recording,
