@@ -2,6 +2,7 @@ import Shell from './Shell'
 import ErrorBoundary from './components/ErrorBoundary'
 import './ark/ark1bit.css'
 import './ark/ark-integrations.css'
+import './styles/hue.css'
 // Ark mode now permanent; store flag removed
 
 export default function App() {

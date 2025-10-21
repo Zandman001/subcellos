@@ -1,11 +1,13 @@
 import React, { useEffect, useRef } from 'react'
 import { useBrowser } from '../store/browser'
+import { UI_THEMES } from '../store/browser'
 
 export default function ProjectSettings() {
   const s = useBrowser() as any;
   const open = !!s.projectSettingsOpen;
   const idx: number = s.projectSettingsIndex || 0;
   const bpm: number = typeof s.globalBpm === 'number' ? s.globalBpm : 120;
+  const uiTheme: string = s.uiTheme || 'Off';
 
   const listRef = useRef<HTMLDivElement | null>(null);
   const itemRef = useRef<HTMLDivElement | null>(null);
@@ -57,9 +59,17 @@ export default function ProjectSettings() {
           <span>Global Tempo</span>
           <span style={{ opacity:0.9 }}>{bpm} BPM</span>
         </div>
+        <div style={{
+          padding:'6px 8px', borderBottom:'1px solid var(--line)',
+          background: idx === 1 ? 'rgba(var(--accent-rgb),0.14)' : 'transparent',
+          fontWeight: idx === 1 ? 'bold' : 'normal', cursor:'default', display:'flex', justifyContent:'space-between'
+        }}>
+          <span>UI Theme</span>
+          <span style={{ opacity:0.9 }}>{uiTheme}</span>
+        </div>
       </div>
       <div style={{ padding:'6px 8px', borderTop:'1px solid var(--line)', fontSize:10, textAlign:'center', color:'var(--text-soft)' }}>
-        E/D select · R +1 · W -1 · O/S close
+        E/D select · R next · W prev · O/S close
       </div>
     </div>
   );

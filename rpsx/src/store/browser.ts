@@ -1,7 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { fsClient, Pattern, Project, Sound } from "../fsClient";
 import { rpc } from "../rpc";
-import { sequencerSetCurrentPattern, sequencerStopAll, sequencerDeleteForSound, sequencerDeleteForPattern, sequencerSetPart } from '../store/sequencer';
+import { sequencerSetCurrentPattern, sequencerStopAll, sequencerDeleteForSound, sequencerDeleteForPattern, sequencerSetPart, sequencerSetAllowedSounds } from '../store/sequencer';
 import { envTimeFromNorm, envTimeMsFromNorm, envTimeNormFromMilliseconds, envTimeNormFromSeconds } from "../utils/envTime";
 import type { ViewName } from "../types/ui";
 
@@ -48,6 +48,7 @@ export interface BrowserState {
   projectSettingsOpen?: boolean;
   projectSettingsIndex?: number; // which setting is selected (start with 0)
   globalBpm?: number; // mirror of global tempo for UI
+  uiTheme?: string; // name of current UI theme
   openProjectSettings?: () => void;
   closeProjectSettings?: () => void;
   projectSettingsMoveUp?: () => void;
@@ -170,6 +171,7 @@ const state: InternalState = {
   projectSettingsOpen: false,
   projectSettingsIndex: 0,
   globalBpm: 120,
+  uiTheme: 'Off',
   closeSampleBrowser: () => {},
   confirmOpen: false,
   // placeholders, replaced below
@@ -218,6 +220,65 @@ function set(partial: Partial<InternalState>) {
   bumpVersion();
 }
 
+// UI Theme support
+export const UI_THEMES = [
+  'Off',
+  'RGB Shift', // animated gradient
+  'Nebula Drift', // animated radial blend
+  'Cyberwave', // animated gradient
+  'Aurora Flow', // new animated gradient
+  'Solar Flare', // new animated gradient
+  'Deep Ocean', // new animated gradient
+];
+
+export function applyUiTheme(name: string) {
+  if (typeof document === 'undefined') return;
+  const el = document.getElementById('ui-theme-overlay');
+  if (!el) return;
+  const root = document.documentElement;
+  const setVar = (k: string, v: string|number) => { root.style.setProperty(k, String(v)); };
+  const cls = el.classList;
+  // Reset
+  cls.remove('solid', 'gradient', 'grad-nebula', 'grad-cyberwave', 'grad-aurora', 'grad-solar', 'grad-ocean', 'grad-sunset');
+  setVar('--ui-intensity', '0');
+  setVar('--ui-hue', '0deg'); setVar('--ui-sat', '0%');
+  el.style.opacity = '0';
+  // Apply
+  let intensity = '0';
+  switch ((name||'').toLowerCase()) {
+    case 'rgb shift':
+      intensity = '0.35'; setVar('--ui-intensity', intensity);
+      cls.remove('solid'); cls.add('gradient');
+      break;
+    case 'nebula drift':
+      intensity = '0.35'; setVar('--ui-intensity', intensity);
+      cls.remove('solid'); cls.add('grad-nebula');
+      break;
+    case 'cyberwave':
+      intensity = '0.28'; setVar('--ui-intensity', intensity);
+      cls.remove('solid'); cls.add('grad-cyberwave');
+      break;
+    case 'aurora flow':
+      intensity = '0.30'; setVar('--ui-intensity', intensity);
+      cls.add('grad-aurora');
+      break;
+    case 'solar flare':
+      intensity = '0.55'; setVar('--ui-intensity', intensity);
+      cls.add('grad-solar');
+      break;
+    case 'deep ocean':
+      intensity = '0.30'; setVar('--ui-intensity', intensity);
+      cls.add('grad-ocean');
+      break;
+    default:
+      // Off or unknown
+      intensity = '0'; setVar('--ui-intensity', intensity);
+      break;
+  }
+  // Fallback inline opacity to ensure visibility even if CSS var scoping fails
+  el.style.opacity = intensity;
+}
+
 function clampSelection() {
   if (state.selected >= state.items.length) state.selected = Math.max(0, state.items.length - 1);
   if (state.selected < 0) state.selected = 0;
@@ -264,6 +325,10 @@ async function loadProject(project: string) {
     try { window.dispatchEvent(new CustomEvent('tempo-change', { detail: { bpm } })); } catch {}
     try { rpc.setTempo(bpm); } catch {}
   }
+  // Restore ui theme
+  const theme = String((pj as any)?.uiTheme || (pj as any)?.ui_theme || state.uiTheme || 'Off');
+  set({ uiTheme: theme });
+  applyUiTheme(theme);
 }
 
 async function loadPattern(project: string, pattern: string) {
@@ -272,6 +337,8 @@ async function loadPattern(project: string, pattern: string) {
   try { sequencerSetCurrentPattern(pattern); } catch {}
   const pat = await fsClient.readPattern(project, pattern);
   state._patternData = pat;
+  // Restrict sequencer to only sounds referenced by this pattern
+  try { sequencerSetAllowedSounds(pat?.soundRefs || []); } catch {}
   // Ensure sequencer entries exist for this pattern and have proper routing
   try {
     const sounds = await fsClient.listSounds(project);
@@ -672,25 +739,39 @@ state.projectSettingsMoveUp = () => {
 };
 state.projectSettingsMoveDown = () => {
   if (!state.projectSettingsOpen) return;
-  const next = Math.min(0, (state.projectSettingsIndex || 0) + 1); // only one item for now
+  const maxIdx = 1; // 0=BPM, 1=UI Theme
+  const next = Math.min(maxIdx, (state.projectSettingsIndex || 0) + 1);
   set({ projectSettingsIndex: next });
 };
 state.projectSettingsInc = (delta = 1) => {
   if (!state.projectSettingsOpen) return;
-  const cur = typeof state.globalBpm === 'number' ? state.globalBpm : 120;
-  const next = Math.max(20, Math.min(240, Math.round(cur + delta)));
-  set({ globalBpm: next });
-  try {
-    // Notify sequencer and engine
-    window.dispatchEvent(new CustomEvent('tempo-change', { detail: { bpm: next } }));
-  } catch {}
-  try { rpc.setTempo(next); } catch {}
-  // Persist tempo into project.json
-  try {
-    const pj = state._projectData || { sounds: [] };
-    const data = { ...(pj as any), globalBpm: next };
-    if (state.projectName) fsClient.writeProject(state.projectName, data as any);
-  } catch {}
+  const idx = state.projectSettingsIndex || 0;
+  if (idx === 0) {
+    const cur = typeof state.globalBpm === 'number' ? state.globalBpm : 120;
+    const next = Math.max(20, Math.min(240, Math.round(cur + delta)));
+    set({ globalBpm: next });
+    try { window.dispatchEvent(new CustomEvent('tempo-change', { detail: { bpm: next } })); } catch {}
+    try { rpc.setTempo(next); } catch {}
+    try {
+      const pj = state._projectData || { sounds: [] };
+      const data = { ...(pj as any), globalBpm: next, uiTheme: state.uiTheme };
+      if (state.projectName) fsClient.writeProject(state.projectName, data as any);
+    } catch {}
+  } else if (idx === 1) {
+    // Cycle UI theme list
+    const themes = UI_THEMES;
+    const cur = state.uiTheme || 'Off';
+    const at = Math.max(0, themes.indexOf(cur));
+    const nextIdx = (at + (delta >= 0 ? 1 : -1) + themes.length) % themes.length;
+    const next = themes[nextIdx];
+    set({ uiTheme: next });
+    applyUiTheme(next);
+    try {
+      const pj = state._projectData || { sounds: [] };
+      const data = { ...(pj as any), globalBpm: state.globalBpm, uiTheme: next };
+      if (state.projectName) fsClient.writeProject(state.projectName, data as any);
+    } catch {}
+  }
 };
 state.projectSettingsDec = (delta = 1) => {
   state.projectSettingsInc?.(-delta);

@@ -10,6 +10,7 @@ import { rpc } from './rpc'
 import { sampleBrowser, useBrowser, useBrowserStore } from './store/browser'
 import { useSequencer, sequencerToggleLocalFor, sequencerSetPart, sequencerSetCurrentPattern } from './store/sequencer'
 import { keyIs } from './utils/key'
+import { applyUiTheme } from './store/browser'
 
 export default function Shell() {
   const [view, setView] = useState<ViewName>('Sounds')
@@ -69,7 +70,38 @@ export default function Shell() {
     const dotSizePresets = ['1px', '2px', '3px'];
     const sepWPresets = ['2px', '3px', '4px'];
 
-  const onKeyDown = (e: KeyboardEvent) => {
+    // Capture-phase guard: when Project Settings is open, block all keys except its own controls
+    const guardKeyDown = (e: KeyboardEvent) => {
+      try {
+        const bs = useBrowserStore.getState() as any;
+        if (bs.projectSettingsOpen) {
+          const k = (e.key || '').toLowerCase();
+          const allowed = k === 'e' || k === 'd' || k === 'w' || k === 'r' || k === 's' || k === 'o' || k === 'arrowup' || k === 'arrowdown';
+          if (!allowed) {
+            e.preventDefault();
+            e.stopPropagation();
+            (e as any).stopImmediatePropagation?.();
+          }
+        }
+      } catch {}
+    };
+
+    const guardKeyUp = (e: KeyboardEvent) => {
+      try {
+        const bs = useBrowserStore.getState() as any;
+        if (bs.projectSettingsOpen) {
+          const k = (e.key || '').toLowerCase();
+          const allowed = k === 'e' || k === 'd' || k === 'w' || k === 'r' || k === 's' || k === 'o' || k === 'arrowup' || k === 'arrowdown';
+          if (!allowed) {
+            e.preventDefault();
+            e.stopPropagation();
+            (e as any).stopImmediatePropagation?.();
+          }
+        }
+      } catch {}
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
       if (target) {
         const tag = target.tagName
@@ -81,7 +113,9 @@ export default function Shell() {
       try {
         const bs = useBrowserStore.getState() as any;
         if (bs.projectSettingsOpen) {
-          if (keyIs(e, ['KeyO'], ['o','O'])) { e.preventDefault(); bs.closeProjectSettings?.(); }
+          // Overlay handles E/D/W/R/S/O itself; to be safe, block everything global here,
+          // and only allow O/S as a convenience close.
+          if (keyIs(e, ['KeyO'], ['o','O']) || keyIs(e, ['KeyS'], ['s','S'])) { e.preventDefault(); bs.closeProjectSettings?.(); }
           return;
         }
       } catch {}
@@ -270,9 +304,13 @@ export default function Shell() {
       }
     }
     
+    window.addEventListener('keydown', guardKeyDown, true)
+    window.addEventListener('keyup', guardKeyUp, true)
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
     return () => {
+      window.removeEventListener('keydown', guardKeyDown, true)
+      window.removeEventListener('keyup', guardKeyUp, true)
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
@@ -308,7 +346,7 @@ export default function Shell() {
 
   return (
     <div className={'ark-fixed-frame'}>
-      <div className="app" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--text)' }}>
+      <div id="app-root" className="app" style={{ position:'relative', display: 'flex', flexDirection: 'column', background: 'var(--bg)', color: 'var(--text)' }}>
       <TopBar active={view} onSelect={setView} />
       <div style={{ display: 'flex', flex: 1, minHeight: 0, gap: 4, padding: 4, boxSizing: 'border-box' }}>
         <ProjectBrowser />
@@ -316,7 +354,25 @@ export default function Shell() {
       </div>
       <BrowserKeys />
       <SampleBrowser />
+      {/* When Project Settings is open, block interactions with the rest of the UI */}
+      {browser?.projectSettingsOpen && (
+        <div
+          role="presentation"
+          aria-hidden={true}
+          onWheel={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onMouseUp={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onPointerUp={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          style={{ position:'absolute', inset:0, zIndex:24, pointerEvents:'auto', background:'transparent' }}
+        />
+      )}
   <ProjectSettings />
+        {/* Global UI Theme Overlay (inside app root so blending applies to content) */}
+        <div id="ui-theme-overlay" className="ui-theme-overlay solid" />
+        {/* Ensure theme reapplies once overlay exists in DOM */}
+        {(() => { try { const s = useBrowserStore.getState() as any; const t = s.uiTheme || 'Off'; setTimeout(() => applyUiTheme(t), 0); } catch {} return null; })()}
       </div>
     </div>
   )

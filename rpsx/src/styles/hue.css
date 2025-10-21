@@ -1,0 +1,160 @@
+:root, #app-root { isolation: isolate; }
+/* Global UI Hue/Gradient overlay controlled by CSS variables */
+:root {
+  --ui-theme: Off; /* name */
+  --ui-hue: 0deg;
+  --ui-sat: 0%;
+  --ui-intensity: 0.0; /* 0..1 */
+  --ui-hue-rot: 0deg; /* for hue-rotate filter */
+}
+
+/* Overlay container mounts at Shell root */
+.ui-theme-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 99999; /* ensure above UI; individual dialogs may use higher explicit z */
+  mix-blend-mode: screen; /* preserves blacks; brightens colors */
+  opacity: var(--ui-intensity, 0);
+}
+
+/* Simple solid hue tint using HSL; black remains black under screen blend */
+/* solid overlay class kept for reset; not used by current animated themes */
+.ui-theme-overlay.solid { background: transparent; }
+
+/* Animated gradient themes */
+.ui-theme-overlay.gradient {
+  background: linear-gradient(120deg,
+    hsl(200 100% 60% / 0.7),
+    hsl(280 100% 60% / 0.7),
+    hsl(340 100% 60% / 0.7),
+    hsl(40 100% 60% / 0.7)
+  );
+  background-size: 400% 400%;
+  animation: ui-rgb-shift 16s ease infinite;
+}
+
+/* Additional named gradients */
+.ui-theme-overlay.grad-nebula {
+  background: radial-gradient(120% 120% at 20% 20%, #2d1b69aa, transparent 40%),
+              radial-gradient(140% 140% at 80% 30%, #d13cff99, transparent 45%),
+              radial-gradient(160% 160% at 50% 80%, #00d1ff88, transparent 50%);
+  animation: ui-nebula-drift 24s linear infinite;
+}
+.ui-theme-overlay.grad-cyberwave {
+  background: linear-gradient(135deg, #00f0ff88, #ff00f788, #00f0ff88);
+  background-size: 300% 300%;
+  animation: ui-cyberwave 10s ease-in-out infinite;
+}
+.ui-theme-overlay.grad-sunset {
+  background: linear-gradient(120deg, #ff6a0088, #ffd80088, #ff008888);
+  background-size: 300% 300%;
+  animation: ui-sunset 18s ease-in-out infinite;
+}
+/* New animated themes */
+.ui-theme-overlay.grad-aurora {
+  background: radial-gradient(60% 80% at 20% 30%, #00ffb488, transparent 60%),
+              radial-gradient(70% 90% at 80% 40%, #7a5cff88, transparent 55%),
+              radial-gradient(50% 60% at 50% 80%, #00e0ff66, transparent 50%);
+  animation: ui-aurora 22s ease-in-out infinite;
+}
+.ui-theme-overlay.grad-solar {
+  position: relative;
+  overflow: hidden;
+  /* soft solar disk glow at center */
+  background: radial-gradient(closest-side, rgba(255,200,0,0.28) 0%, rgba(255,120,0,0.18) 40%, rgba(0,0,0,0) 65%);
+  /* Prefer normal blend to ensure visibility across platforms */
+  mix-blend-mode: normal;
+}
+.ui-theme-overlay.grad-solar::before,
+.ui-theme-overlay.grad-solar::after {
+  content: '';
+  position: absolute;
+  inset: -25%; /* bleed beyond edges to avoid seams */
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+/* Primary flare ribbons */
+.ui-theme-overlay.grad-solar::before {
+  background: conic-gradient(
+    from 0deg at 50% 55%,
+    transparent 0deg,
+    rgba(255,220,0,0.35) 8deg,
+    rgba(255,120,0,0.45) 18deg,
+    transparent 32deg,
+    transparent 80deg,
+    rgba(255,210,0,0.35) 98deg,
+    rgba(255,90,0,0.46) 112deg,
+    transparent 130deg,
+    transparent 200deg,
+    rgba(255,230,0,0.35) 218deg,
+    rgba(255,110,0,0.46) 232deg,
+    transparent 252deg,
+    transparent 320deg,
+    rgba(255,200,0,0.35) 334deg,
+    rgba(255,100,0,0.45) 346deg,
+    transparent 360deg
+  );
+  filter: blur(18px) saturate(1.2);
+  animation: ui-solar-rot 60s linear infinite;
+}
+/* Secondary parallax layer */
+.ui-theme-overlay.grad-solar::after {
+  background: conic-gradient(
+    from 20deg at 50% 45%,
+    transparent 0deg,
+    rgba(255,200,0,0.28) 14deg,
+    rgba(255,80,0,0.36) 22deg,
+    transparent 36deg,
+    transparent 120deg,
+    rgba(255,190,0,0.26) 140deg,
+    rgba(255,70,0,0.34) 154deg,
+    transparent 170deg,
+    transparent 260deg,
+    rgba(255,205,0,0.26) 280deg,
+    rgba(255,85,0,0.34) 294deg,
+    transparent 310deg,
+    transparent 360deg
+  );
+  filter: blur(22px) saturate(1.15);
+  animation: ui-solar-rot-rev 80s linear infinite;
+}
+.ui-theme-overlay.grad-ocean {
+  background: linear-gradient(120deg, #0033ff66, #00e5ff66, #0033ff66);
+  background-size: 400% 400%;
+  animation: ui-ocean 20s ease-in-out infinite;
+}
+
+@keyframes ui-rgb-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes ui-nebula-drift {
+  0% { filter: hue-rotate(0deg) saturate(1.1); }
+  50% { filter: hue-rotate(40deg) saturate(1.3); }
+  100% { filter: hue-rotate(0deg) saturate(1.1); }
+}
+@keyframes ui-cyberwave {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes ui-sunset {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes ui-aurora {
+  0% { filter: hue-rotate(0deg) saturate(1.1); }
+  50% { filter: hue-rotate(30deg) saturate(1.25); }
+  100% { filter: hue-rotate(0deg) saturate(1.1); }
+}
+@keyframes ui-solar-rot { from { transform: rotate(0deg) scale(1); } to { transform: rotate(360deg) scale(1.02); } }
+@keyframes ui-solar-rot-rev { from { transform: rotate(360deg) scale(1.01); } to { transform: rotate(0deg) scale(1); } }
+@keyframes ui-ocean {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}

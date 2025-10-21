@@ -22,10 +22,12 @@ pub struct Project {
   pub sounds: Vec<Sound>,
   #[serde(default, alias = "global_bpm", rename = "globalBpm")]
   pub global_bpm: Option<u32>,
+  #[serde(default, alias = "ui_theme", rename = "uiTheme")]
+  pub ui_theme: Option<String>,
 }
 
 impl Default for Project {
-  fn default() -> Self { Self { sounds: Vec::new(), global_bpm: Some(120) } }
+  fn default() -> Self { Self { sounds: Vec::new(), global_bpm: Some(120), ui_theme: Some("Off".to_string()) } }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

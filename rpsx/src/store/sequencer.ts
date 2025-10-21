@@ -35,6 +35,39 @@ let currentPatternId: string = 'default';
 try { if (typeof window !== 'undefined') { (window as any).__seqCurrentPattern = currentPatternId; } } catch {}
 const seqMap: Record<string, Seq> = {};
 
+// Optional allowlist of soundIds that are eligible to run for the current pattern.
+// When null, all sequences for the current pattern are eligible.
+let allowedSoundIds: Set<string> | null = null;
+try { if (typeof window !== 'undefined') { (window as any).__seqAllowed = allowedSoundIds; } } catch {}
+
+function soundFromKey(k: string): string { const i = k.indexOf('::'); return i >= 0 ? k.slice(i+2) : k; }
+function isIdAllowed(id: string): boolean {
+  if (!allowedSoundIds) return true;
+  const sid = soundFromKey(id);
+  return allowedSoundIds.has(sid);
+}
+
+// External: set the allowlist of sounds for the active pattern.
+export function sequencerSetAllowedSounds(ids?: string[] | Set<string> | null) {
+  allowedSoundIds = ids ? new Set(ids as any) : null;
+  try { if (typeof window !== 'undefined') { (window as any).__seqAllowed = allowedSoundIds; } } catch {}
+  // If global is running, immediately stop any disallowed sequences in the current pattern
+  if (globalPlaying) {
+    Object.keys(seqMap).forEach(id => {
+      if (patternFromKey(id) !== currentPatternId) return;
+      if (isIdAllowed(id)) return;
+      const s = get(id);
+      if (s.playingGlobal) {
+        const held: Set<number> = (s as any)._held || new Set<number>();
+        const part = typeof s.part === 'number' ? s.part : undefined;
+        if (typeof part === 'number') { for (const m of Array.from(held)) { try { rpc.noteOff(part, m); } catch {} } }
+        (s as any)._held = new Set<number>();
+        set(id, { playingGlobal: false });
+      }
+    });
+  }
+}
+
 export function sequencerSetCurrentPattern(pid: string) {
   const prev = currentPatternId;
   const next = pid || 'default';
@@ -57,6 +90,7 @@ export function sequencerSetCurrentPattern(pid: string) {
     // Start sequences in the new pattern aligned to globalStart
     Object.keys(seqMap).forEach(id => {
       if (patternFromKey(id) !== currentPatternId) return;
+      if (!isIdAllowed(id)) return;
       const s = get(id);
       if (typeof s.part !== 'number') s.part = 0;
       s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
@@ -465,6 +499,7 @@ function scheduleSteps() {
   const now = performance.now();
   Object.keys(seqMap).forEach(id => {
     if (patternFromKey(id) !== currentPatternId) return;
+    if (!isIdAllowed(id)) return;
     const s = seqMap[id];
     if (!(s.playingLocal || s.playingGlobal)) return;
   const usingGlobalClock = globalPlaying ? true : (s.mode !== 'poly');
@@ -753,6 +788,7 @@ export function useSequencer(soundId: string) {
   emitTransport();
         Object.keys(seqMap).forEach(id => {
           if (patternFromKey(id) !== currentPatternId) return;
+          if (!isIdAllowed(id)) return;
           const s = get(id);
           if (typeof s.part !== 'number') s.part = 0;
           s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
@@ -816,11 +852,15 @@ export function sequencerSetPart(soundId: string, part: number, kind?: 'synth'|'
     try {
       const gp = (window as any).__seqGlobalPlaying;
       if (gp) {
-        s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
-        (s as any)._schedulerMode = true;
-        const start = (window as any).__seqGlobalStart || performance.now();
-        (s as any)._nextStepTime = start; (s as any)._lastStepIdx = -1;
-        s.playingGlobal = true;
+        // Only auto-enlist if allowed for current pattern
+        const k = soundId.includes('::') ? soundId : keyFor(soundId);
+        if (isIdAllowed(k)) {
+          s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
+          (s as any)._schedulerMode = true;
+          const start = (window as any).__seqGlobalStart || performance.now();
+          (s as any)._nextStepTime = start; (s as any)._lastStepIdx = -1;
+          s.playingGlobal = true;
+        }
       }
     } catch {}
   }
@@ -899,6 +939,7 @@ export function sequencerToggleGlobalPlay() {
     emitTransport();
     Object.keys(seqMap).forEach(id => {
       if (patternFromKey(id) !== currentPatternId) return;
+      if (!isIdAllowed(id)) return;
       const s = get(id);
       if (typeof s.part !== 'number') s.part = 0;
       s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
