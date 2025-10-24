@@ -283,7 +283,7 @@ export default function Sampler() {
         {/* Top bar background (white alpha over black, no gray hex) */}
         <rect x={0} y={0} width={100} height={topBarH} fill="#fff" fillOpacity={0.08} />
         {/* Top time ruler and loop bar (within top bar) */}
-  <g fontFamily="'Press Start 2P', monospace">
+  <g fontFamily="var(--ui-font)">
           {/* Loop bar above waveform; only show in Loop playback mode */}
           {playbackModeIndex === 1 && loopBarW > 0 && (
             <rect x={loopBarX} y={0} width={loopBarW} height={Math.min(4, topBarH)} fill="#fff" fillOpacity={0.95} />

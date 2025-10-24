@@ -1,6 +1,9 @@
+/* Load Tiny5 from Google Fonts (primary UI font) */
+@import url('https://fonts.googleapis.com/css2?family=Tiny5&display=swap');
+
 /* Local pixel font fallback. Place TTF at:
-   src/assets/fonts/press-start-2p.ttf
-   You can swap to another TTF; keep the font-family name consistent.
+  src/assets/fonts/press-start-2p.ttf
+  You can swap to another TTF; keep the font-family name consistent.
 */
 @font-face {
   font-family: 'Press Start 2P';
@@ -14,7 +17,7 @@
 
 .pixel-text {
   /* Prefer crisper bitmap-style fonts if available */
-  font-family: 'Terminus (TTF) for Windows', 'Terminus', 'Px437 TopazPlus', 'TopazPlus', 'Press Start 2P', monospace;
+  font-family: 'Tiny5', 'Terminus (TTF) for Windows', 'Terminus', 'Px437 TopazPlus', 'TopazPlus', 'Press Start 2P', monospace;
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeSpeed;

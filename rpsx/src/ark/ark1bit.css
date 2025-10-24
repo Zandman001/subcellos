@@ -36,7 +36,7 @@
 }
 
 /* ===== Monochrome Base ===== */
-.ark-root { background:#000; color:#fff; font-family: var(--ark-font-stack, 'Press Start 2P', monospace); image-rendering: pixelated; }
+.ark-root { background:#000; color:#fff; font-family: var(--ark-font-stack, var(--ui-font), 'Tiny5', monospace); image-rendering: pixelated; }
 
 /* ===== Dither + Noise Patterns (1-bit illusions) ===== */
 .ark-dither-a { background: repeating-conic-gradient(from 45deg, #fff 0deg 2deg, #000 2deg 4deg); background-size:4px 4px; }

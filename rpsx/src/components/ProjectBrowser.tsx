@@ -65,7 +65,7 @@ export default function ProjectBrowser() {
   }, [state.modulePickerOpen, state.modulePickerIndex]);
 
   return (
-  <div className={`panel ${focused ? 'focused' : ''}`} style={{ width: '25%', height: '100%', display:'flex', flexDirection:'column', fontFamily: "'Press Start 2P', monospace", minHeight: 0 }}>
+  <div className={`panel ${focused ? 'focused' : ''}`} style={{ width: '25%', height: '100%', display:'flex', flexDirection:'column', fontFamily: "var(--ui-font)", minHeight: 0 }}>
   <div ref={scrollRef} className="panel-scroll no-scrollbars" style={{ flex: 1, minHeight: 0, overflow: 'auto', position:'relative' }}>
         {state.items.map((label: string, i: number) => {
           const active = i === state.selected;

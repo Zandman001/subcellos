@@ -22,6 +22,10 @@
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
+  /* UI font variable for easy swaps */
+  --ui-font: 'Tiny5', monospace;
+  /* UI font scale (1.0 = 100%) */
+  --ui-font-scale: 1.1;
 }
 
 html, body, #root { height: 100%; }
@@ -33,20 +37,20 @@ body {
   image-rendering: pixelated;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-family: 'Press Start 2P', monospace;
+  font-family: var(--ui-font);
 }
 
 /* ===== Generic Panel & Layout Utilities ===== */
 .panel { border: 1px solid var(--line); background: var(--neutral-1); box-sizing: border-box; position: relative; }
 .panel.focused { border-color: var(--accent); }
-.panel-header { padding: var(--panel-padding) calc(var(--panel-padding) + 2px); border-bottom: 1px solid var(--line); font-size: 10px; display:flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.panel-footer { padding: 6px 10px; border-top:1px solid var(--line); font-size:10px; display:flex; align-items:center; gap:8px; color: var(--text-soft); background:transparent; }
+.panel-header { padding: var(--panel-padding) calc(var(--panel-padding) + 2px); border-bottom: 1px solid var(--line); font-size: calc(10px * var(--ui-font-scale)); display:flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.panel-footer { padding: 6px 10px; border-top:1px solid var(--line); font-size: calc(10px * var(--ui-font-scale)); display:flex; align-items:center; gap:8px; color: var(--text-soft); background:transparent; }
 .panel-scroll { overflow-y:auto; }
 
 /* Custom scrollbar visuals removed in favor of hidden scrollbars under Ark mode */
 
 /* ===== Breadcrumb ===== */
-.breadcrumb { font-size:10px; letter-spacing:0.5px; display:flex; align-items:center; flex-wrap:nowrap; white-space:nowrap; overflow:hidden; }
+.breadcrumb { font-size: calc(10px * var(--ui-font-scale)); letter-spacing:0.5px; display:flex; align-items:center; flex-wrap:nowrap; white-space:nowrap; overflow:hidden; }
 .breadcrumb-item { color: var(--text-soft); position:relative; }
 .breadcrumb-item:last-child { color: var(--accent); font-weight:bold; }
 .breadcrumb-sep { margin: 0 6px; opacity:0.55; }
@@ -64,8 +68,8 @@ body {
 /* ===== Overlays (Pickers / Dialogs) ===== */
 .overlay-box { position:absolute; left:10%; width:80%; background: var(--bg); color: var(--text); border:1px solid var(--line); box-shadow:0 0 0 2px var(--bg); }
 .overlay-box.danger { border-color: var(--accent-2); }
-.overlay-header { padding:8px 10px; border-bottom:1px solid var(--line); font-size:10px; font-weight:bold; }
-.overlay-footer { padding:6px 10px; border-top:1px solid var(--line); font-size:10px; text-align:center; color: var(--text-soft); }
+.overlay-header { padding:8px 10px; border-bottom:1px solid var(--line); font-size: calc(10px * var(--ui-font-scale)); font-weight:bold; }
+.overlay-footer { padding:6px 10px; border-top:1px solid var(--line); font-size: calc(10px * var(--ui-font-scale)); text-align:center; color: var(--text-soft); }
 .picker-item { padding:6px 8px; border-bottom:1px solid var(--line); transition: background var(--transition-fast) linear, color var(--transition-fast) linear; }
 .picker-item.selected { background:#fff; color:#000; font-weight:bold; }
 
@@ -78,7 +82,7 @@ body {
 .pressable:active { transform: translateY(1px); }
 
 /* ===== Buttons ===== */
-.btn { background: var(--bg); color: var(--text); border:1px solid var(--line); font-family: 'Press Start 2P', monospace; font-size:10px; padding: var(--space-1) var(--space-2); cursor:pointer; letter-spacing:0.5px; text-transform:uppercase; position:relative; transition: background var(--transition-fast) ease, color var(--transition-fast) ease, border-color var(--transition-fast) ease; }
+.btn { background: var(--bg); color: var(--text); border:1px solid var(--line); font-family: inherit; font-size: calc(10px * var(--ui-font-scale)); padding: var(--space-1) var(--space-2); cursor:pointer; letter-spacing:0.5px; text-transform:uppercase; position:relative; transition: background var(--transition-fast) ease, color var(--transition-fast) ease, border-color var(--transition-fast) ease; }
 .btn:hover { background: rgba(255,255,255,0.08); border-color: var(--accent); }
 .btn:active { background: rgba(255,255,255,0.18); }
 .btn:focus-visible { outline: var(--focus-ring); outline-offset: 2px; }
@@ -112,14 +116,14 @@ body {
 .pedal-wrap { display:inline-flex; flex-direction:column; align-items:center; padding:6px; border:3px solid var(--accent); background:var(--bg); }
 .pedal-wrap.selected { border-color: var(--accent-2); }
 .pedal-chassis { width:90px; height:58px; background:var(--bg); box-shadow: inset 0 0 0 3px var(--accent); display:flex; align-items:center; justify-content:center; }
-.pedal-label { font-size:10px; margin-top: var(--space-1); color: var(--text); }
+.pedal-label { font-size: calc(10px * var(--ui-font-scale)); margin-top: var(--space-1); color: var(--text); }
 
 /* ===== Focus Ring Minimization for Active Tabs ===== */
 .tab.active:focus-visible { outline: none; }
 
 /* ===== Text helpers ===== */
 .muted { color: var(--text-soft); }
-.mono { font-family: 'Press Start 2P', monospace; }
+.mono { font-family: var(--ui-font); }
 
 /* ===== Reduce inline repetition in components ===== */
 .noselect { user-select:none; }
@@ -232,7 +236,7 @@ body {
 }
 
 .view-title {
-  font-size: 18px;
+  font-size: calc(18px * var(--ui-font-scale));
   letter-spacing: 1px;
   text-align: center;
 }
@@ -284,7 +288,7 @@ body {
 .page-header.compact { margin-bottom: 8px; }
 
 .page-header h2 {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale));
   color: var(--accent);
   margin: 0;
   font-weight: bold;
@@ -298,7 +302,7 @@ body {
   border: 1px solid var(--line);
   color: var(--text);
   padding: 2px 6px;
-  font-size: 7px;
+  font-size: calc(7px * var(--ui-font-scale));
   font-family: inherit;
   cursor: pointer;
   transition: background 0.15s ease;
@@ -443,7 +447,7 @@ body {
   right: 0;
   pointer-events: none;
   background: transparent;
-  font-family: 'Press Start 2P', monospace;
+  font-family: 'Tiny5', monospace;
   line-height: 1;
   overflow: hidden; /* prevent labels from spilling out */
 }
@@ -453,7 +457,7 @@ body {
   transform: translateX(-50%);
   color: #fff;
   opacity: 0.9;
-  font-size: 10px; /* matches rest of UI scale better in taller bar */
+  font-size: calc(10px * var(--ui-font-scale)); /* scaled with UI */
   white-space: nowrap;
   text-shadow: 0 1px 0 rgba(0,0,0,0.6);
 }
@@ -462,6 +466,9 @@ body {
 .timebar-label.align-center { text-align: center; }
 
 /* ===== Circular Knob Styles ===== */
+.timebar-overlay {
+  font-family: var(--ui-font);
+}
 .knob-shell { position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; outline: none; }
 .knob-face { position: relative; width: 40px; height: 40px; border-radius: 50%; background: #000; border: 1px solid var(--line); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06), 0 0 0 1px #000, 0 2px 4px rgba(0,0,0,0.6); }
 .knob-face:active { filter: brightness(1.2); }

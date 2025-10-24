@@ -20,6 +20,11 @@ type Seq = {
   // selection
   stepIndex: number;
   noteIndex: number;
+  // range selection and copy buffer (transient UI state)
+  isSelecting?: boolean;
+  selectionStartStep?: number | null;
+  selectionEndStep?: number | null;
+  copyBuffer?: SequencerStep[] | null;
   // transport
   playingLocal: boolean;
   playingGlobal: boolean;
@@ -167,6 +172,10 @@ function getDefault(): Seq {
     localBpm: 120,
     stepIndex: 0,
     noteIndex: 0,
+  isSelecting: false,
+  selectionStartStep: null,
+  selectionEndStep: null,
+  copyBuffer: null,
     playingLocal: false,
     playingGlobal: false,
     playheadFrac: 0,
@@ -595,8 +604,61 @@ export function useSequencer(soundId: string) {
   setPart: (p: number) => set(soundId, { part: Math.max(0, Math.min(5, Math.floor(p))) }),
   setModuleKind: (k: 'synth'|'sampler'|'drum') => set(soundId, { moduleKind: k }),
   setGlobalBpm: (bpm: number) => { globalBpm = Math.max(20, Math.min(240, Math.round(bpm))); },
-    setStepIndex: (i: number) => set(soundId, { stepIndex: Math.max(0, Math.min(get(soundId).length - 1, Math.round(i))) }),
+    setStepIndex: (i: number) => {
+      const st = get(soundId);
+      const idx = Math.max(0, Math.min(st.length - 1, Math.round(i)));
+      if (st.isSelecting) {
+        set(soundId, { stepIndex: idx, selectionEndStep: idx });
+      } else {
+        set(soundId, { stepIndex: idx });
+      }
+    },
     setNoteIndex: (i: number) => set(soundId, { noteIndex: Math.max(0, Math.min(((get(soundId).steps[get(soundId).stepIndex]?.notes.length)||1) - 1, Math.round(i))) }),
+    // Selection workflow
+    beginSelection: () => {
+      const st = get(soundId);
+      const idx = Math.max(0, Math.min(st.length - 1, st.stepIndex|0));
+      set(soundId, { isSelecting: true, selectionStartStep: idx, selectionEndStep: idx });
+    },
+    endSelection: () => {
+      // Clear selection markers on release of Space
+      set(soundId, { isSelecting: false, selectionStartStep: null, selectionEndStep: null });
+    },
+    copySelection: () => {
+      const st = get(soundId);
+      const a = st.selectionStartStep;
+      const b = st.selectionEndStep;
+      if (a == null || b == null) return;
+      const lo = Math.max(0, Math.min(st.length - 1, Math.min(a, b)));
+      const hi = Math.max(0, Math.min(st.length - 1, Math.max(a, b)));
+      const out: SequencerStep[] = [];
+      for (let i = lo; i <= hi; i++) {
+        const src = st.steps[i] || { time: i, notes: [] };
+        const notes = (src.notes || []).map(n => ({ midi: n.midi, vel: n.vel, legato: !!n.legato }));
+        out.push({ time: out.length, notes });
+      }
+      set(soundId, { copyBuffer: out });
+    },
+    pasteAt: (targetIndex: number) => {
+      const st = get(soundId);
+      const buf = (st.copyBuffer || []) as SequencerStep[];
+      if (!buf || buf.length === 0) return;
+      // Prepare steps up to current length
+      const steps = st.steps.slice();
+      for (let i = 0; i < st.length; i++) { if (!steps[i]) steps[i] = { time: i, notes: [] }; }
+      const t = Math.max(0, Math.min(st.length - 1, Math.round(targetIndex)));
+      const writeCount = Math.max(0, Math.min(buf.length, st.length - t));
+      for (let k = 0; k < writeCount; k++) {
+        const src = buf[k];
+        steps[t + k] = {
+          time: t + k,
+          notes: (src.notes || []).map(n => ({ midi: n.midi, vel: n.vel, legato: !!n.legato })),
+        };
+      }
+      const normalized = steps.slice(0, st.length).map((s, i) => ({ time: i, notes: (s?.notes || []) }));
+      const newStepIdx = Math.max(0, Math.min(st.length - 1, t + Math.max(0, writeCount - 1)));
+      set(soundId, { steps: normalized, stepIndex: newStepIdx });
+    },
     addNoteAtSelection: () => {
       const st = get(soundId);
       const idx = st.stepIndex;
@@ -827,6 +889,10 @@ export function useSequencer(soundId: string) {
   setGlobalBpm(bpm: number): void;
     setStepIndex(i: number): void;
     setNoteIndex(i: number): void;
+  beginSelection(): void;
+  endSelection(): void;
+  copySelection(): void;
+  pasteAt(targetIndex: number): void;
     addNoteAtSelection(): void;
   ensureNoteAtSelection(midi: number, vel?: number): void;
     removeNoteAtSelection(): void;

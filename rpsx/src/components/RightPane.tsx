@@ -36,7 +36,7 @@ export default function RightPane({ view }: { view: ViewName }) {
   // Droplets removed: no overlay triggers
 
   return (
-  <div className={`panel right-pane ${focused ? 'focused' : ''}`} style={{ flex:1, height:'100%', minHeight:0, display:'flex', flexDirection:'column', fontFamily: "'Press Start 2P', monospace", overflow:'hidden' }}>
+  <div className={`panel right-pane ${focused ? 'focused' : ''}`} style={{ flex:1, height:'100%', minHeight:0, display:'flex', flexDirection:'column', fontFamily: "var(--ui-font)", overflow:'hidden' }}>
   {/* Droplets removed */}
       
       {view === 'Sounds' && (
@@ -81,7 +81,7 @@ export default function RightPane({ view }: { view: ViewName }) {
 }
 
 function Center({ children }: { children: React.ReactNode }) {
-  return <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:'var(--space-4)' }}><div style={{ fontSize:16, textAlign:'center' }}>{children}</div></div>;
+  return <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:'var(--space-4)' }}><div style={{ fontSize:'calc(16px * var(--ui-font-scale))', textAlign:'center' }}>{children}</div></div>;
 }
 
 function extractName(label: string): string {
@@ -443,12 +443,12 @@ function FooterHints({ page }: { page: string }) {
       </svg>
       <div style={{ display:'flex', flexDirection:'column', lineHeight:1, minWidth:0 }}>
         <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{label}</span>
-        <span style={{ fontSize:9, color:'#ccc' }}>{value}</span>
+  <span style={{ fontSize:'calc(9px * var(--ui-font-scale))', color:'#ccc' }}>{value}</span>
       </div>
     </div>
   );
   return (
-    <div style={{ height: 32, background:'#000', color:'#fff', borderTop:'1px solid #fff', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'4px 10px', fontFamily: "'Press Start 2P', monospace", fontSize:10, gap:10, isolation:'isolate', mixBlendMode:'normal' }}>
+  <div style={{ height: 32, background:'#000', color:'#fff', borderTop:'1px solid #fff', display:'flex', alignItems:'center', justifyContent:'space-between', padding:'4px 10px', fontFamily: "var(--ui-font)", fontSize:'calc(10px * var(--ui-font-scale))', gap:10, isolation:'isolate', mixBlendMode:'normal' }}>
       {item(labels[0], values[0], norms[0])}
       {item(labels[1], values[1], norms[1])}
       {item(labels[2], values[2], norms[2])}

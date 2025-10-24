@@ -1,7 +1,7 @@
 /* Placeholder font pipeline for Ark 1-bit UI. Replace with generated bitmap font later. */
 @font-face {
   font-family: 'ArkMono';
-  src: local('Press Start 2P'), local('Courier New'), monospace;
+  src: local('Tiny5'), local('Courier New'), monospace;
   font-display: swap;
 }
 

@@ -48,27 +48,7 @@ export default function Shell() {
     // Pre-warm audio engine to avoid first-note startup latency
     (async () => { try { await rpc.startAudio(); } catch (_) {} })();
     
-    const applyCssVars = (vars: Record<string, string | number>) => {
-      const root = document.documentElement;
-      const body = document.body;
-      Object.entries(vars).forEach(([k, v]) => {
-        root.style.setProperty(k, String(v));
-        body.style.setProperty(k, String(v));
-      });
-    };
-
-    // Theme state trackers (kept on window to persist across HMR reloads)
-    const themeState = (window as any).__ARK_THEME_STATE__ || ((window as any).__ARK_THEME_STATE__ = {
-      dotAlphaIdx: 1, // 0..n
-      dotStepIdx: 1,
-      dotSizeIdx: 0,
-      sepWIdx: 1,
-    });
-
-    const dotAlphaPresets = [0.10, 0.16, 0.22, 0.30];
-    const dotStepPresets = ['6px', '4px', '3px', '2px']; // denser to the right
-    const dotSizePresets = ['1px', '2px', '3px'];
-    const sepWPresets = ['2px', '3px', '4px'];
+  // Removed: global hotkeys (7/8/9/0) that used to tweak dot-array background presets
 
     // Capture-phase guard: when Project Settings is open, block all keys except its own controls
     const guardKeyDown = (e: KeyboardEvent) => {
@@ -81,6 +61,18 @@ export default function Shell() {
             e.preventDefault();
             e.stopPropagation();
             (e as any).stopImmediatePropagation?.();
+          }
+        }
+        // Always prevent Space from triggering browser scroll when not typing in inputs
+        const target = e.target as HTMLElement | null;
+        const tag = (target?.tagName || '').toUpperCase();
+        const isEditable = !!(target && ((target as any).isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA'));
+        if (!isEditable) {
+          const code = (e as any).code as string | undefined;
+          const key = e.key;
+          if (code === 'Space' || key === ' ') {
+            // Block default scroll, but allow app handlers to see the key
+            e.preventDefault();
           }
         }
       } catch {}
@@ -194,35 +186,7 @@ export default function Shell() {
         } catch {}
         return;
       }
-      switch (true) {
-        case isDigit('7'): { // Dot alpha
-          e.preventDefault();
-          themeState.dotAlphaIdx = (themeState.dotAlphaIdx + 1) % dotAlphaPresets.length;
-          const val = dotAlphaPresets[themeState.dotAlphaIdx];
-          applyCssVars({ '--ark-dot-alpha': String(val) });
-          break;
-        }
-        case isDigit('8'): { // Dot step (density)
-          e.preventDefault();
-          themeState.dotStepIdx = (themeState.dotStepIdx + 1) % dotStepPresets.length;
-          const val = dotStepPresets[themeState.dotStepIdx];
-          applyCssVars({ '--ark-dot-step': val });
-          break;
-        }
-        case isDigit('9'): { // Dot size
-          e.preventDefault();
-          themeState.dotSizeIdx = (themeState.dotSizeIdx + 1) % dotSizePresets.length;
-          const val = dotSizePresets[themeState.dotSizeIdx];
-          applyCssVars({ '--ark-dot-size': val });
-          break;
-        }
-        case isDigit('0'): { // Separator thickness
-          e.preventDefault();
-          themeState.sepWIdx = (themeState.sepWIdx + 1) % sepWPresets.length;
-          const val = sepWPresets[themeState.sepWIdx];
-          applyCssVars({ '--ark-sep-w': val });
-          break;
-        }
+  switch (true) {
         case isDigit('3'):
           e.preventDefault()
           moveView(-1)

@@ -18,6 +18,11 @@ export default function ArrangementView() {
   const [arr, setArr] = useState<ArrItem[]>([]);
   const [sel, setSel] = useState(0);
   const [offset, setOffset] = useState(0);
+  // Selection & clipboard for arrangement
+  const [isSelecting, setIsSelecting] = useState(false);
+  const [selStart, setSelStart] = useState<number | null>(null);
+  const [selEnd, setSelEnd] = useState<number | null>(null);
+  const [copyBuf, setCopyBuf] = useState<ArrItem[] | null>(null);
   // no selection animation
   // Center is always the middle of the right pane; no overrides
 
@@ -206,6 +211,72 @@ export default function ArrangementView() {
     return () => window.removeEventListener('keydown', onKey);
   }, [arr, sel]);
 
+  // Selection/copy/paste keyboard workflow for Arrangement (Space hold + C/V)
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const curView = (useBrowserStore.getState() as any).currentView;
+      if (curView !== 'Arrangement') return;
+      // Begin selection with Space (ignore repeat)
+      if ((e.code === 'Space' || (e.key || '') === ' ') && !e.repeat) {
+        e.preventDefault();
+        if (!isSelecting) {
+          setIsSelecting(true);
+          setSelStart(sel);
+          setSelEnd(sel);
+        }
+        return;
+      }
+      // Copy selection with C (ignore repeat)
+      if ((e.code === 'KeyC' || (e.key || '').toLowerCase() === 'c') && !e.repeat) {
+        const a = selStart, b = selEnd;
+        if (a != null && b != null && arr.length > 0) {
+          e.preventDefault();
+          const lo = Math.max(0, Math.min(arr.length - 1, Math.min(a, b)));
+          const hi = Math.max(0, Math.min(arr.length - 1, Math.max(a, b)));
+          const out = [] as ArrItem[];
+          for (let i = lo; i <= hi; i++) {
+            const it = arr[i]; if (!it) continue;
+            out.push({ id: it.id, label: it.label, len: Math.max(1, Math.min(8, it.len || 1)) });
+          }
+          setCopyBuf(out);
+        }
+        return;
+      }
+      // Paste at current selection with V (insert before current position)
+      if ((e.code === 'KeyV' || (e.key || '').toLowerCase() === 'v') && !e.repeat) {
+        if (copyBuf && copyBuf.length > 0 && arr.length > 0) {
+          e.preventDefault();
+          setArr(cur => {
+            const list = [...cur];
+            // Insert AFTER the currently selected item, matching insertFromBrowser()
+            const t = Math.max(0, Math.min(list.length, sel + 1));
+            const toInsert = copyBuf.map(src => ({ id: src.id, label: src.label, len: Math.max(1, Math.min(8, src.len || 1)) }));
+            list.splice(t, 0, ...toInsert);
+            const newSel = Math.max(0, Math.min(list.length - 1, t + toInsert.length - 1));
+            setSel(newSel);
+            // Keep centered
+            setOffset(0);
+            return list;
+          });
+        }
+        return;
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      const curView = (useBrowserStore.getState() as any).currentView;
+      if (curView !== 'Arrangement') return;
+      if ((e.code === 'Space' || (e.key || '') === ' ')) {
+        e.preventDefault();
+        setIsSelecting(false);
+        setSelStart(null);
+        setSelEnd(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); };
+  }, [arr, sel, isSelecting, selStart, selEnd, copyBuf]);
+
   // no animation cleanup needed
 
   // Encoders via hotkeys: 5/6 (position select), T/Y (pattern change), G/H (length), B/N (unused now)
@@ -228,6 +299,7 @@ export default function ArrangementView() {
     setSel(i => {
       const n = arr.length; if (n === 0) return 0;
       const ni = (i + d + n) % n;
+      if (isSelecting) setSelEnd(ni);
       return ni;
     });
     // Always keep selection centered on the arc
@@ -302,51 +374,46 @@ export default function ArrangementView() {
     });
   }
 
-  // Geometry helpers (bottom semicircle arc spanning the width)
+  // Geometry for straight horizontal line layout
   const geom = useMemo(() => {
-    // Visual paddings and clearances
-    const cometPad = 12;         // comet marker above selection
-    const labelPad = 10;         // label text inside oval
-    const ovalRy = 16;           // vertical radius of item oval (fixed in render)
-    const topClear = 8 + ovalRy + cometPad + labelPad; // clearance from top for arc apex
-    const bottomClear = 28;      // keep space for bottom help text
-
-    // Estimate max horizontal radius of any item (rx) to avoid clipping near the sides
-    const maxBars = Math.max(1, ...arr.map(it => Math.max(1, Math.min(8, (it.len ?? 1)))));
-    const rxMax = 16 + (maxBars - 1) * 6; // matches render logic
-    const sidePad = 8 + rxMax;            // ensure longest oval doesn't clip at ends
-
     const cx = Math.floor(size.w / 2);
-    const cy = Math.max(topClear + 40, Math.floor(size.h - bottomClear)); // baseline (diameter line) near bottom
-
-    // Radius limited by width and height
-    const rByWidth = Math.max(40, (size.w - 2 * sidePad) / 2);
-    const rByHeight = Math.max(40, cy - topClear);
-    const r = Math.floor(Math.max(40, Math.min(rByWidth, rByHeight)));
-
-    return { r, cx, cy, sidePad };
-  }, [size, arr]);
+    const cy = 44; // near the top
+    return { cx, cy } as const;
+  }, [size.w]);
 
   // Positions along the bottom semicircle arc (left -> right), equally spaced
   const itemsWithPos = useMemo(() => {
-    const STEP = Math.PI / 9; // constant spacing (~20°) between items, independent of count
-    const THETA_CENTER = 1.5 * Math.PI;
-    const THETA_MIN = Math.PI;
-    const THETA_MAX = 2 * Math.PI;
-
+    const GAP = 8; // tight spacing between bubbles
+    const MARGIN = 200;
+    if (!arr.length) return [] as any[];
+    // Estimate each item's width based on bars -> rx/ry used in render
+    const widths = arr.map(it => {
+      const bars = Math.max(1, Math.min(8, (it?.len ?? 1)));
+      const rx = 20 + (bars - 1) * 8;
+      return 2 * rx;
+    });
+    const avgStep = (widths.reduce((a,b)=>a+b,0) / Math.max(1, widths.length)) + GAP;
+    const xCenters: number[] = new Array(arr.length);
+    // Center selected item, apply fractional offset as average-step pixels
+    xCenters[sel] = geom.cx - (offset * avgStep);
+    // Right side
+    for (let i = sel + 1; i < arr.length; i++) {
+      const prev = i - 1;
+      xCenters[i] = xCenters[prev] + (widths[prev] / 2) + GAP + (widths[i] / 2);
+    }
+    // Left side
+    for (let i = sel - 1; i >= 0; i--) {
+      const next = i + 1;
+      xCenters[i] = xCenters[next] - (widths[next] / 2) - GAP - (widths[i] / 2);
+    }
     const list = arr.map((it, i) => {
-      // offset is fractional item scroll; selected index is centered at offset=0
-      const theta = THETA_CENTER + (i - sel - offset) * STEP;
-      if (!(theta >= THETA_MIN && theta <= THETA_MAX)) return null; // off-screen; don't render
-      const x = geom.cx + geom.r * Math.cos(theta);
-      const y = geom.cy + geom.r * Math.sin(theta);
-      const tangentDeg = 180 - (theta * 180 / Math.PI);
-      return { ...it, theta, x, y, tangentDeg, i } as any;
+      const x = xCenters[i];
+      const y = geom.cy;
+      if (!(x >= -MARGIN && x <= (size.w + MARGIN))) return null;
+      return { ...it, x, y, tangentDeg: 0, i } as any;
     }).filter(Boolean) as any[];
-
-    // Keep stable order for React keys (already unique by id+i)
     return list;
-  }, [arr, offset, sel, geom]);
+  }, [arr, sel, offset, geom, size.w]);
 
   return (
     <div ref={containerRef} className="view-container" style={{ position:'relative', overflow:'hidden' }}>
@@ -354,32 +421,27 @@ export default function ArrangementView() {
         <div className="pixel-text" style={{ padding: 8, color:'var(--text-soft)' }}>Open a project to arrange patterns.</div>
       )}
   <svg width={size.w} height={size.h} style={{ display:'block' }}>
-        {/* baseline bottom semicircle arc spanning side to side */}
-        {geom.r > 0 && (
-          <path
-            d={`M ${geom.cx - geom.r} ${geom.cy} A ${geom.r} ${geom.r} 0 0 0 ${geom.cx + geom.r} ${geom.cy}`}
-            fill="none"
-            stroke="var(--line)"
-            strokeWidth={1}
-          />
-        )}
-        {itemsWithPos.map((it: any) => {
+  {/* baseline straight line across top */}
+  <line x1={0} y1={geom.cy} x2={size.w} y2={geom.cy} stroke="var(--line)" strokeWidth={1} />
+  {itemsWithPos.map((it: any) => {
           const isSel = it.i === sel;
+    const inSel = isSelecting && selStart != null && selEnd != null && it.i >= Math.min(selStart, selEnd) && it.i <= Math.max(selStart, selEnd);
           const bars = Math.max(1, Math.min(8, (arr[it.i]?.len ?? 1)));
-          const rx = 16 + (bars - 1) * 6;
-          const ry = 16;
+          // Bigger bubbles
+          const rx = 20 + (bars - 1) * 8;
+          const ry = 20;
           const disp = formatPatternLabel(it.id);
           return (
             <g key={it.id + ':' + it.i} style={{ transition:'transform 160ms linear' }}>
               <g transform={`translate(${it.x},${it.y})`}>
                 {/* Rotated group for oval + label */}
                 <g transform={`rotate(${it.tangentDeg})`}>
-                  <ellipse cx={0} cy={0} rx={rx} ry={ry} fill="transparent" stroke={isSel ? 'var(--text)' : 'var(--line)'} strokeWidth={isSel ? 2 : 1} />
-                  <text x={0} y={4} textAnchor="middle" fontSize={10} fill={isSel ? 'var(--text)' : 'var(--text-soft)'} className="pixel-text">{disp}</text>
+      <ellipse cx={0} cy={0} rx={rx} ry={ry} fill={inSel ? 'rgba(255,255,255,0.16)' : 'transparent'} stroke={isSel ? 'var(--text)' : 'var(--line)'} strokeWidth={isSel ? 2 : 1} />
+      <text x={0} y={4} textAnchor="middle" fontSize={10} fill={isSel ? 'var(--text)' : inSel ? 'var(--text)' : 'var(--text-soft)'} className="pixel-text">{disp}</text>
                 </g>
                 {/* Unrotated selection dot directly above the oval in screen space */}
                 {isSel && (
-                  <g transform={`translate(0,${-ry - 10})`}>
+                  <g transform={`translate(0,${ry + 10})`}>
                     <circle r={3} fill="var(--text)" />
                   </g>
                 )}
