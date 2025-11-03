@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { keyIs } from '../utils/key';
 import Knob from './synth/Knob';
-import { useSequencer, SequencerNote, SequencerStep } from '../store/sequencer';
+import { useSequencer, SequencerNote, SequencerStep, usePatternGhosts } from '../store/sequencer';
 import { useBrowser } from '../store/browser';
 import { useFourKnobHotkeys } from '../hooks/useFourKnobHotkeys';
 
@@ -270,6 +270,8 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
   const CIRCLE = 48; // diameter of step circle
   const GAP = 10; // spacing between circles
   const STEP_UNIT = CIRCLE + GAP; // circle width + gap, must match styles
+  const GHOST_H = 6; // height of each ghost rectangle
+  const GHOST_GAP = 2; // vertical gap between ghost rectangles
 
   // Auto-scroll: keep selected step centered/visible
   useEffect(() => {
@@ -289,12 +291,18 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
     seq.setStepIndex(Math.max(0, Math.min(seq.length - 1, idx)));
   };
 
+  // Ghost sequences for the current pattern (exclude current sound)
+  const ghostsAll = usePatternGhosts();
+  const ghosts = useMemo(() => ghostsAll.filter(g => g.soundId !== soundId), [ghostsAll, soundId]);
+  const maxGhostRows = Math.min(8, ghosts.length);
+
   const row = (
     <div
       onClick={onRowClick}
       ref={rowRef}
-      style={{ display: 'flex', alignItems: 'center', gap: GAP, justifyContent: 'flex-start', padding: '8px 6px', userSelect: 'none', cursor: 'pointer', overflowX: 'auto' }}
+      style={{ padding: '8px 6px', userSelect: 'none', cursor: 'pointer', overflowX: 'auto' }}
     >
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: GAP, justifyContent: 'flex-start' }}>
     {Array.from({ length: Math.max(1, seq.length) }).map((_, i: number) => {
   const isPlaying = !!(seq.playingLocal || seq.playingGlobal);
   const active = isPlaying && (i === seq.playheadStep);
@@ -310,34 +318,33 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
         const isBar = (i % 4) === 0;
         const RING_PAD = 4;
         return (
-          <div
-            key={i}
-            className={`seq-step ${selected ? 'is-selected' : ''} ${active ? 'is-active' : ''}`}
-            style={{
-              width: CIRCLE,
-              height: CIRCLE,
-              minWidth: CIRCLE,
-              position: 'relative',
-              background: circleBg,
-            }}
-          >
-            {isBar && (
-              <div
-                style={{
-                  position: 'absolute',
-                  left: '50%',
-                  top: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  width: CIRCLE + RING_PAD * 2,
-                  height: CIRCLE + RING_PAD * 2,
-                  borderRadius: '50%',
-                  border: `2px solid rgba(255,255,255,0.4)`,
-                  pointerEvents: 'none',
-                  zIndex: 0,
-                }}
-              />
-            )}
-            {notes.map((n: SequencerNote, j: number) => {
+          <div key={i} style={{ width: CIRCLE, minWidth: CIRCLE }}>
+            <div
+              className={`seq-step ${selected ? 'is-selected' : ''} ${active ? 'is-active' : ''}`}
+              style={{
+                width: CIRCLE,
+                height: CIRCLE,
+                position: 'relative',
+                background: circleBg,
+              }}
+            >
+              {isBar && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    width: CIRCLE + RING_PAD * 2,
+                    height: CIRCLE + RING_PAD * 2,
+                    borderRadius: '50%',
+                    border: `2px solid rgba(255,255,255,0.4)`,
+                    pointerEvents: 'none',
+                    zIndex: 0,
+                  }}
+                />
+              )}
+              {notes.map((n: SequencerNote, j: number) => {
               const pc = n.midi % 12; const theta = (pc / 12) * (Math.PI * 2) - Math.PI / 2;
               const oct = Math.floor(n.midi / 12) % 4; // 0..3
         const baseR = 8 + oct * 5; // adjusted for smaller circle
@@ -356,9 +363,43 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
               }
               return <div key={j} style={{ position: 'absolute', left: cx - r, top: cy - r, width: r * 2, height: r * 2, background: '#fff', borderRadius: r * 2, boxShadow: isSelectedNote ? '0 0 0 2px var(--accent)' : 'none', zIndex: isSelectedNote ? 2 : 1 }} />
             })}
+            </div>
+            {/* Ghost rectangles for other sequences at this same step index */}
+            {maxGhostRows > 0 && (
+              <div
+                style={{
+                  // push ghosts slightly further down from the main step circle
+                  marginTop: 10,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: GHOST_GAP,
+                  pointerEvents: 'none',
+                }}
+              >
+                {ghosts.slice(0, maxGhostRows).map((g, gi) => {
+                  const giStep = g.length > 0 ? (i % g.length) : 0;
+                  const has = !!g.has[giStep];
+                  return (
+                    <div
+                      key={gi}
+                      style={{
+                        width: CIRCLE,
+                        height: GHOST_H,
+                        borderRadius: 3,
+                        background: has ? 'rgba(255,255,255,0.28)' : 'transparent',
+                        border: has ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(255,255,255,0.14)',
+                        boxShadow: has ? '0 0 0 1px rgba(255,255,255,0.06) inset' : 'none',
+                        opacity: 0.75,
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}
+      </div>
     </div>
   );
 

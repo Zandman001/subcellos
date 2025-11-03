@@ -6,6 +6,8 @@ export type SequencerResolution = '1/4' | '1/8' | '1/16' | '1/32' | '1/8t' | '1/
 export type SequencerMode = 'tempo' | 'poly';
 export type SequencerNote = { midi: number; vel: number; legato?: boolean };
 export type SequencerStep = { time: number; notes: SequencerNote[] };
+// Read-only ghost summary type for pattern-wide visualization
+export type PatternSeqGhost = { soundId: string; length: number; has: boolean[] };
 
 // Local-only, per-sound sequencer store. Designed to be backend-agnostic and later pluggable.
 type Seq = {
@@ -189,6 +191,9 @@ const listeners = new Set<() => void>();
 const versions: Record<string, number> = {};
 const snapshots: Record<string, any> = {};
 function notify() { listeners.forEach(l => { try { l(); } catch {} }); }
+// Cached pattern-wide ghost snapshots keyed by pattern id with composite version
+const patternGhostVersions: Record<string, string> = {};
+const patternGhostSnapshots: Record<string, any> = {};
 
 function get(soundId: string): Seq {
   const k = soundId.includes('::') ? soundId : keyFor(soundId);
@@ -904,6 +909,42 @@ export function useSequencer(soundId: string) {
     toggleLocalPlay(): void;
     toggleGlobalPlay(): void;
   };
+}
+
+// Hook: summary of all sequences in the current pattern (read-only ghosts)
+export function usePatternGhosts(): PatternSeqGhost[] {
+  const subscribe = (cb: () => void) => { listeners.add(cb); return () => listeners.delete(cb); };
+  const getSnapshot = () => {
+    const pid = currentPatternId || 'default';
+    // Build composite version string from per-seq versions for this pattern
+    const keys = Object.keys(seqMap).filter(k => patternFromKey(k) === pid);
+    keys.sort();
+    const verStr = keys.map(k => `${k}:${versions[k] || 0}`).join('|');
+    const prevV = patternGhostVersions[pid];
+    const cached = patternGhostSnapshots[pid];
+    if (cached && prevV === verStr) return cached as PatternSeqGhost[];
+    // Recompute snapshot only when composite version changed
+    const out: PatternSeqGhost[] = [];
+    // For consistent UI order, sort by soundId label order
+    keys.sort((a, b) => (soundFromKey(a)).localeCompare(soundFromKey(b)));
+    for (const k of keys) {
+      const s = get(k);
+      const len = Math.max(1, s.length | 0);
+      const has: boolean[] = new Array(len);
+      for (let i = 0; i < len; i++) {
+        const st = s.steps[i];
+        has[i] = !!(st && Array.isArray(st.notes) && st.notes.length > 0);
+      }
+      out.push({ soundId: soundFromKey(k), length: len, has });
+    }
+    const snap = out as any;
+    patternGhostVersions[pid] = verStr;
+    patternGhostSnapshots[pid] = snap;
+    return snap as PatternSeqGhost[];
+  };
+  // Reuse the same external store used by per-sound sequencers to update when any sequence changes
+  const ghosts = useSyncExternalStore(subscribe, getSnapshot);
+  return ghosts as PatternSeqGhost[];
 }
 
 // External helper: ensure a sequencer entry has correct part & moduleKind without mounting UI
