@@ -300,7 +300,7 @@ export default function SequencerRow({ soundId, part }: { soundId: string; part:
     <div
       onClick={onRowClick}
       ref={rowRef}
-      style={{ padding: '8px 6px', userSelect: 'none', cursor: 'pointer', overflowX: 'auto' }}
+      style={{ padding: '8px 6px', userSelect: 'none', cursor: 'pointer', overflowX: 'auto', contain: 'paint', willChange: 'transform', transform: 'translateZ(0)', overscrollBehavior: 'contain' as any }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: GAP, justifyContent: 'flex-start' }}>
     {Array.from({ length: Math.max(1, seq.length) }).map((_, i: number) => {

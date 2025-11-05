@@ -111,7 +111,16 @@ export function sequencerSetCurrentPattern(pid: string) {
       } catch {}
       // Schedule the following step precisely one step later
       const stMs = stepTimeMs(s.resolution, globalBpm);
-      (s as any)._nextStepTime = now + (stMs || 0);
+      const anchor = globalStart;
+      const stepsElapsed = stMs ? Math.max(0, Math.floor(Math.max(0, now - anchor) / stMs)) : 0;
+      (s as any)._anchorTime = anchor;
+      if (stMs && stMs > 0) {
+        (s as any)._stepCounter = stepsElapsed + 1;
+        (s as any)._nextStepTime = anchor + (stepsElapsed + 1) * stMs;
+      } else {
+        (s as any)._stepCounter = 0;
+        (s as any)._nextStepTime = now;
+      }
       // For poly sequences, still keep a local anchor but we follow global step timing during global playback
       (s as any)._localStart = globalStart;
       (s as any)._lastStepIdx = 0;
@@ -190,7 +199,16 @@ function getDefault(): Seq {
 const listeners = new Set<() => void>();
 const versions: Record<string, number> = {};
 const snapshots: Record<string, any> = {};
-function notify() { listeners.forEach(l => { try { l(); } catch {} }); }
+let __notifyScheduled = false;
+function __flushNotify() {
+  __notifyScheduled = false;
+  listeners.forEach(l => { try { l(); } catch {} });
+}
+function notify() {
+  if (__notifyScheduled) return;
+  __notifyScheduled = true;
+  try { requestAnimationFrame(__flushNotify); } catch { setTimeout(__flushNotify, 0); }
+}
 // Cached pattern-wide ghost snapshots keyed by pattern id with composite version
 const patternGhostVersions: Record<string, string> = {};
 const patternGhostSnapshots: Record<string, any> = {};
@@ -329,9 +347,16 @@ export function sequencerDeleteForPattern(patternId: string) {
 }
 // High-resolution step scheduler (interval based) to reduce rAF jitter
 let schedId: any;
-const SCHED_INTERVAL_MS = 8; // ~125 Hz
+// Low-power heuristics (Raspberry Pi / few cores): relax scheduler/UI refresh a bit
+const __ua = (typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string') ? navigator.userAgent.toLowerCase() : '';
+const __cores = (typeof navigator !== 'undefined' && (navigator as any).hardwareConcurrency) ? Number((navigator as any).hardwareConcurrency) : undefined;
+const __uaLowPower = (__ua.includes('raspberry') || __ua.includes('raspbian'));
+const __coreLowPower = (typeof __cores === 'number' && isFinite(__cores) && __cores > 0 && __cores <= 4);
+const __isLowPower = !!(__uaLowPower || __coreLowPower);
+const SCHED_INTERVAL_MS = __isLowPower ? 16 : 8; // ~62 Hz on low-power, ~125 Hz otherwise
 const STEP_TOLERANCE_MS = 2; // allow slight early trigger window
-// throttle per-seq frac updates to ~30 Hz to avoid excessive renders
+const FRAC_THROTTLE_MS = __isLowPower ? 50 : 33; // UI playhead/frac updates: ~20 Hz vs ~30 Hz
+// throttle per-seq frac updates to avoid excessive renders
 const lastFracNotify: Record<string, number> = {};
 // Listen to global tempo changes dispatched by TopBar and others
 if (typeof window !== 'undefined') {
@@ -366,6 +391,38 @@ function stepsPerBar(res: SequencerResolution): number {
     case '1/8t': return 12; // 12 eighth-triplets per bar (3 per beat * 4)
     case '1/16t': return 24; // 24 sixteenth-triplets per bar
   }
+}
+
+// Phase-aware scheduler re-anchor: align next step to the next boundary based on current clock position
+function reanchorScheduler(s: Seq) {
+  const now = performance.now();
+  // Match clock selection used elsewhere
+  const usingGlobalClock = globalPlaying ? true : (s.mode !== 'poly');
+  const bpm = usingGlobalClock ? globalBpm : (s.localBpm || 120);
+  const stMs = stepTimeMs(s.resolution, bpm);
+  if (!stMs || stMs <= 0 || s.length <= 0) {
+    (s as any)._schedulerMode = true;
+    (s as any)._lastStepIdx = -1;
+    const anchor = usingGlobalClock ? globalStart : now;
+    if (!usingGlobalClock) (s as any)._localStart = anchor;
+    (s as any)._anchorTime = anchor;
+    (s as any)._stepCounter = 0;
+    (s as any)._nextStepTime = now;
+    return;
+  }
+  const start = usingGlobalClock ? globalStart : ((s as any)._localStart || now);
+  if (!usingGlobalClock && !(s as any)._localStart) (s as any)._localStart = start;
+  const elapsed = Math.max(0, now - start);
+  const totalMs = stMs * Math.max(1, s.length|0);
+  const loopPos = elapsed % totalMs;
+  const idx = Math.floor(loopPos / stMs) % Math.max(1, s.length|0);
+  const lastBoundaryTime = start + Math.floor(elapsed / stMs) * stMs;
+  (s as any)._schedulerMode = true;
+  (s as any)._lastStepIdx = idx;
+  (s as any)._anchorTime = start;
+  const stepsCompleted = Math.floor(elapsed / stMs);
+  (s as any)._stepCounter = stepsCompleted + 1;
+  (s as any)._nextStepTime = start + (stepsCompleted + 1) * stMs;
 }
 
 // Estimate bar length of a pattern (max across its sequences, rounded up, clamped 1..8)
@@ -410,7 +467,7 @@ function tick(ts: number) {
       // throttle notify
       const nowMs = performance.now();
       const last = lastFracNotify[id] || 0;
-      if (nowMs - last > 33) { lastFracNotify[id] = nowMs; touch(id); notify(); }
+  if (nowMs - last > FRAC_THROTTLE_MS) { lastFracNotify[id] = nowMs; touch(id); notify(); }
       return;
     }
     const elapsed = usingGlobalClock ? gElapsed : (s as any)._localStart ? (now - (s as any)._localStart) : 0;
@@ -497,7 +554,7 @@ function tick(ts: number) {
       // Throttle frac-only updates to ~30 Hz
       const nowMs = performance.now();
       const last = lastFracNotify[id] || 0;
-      if (nowMs - last > 33) {
+  if (nowMs - last > FRAC_THROTTLE_MS) {
         lastFracNotify[id] = nowMs;
         touch(id);
         notify();
@@ -522,18 +579,26 @@ function scheduleSteps() {
     if (!stMs || stMs <= 0 || s.length <= 0) return;
     if (!(s as any)._schedulerMode) return; // only for scheduler-enabled sequences
     if ((s as any)._nextStepTime == null) {
+      const anchor = usingGlobalClock ? globalStart : (s as any)._localStart || now;
+      (s as any)._anchorTime = anchor;
       (s as any)._nextStepTime = now;
       (s as any)._lastStepIdx = -1;
+      (s as any)._stepCounter = Math.max(0, Math.floor((now - anchor) / stMs));
     }
     // Process all steps whose scheduled time has arrived
-    while (((s as any)._nextStepTime - STEP_TOLERANCE_MS) <= now) {
+    let checkNow = now;
+    while (((s as any)._nextStepTime - STEP_TOLERANCE_MS) <= checkNow) {
+      const scheduledTime = (s as any)._nextStepTime;
       const prevIdx = (s as any)._lastStepIdx;
       const nextIdx = ((prevIdx + 1) % s.length + s.length) % s.length;
       triggerStepEdge(s, id, prevIdx, nextIdx);
       (s as any)._lastStepIdx = nextIdx;
       s.playheadStep = nextIdx;
-      (s as any)._lastStepTime = (s as any)._nextStepTime;
-      (s as any)._nextStepTime += stMs;
+      (s as any)._lastStepTime = scheduledTime;
+      const anchor = (s as any)._anchorTime ?? (usingGlobalClock ? globalStart : (s as any)._localStart || scheduledTime);
+      const stepCounter = ((s as any)._stepCounter ?? 0) + 1;
+      (s as any)._stepCounter = stepCounter;
+      (s as any)._nextStepTime = anchor + stepCounter * stMs;
       // Update playheadFrac immediately after step for snappy UI
   const loopElapsed = ((s as any)._lastStepTime - (usingGlobalClock ? globalStart : (s as any)._localStart || globalStart));
       const totalMs = stMs * s.length;
@@ -546,7 +611,18 @@ function scheduleSteps() {
           window.dispatchEvent(new CustomEvent('seq-pattern-step', { detail: { patternId: pid, step: nextIdx, length: s.length } }));
         }
       } catch {}
-      if (((s as any)._nextStepTime - now) > stMs * 4) break; // safety
+      const after = performance.now();
+      checkNow = after;
+      const lateness = after - scheduledTime;
+      if (lateness > stMs * 0.6) {
+        // If we were significantly late triggering this step, push the next boundary forward to avoid rapid catch-up bursts.
+        const anchorReset = usingGlobalClock ? globalStart : (s as any)._localStart || after;
+        (s as any)._anchorTime = anchorReset;
+        (s as any)._stepCounter = Math.max(0, Math.floor((after - anchorReset) / stMs));
+        (s as any)._nextStepTime = anchorReset + ((s as any)._stepCounter + 1) * stMs;
+        break;
+      }
+      if (((s as any)._nextStepTime - checkNow) > stMs * 4) break; // safety
     }
   });
 }
@@ -748,10 +824,18 @@ export function useSequencer(soundId: string) {
     setResolutionNorm: (v: number) => {
       const res = snapResolutionFromNorm(v);
       set(soundId, { resolution: res, resolutionNorm: Math.max(0, Math.min(1, v)) });
+      // If playing, re-anchor scheduler so tempo/resolution change takes effect immediately and consistently
+      const st = get(soundId);
+      const isPlaying = !!(st.playingLocal || st.playingGlobal);
+      if (isPlaying) { reanchorScheduler(st); }
     },
     setLength: (n: number) => {
       const len = Math.max(1, Math.min(64, Math.round(n)));
       set(soundId, { length: len });
+      // If playing, re-anchor scheduler to avoid drift with new loop length
+      const st = get(soundId);
+      const isPlaying = !!(st.playingLocal || st.playingGlobal);
+      if (isPlaying) { reanchorScheduler(st); }
     },
     setMode: (m: 'tempo' | 'poly') => {
       const st = get(soundId);
@@ -765,6 +849,8 @@ export function useSequencer(soundId: string) {
         // Switch to local tempo: ensure local start and next step times are based on local clock
         (st as any)._localStart = now;
         (st as any)._schedulerMode = true;
+        (st as any)._anchorTime = now;
+        (st as any)._stepCounter = 0;
         (st as any)._nextStepTime = now;
         (st as any)._lastStepIdx = -1;
       } else {
@@ -772,11 +858,22 @@ export function useSequencer(soundId: string) {
         const followGlobal = globalPlaying;
         (st as any)._schedulerMode = true;
         (st as any)._lastStepIdx = -1;
-        (st as any)._nextStepTime = followGlobal ? globalStart : now;
+        const anchor = followGlobal ? globalStart : now;
+        (st as any)._anchorTime = anchor;
+        (st as any)._stepCounter = 0;
+        (st as any)._nextStepTime = anchor;
         if (!followGlobal) { (st as any)._localStart = now; }
       }
     },
-    setLocalBpm: (bpm: number) => set(soundId, { localBpm: Math.max(20, Math.min(240, Math.round(bpm))) }),
+    setLocalBpm: (bpm: number) => {
+      const clamped = Math.max(20, Math.min(240, Math.round(bpm)));
+      set(soundId, { localBpm: clamped });
+      const st = get(soundId);
+      // If locally clocked (not following global), re-anchor so the new BPM applies without stutter/drift
+      const isPlaying = !!(st.playingLocal || st.playingGlobal);
+      const usingGlobalClock = globalPlaying ? true : (st.mode !== 'poly');
+      if (isPlaying && !usingGlobalClock) { reanchorScheduler(st); }
+    },
   // UI state
   setMenuOpen: (open: boolean) => set(soundId, { uiMenuOpen: !!open }),
   toggleMenuOpen: () => set(soundId, { uiMenuOpen: !get(soundId).uiMenuOpen }),
@@ -819,6 +916,8 @@ export function useSequencer(soundId: string) {
   (cur as any)._localStart = start;
   cur.playheadFrac = 0; cur.playheadStep = -1; cur.lastTriggered = false;
   (cur as any)._schedulerMode = true;
+  (cur as any)._anchorTime = start;
+  (cur as any)._stepCounter = 0;
   (cur as any)._nextStepTime = start; (cur as any)._lastStepIdx = -1;
       } else {
         // release any held notes for this local
@@ -862,12 +961,15 @@ export function useSequencer(soundId: string) {
           (s as any)._schedulerMode = true;
           if (s.mode !== 'poly') {
             // tempo mode: follow global clock
-            (s as any)._nextStepTime = globalStart;
+            (s as any)._localStart = globalStart;
           } else {
             // poly mode: start in sync with global press, then run at local tempo
             (s as any)._localStart = globalStart;
-            (s as any)._nextStepTime = globalStart;
           }
+          const anchor = s.mode !== 'poly' ? globalStart : (s as any)._localStart;
+          (s as any)._anchorTime = anchor;
+          (s as any)._stepCounter = 0;
+          (s as any)._nextStepTime = anchor;
           (s as any)._lastStepIdx = -1;
           set(id, { playingGlobal: true });
         });
@@ -965,6 +1067,8 @@ export function sequencerSetPart(soundId: string, part: number, kind?: 'synth'|'
           s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
           (s as any)._schedulerMode = true;
           const start = (window as any).__seqGlobalStart || performance.now();
+          (s as any)._anchorTime = start;
+          (s as any)._stepCounter = 0;
           (s as any)._nextStepTime = start; (s as any)._lastStepIdx = -1;
           s.playingGlobal = true;
         }
@@ -1010,7 +1114,9 @@ export function sequencerToggleLocalFor(soundId: string) {
     (cur as any)._localStart = start;
     cur.playheadFrac = 0; cur.playheadStep = -1; cur.lastTriggered = false;
     (cur as any)._schedulerMode = true;
-    (cur as any)._nextStepTime = start; (cur as any)._lastStepIdx = -1;
+  (cur as any)._anchorTime = start;
+  (cur as any)._stepCounter = 0;
+  (cur as any)._nextStepTime = start; (cur as any)._lastStepIdx = -1;
   } else {
     // Release held notes for this local
     const held: Set<number> = (cur as any)._held || new Set<number>();
@@ -1052,11 +1158,14 @@ export function sequencerToggleGlobalPlay() {
       s.playheadFrac = 0; s.playheadStep = -1; s.lastTriggered = false;
       (s as any)._schedulerMode = true;
       if (s.mode !== 'poly') {
-        (s as any)._nextStepTime = globalStart;
+        (s as any)._localStart = globalStart;
       } else {
         (s as any)._localStart = globalStart;
-        (s as any)._nextStepTime = globalStart;
       }
+      const anchor = s.mode !== 'poly' ? globalStart : (s as any)._localStart;
+      (s as any)._anchorTime = anchor;
+      (s as any)._stepCounter = 0;
+      (s as any)._nextStepTime = anchor;
       (s as any)._lastStepIdx = -1;
       set(id, { playingGlobal: true });
     });

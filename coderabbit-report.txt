@@ -1,0 +1,6 @@
+Starting CodeRabbit review in plain text mode...
+
+[2025-11-05T09:09:00.846Z] ❌ REVIEW ERROR: Review failed: Failed to get file changes: Failed to get committed diff for node_modules/@jridgewell/trace-mapping/types/types.d.mts: Command failed with EAGAIN: git diff f6e24c13ff147ea63f42b1509f41f07817b16218...HEAD -- 'node_modules/@jridgewell/trace-mapping/types/types.d.mts'
+EAGAIN: resource temporarily unavailable, posix_spawn '/opt/homebrew/bin/git'
+Failed to start review: Review failed
+[error] stopping cli

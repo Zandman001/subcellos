@@ -71,7 +71,7 @@ export default function ProjectBrowser() {
           const active = i === state.selected;
           return (
             <div ref={active ? selRef : undefined} key={label + i} className={`list-item ${active ? 'active' : ''}`}>
-              <span className={active ? 'blink-cursor' : undefined as any}>{label}</span>
+              <span>{label}</span>
             </div>
           );
         })}

@@ -1,4 +1,5 @@
  use std::{thread, time::Duration, fs};
+use std::path::{Path, PathBuf};
 
 use crossbeam_channel::Sender;
 use once_cell::sync::OnceCell;
@@ -210,16 +211,26 @@ pub fn list_subsamples() -> Result<Vec<String>, String> {
   Ok(samples)
 }
 
+fn resolve_subsample_path(documents_dir: &Path, rel: &str) -> Result<PathBuf, String> {
+  if rel.is_empty() { return Err("invalid_sample_path".to_string()); }
+  let rel_path = Path::new(rel);
+  if rel_path.is_absolute() { return Err("invalid_sample_path".to_string()); }
+  let base_dir = documents_dir.join("subsamples");
+  let base_real = std::fs::canonicalize(&base_dir)
+    .map_err(|e| format!("canonicalize_subsamples: {e}"))?;
+  let candidate = base_dir.join(rel_path);
+  let candidate_real = std::fs::canonicalize(&candidate)
+    .map_err(|_| format!("Sample file not found: {}", rel))?;
+  if !candidate_real.starts_with(&base_real) { return Err("invalid_sample_path".to_string()); }
+  Ok(candidate_real)
+}
+
 #[tauri::command]
 pub fn load_sample(part: usize, path: String) -> Result<(), String> {
   let documents_dir = dirs::document_dir()
     .ok_or("Could not find documents directory")?;
   
-  let sample_path = documents_dir.join("subsamples").join(&path);
-  
-  if !sample_path.exists() {
-    return Err(format!("Sample file not found: {}", path));
-  }
+  let sample_path = resolve_subsample_path(&documents_dir, &path)?;
   
   if let Some(tx) = ENGINE_TX.get() {
     let path_str = sample_path.to_string_lossy().to_string();
@@ -240,12 +251,7 @@ pub fn clear_sample(part: usize) -> Result<(), String> {
 pub fn preview_sample(path: String) -> Result<(), String> {
   let documents_dir = dirs::document_dir()
     .ok_or("Could not find documents directory")?;
-  
-  let sample_path = documents_dir.join("subsamples").join(&path);
-  
-  if !sample_path.exists() {
-    return Err(format!("Sample file not found: {}", path));
-  }
+  let sample_path = resolve_subsample_path(&documents_dir, &path)?;
   
   if let Some(tx) = ENGINE_TX.get() {
     let path_str = sample_path.to_string_lossy().to_string();
@@ -266,12 +272,7 @@ pub fn stop_preview() -> Result<(), String> {
 pub fn get_sample_waveform(path: String) -> Result<Vec<f32>, String> {
   let documents_dir = dirs::document_dir()
     .ok_or("Could not find documents directory")?;
-  
-  let sample_path = documents_dir.join("subsamples").join(&path);
-  
-  if !sample_path.exists() {
-    return Err(format!("Sample file not found: {}", path));
-  }
+  let sample_path = resolve_subsample_path(&documents_dir, &path)?;
   
   // Load sample and generate waveform overview
   use crate::engine::modules::sampler::Sampler;
@@ -298,10 +299,7 @@ pub struct SampleInfo {
 pub fn get_sample_info(path: String) -> Result<SampleInfo, String> {
   let documents_dir = dirs::document_dir()
     .ok_or("Could not find documents directory")?;
-  let sample_path = documents_dir.join("subsamples").join(&path);
-  if !sample_path.exists() {
-    return Err(format!("Sample file not found: {}", path));
-  }
+  let sample_path = resolve_subsample_path(&documents_dir, &path)?;
   use crate::engine::modules::sampler::Sampler;
   let mut sampler = Sampler::new(44100.0);
   sampler.load_sample(&sample_path.to_string_lossy());
@@ -328,11 +326,32 @@ fn is_audio_file(name: &str) -> bool {
   l.ends_with(".wav") || l.ends_with(".aiff") || l.ends_with(".aif") || l.ends_with(".flac") || l.ends_with(".mp3")
 }
 
+fn validate_pack_name(pack: &str) -> Result<(), String> {
+  if pack.is_empty() { return Err("invalid_pack_name".to_string()); }
+  if !pack.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+    return Err("invalid_pack_name".to_string());
+  }
+  Ok(())
+}
+
+fn resolve_pack_dir(documents_dir: &Path, pack: &str) -> Result<PathBuf, String> {
+  validate_pack_name(pack)?;
+  let drums_dir = documents_dir.join("Drums");
+  if !drums_dir.exists() { return Err("pack_not_found".to_string()); }
+  let pack_dir = drums_dir.join(pack);
+  if !pack_dir.exists() { return Err("pack_not_found".to_string()); }
+  let drums_real = std::fs::canonicalize(&drums_dir)
+    .map_err(|e| format!("canonicalize_drums: {e}"))?;
+  let pack_real = std::fs::canonicalize(&pack_dir)
+    .map_err(|e| format!("canonicalize_pack: {e}"))?;
+  if !pack_real.starts_with(&drums_real) { return Err("invalid_pack_name".to_string()); }
+  Ok(pack_real)
+}
+
 #[tauri::command]
 pub fn list_drum_samples(pack: String) -> Result<Vec<String>, String> {
   let documents_dir = dirs::document_dir().ok_or("Could not find documents directory")?;
-  let pack_dir = documents_dir.join("Drums").join(&pack);
-  if !pack_dir.exists() { return Err("pack_not_found".to_string()); }
+  let pack_dir = resolve_pack_dir(&documents_dir, &pack)?;
   let mut files = Vec::new();
   for ent in std::fs::read_dir(&pack_dir).map_err(|e| format!("read_dir: {e}"))? {
     if let Ok(ent) = ent { if ent.path().is_file() { if let Some(name) = ent.file_name().to_str() { if is_audio_file(name) { files.push(name.to_string()); } } } }
@@ -344,8 +363,7 @@ pub fn list_drum_samples(pack: String) -> Result<Vec<String>, String> {
 #[tauri::command]
 pub fn load_drum_pack(part: usize, pack: String) -> Result<(), String> {
   let documents_dir = dirs::document_dir().ok_or("Could not find documents directory")?;
-  let pack_dir = documents_dir.join("Drums").join(&pack);
-  if !pack_dir.exists() { return Err("pack_not_found".to_string()); }
+  let pack_dir = resolve_pack_dir(&documents_dir, &pack)?;
   let mut paths: Vec<String> = Vec::new();
   for ent in std::fs::read_dir(&pack_dir).map_err(|e| format!("read_dir: {e}"))? {
     if let Ok(ent) = ent { if ent.path().is_file() { if let Some(name) = ent.file_name().to_str() { if is_audio_file(name) { paths.push(ent.path().to_string_lossy().to_string()); } } } }
