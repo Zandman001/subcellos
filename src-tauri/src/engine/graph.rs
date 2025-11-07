@@ -226,8 +226,8 @@ impl Voice {
         2 => cents_b += 100.0 * v,
         3 => lvl_a_m += v,
         4 => lvl_b_m += v,
-  5 => _filt1_m += v,
-  6 => _filt2_m += v,
+            5 => _filt1_m += v,
+            6 => _filt2_m += v,
         _ => {}
       }
     }
@@ -2721,28 +2721,31 @@ impl Part {
         out = 0.5 * (lbuf[0] + rbuf[0]);
       }
     }
-
-    // Update peaking EQ coefficients and process if any band is active
-    let q = 1.0_f32;
-    let mut any_nonzero = false;
-    for i in 0..8 {
-      let db = params.get_f32_h(self.paths.eq_bands[i], 0.0).clamp(-12.0, 12.0);
-      if (db - self.eq_last_db[i]).abs() > 1e-6 {
-        self.eq_bands[i].set_peaking(self.sr, self.eq_centers[i], q, db);
-        self.eq_last_db[i] = db;
+      // EQ for Analog branch
+      let q = 1.0_f32; let mut any_nonzero = false;
+      for i in 0..8 {
+        let db = params.get_f32_h(self.paths.eq_bands[i], 0.0).clamp(-12.0, 12.0);
+        if (db - self.eq_last_db[i]).abs() > 1e-6 { self.eq_bands[i].set_peaking(self.sr, self.eq_centers[i], q, db); self.eq_last_db[i] = db; }
+        if db.abs() > 1e-3 { any_nonzero = true; }
       }
-      if db.abs() > 1e-3 {
-        any_nonzero = true;
-      }
-    }
-    if any_nonzero {
-      for band in &mut self.eq_bands {
-        out = band.process(out);
-      }
-    }
-
-    Some(out)
-  }
+      if any_nonzero { for i in 0..8 { out = self.eq_bands[i].process(out); } }
+      // Mixer: PAN, VOLUME, HAAS, COMP
+      let mut l = out; let mut r = out;
+      let pan = params.get_f32_h(self.paths.mix_pan, 0.0).clamp(-1.0, 1.0);
+      let theta = (pan + 1.0) * std::f32::consts::FRAC_PI_4; let gl = theta.cos(); let gr = theta.sin(); l *= gl; r *= gr;
+      let vol = params.get_f32_h(self.paths.mix_volume, 1.0).clamp(0.0, 1.0); l *= vol; r *= vol;
+      let haas = params.get_f32_h(self.paths.mix_haas, 0.0).clamp(0.0, 1.0);
+      if haas > 0.0005 {
+        let rd = if self.haas_wr >= self.haas_d { self.haas_wr - self.haas_d } else { self.haas_wr + self.haas_len - self.haas_d };
+        let delayed_l = self.haas_buf[rd]; self.haas_buf[self.haas_wr] = l; self.haas_wr += 1; if self.haas_wr >= self.haas_len { self.haas_wr = 0; }
+        l = l * (1.0 - haas) + delayed_l * haas;
+      } else { self.haas_buf[self.haas_wr] = l; self.haas_wr += 1; if self.haas_wr >= self.haas_len { self.haas_wr = 0; } }
+      let comp = params.get_f32_h(self.paths.mix_comp, 0.0).clamp(0.0, 1.0);
+      if comp > 0.001 { let drive = 1.0 + 8.0 * comp; let id = 1.0 / drive.tanh(); l = (l * drive).tanh() * id; r = (r * drive).tanh() * id; }
+      return (l, r);
+    } // end Analog branch
+  } // end render
+} // end impl Part
 
 pub struct Mixer {
   sr: f32,
@@ -2771,6 +2774,15 @@ impl Mixer {
 
 fn db_to_gain(db: f32) -> f32 { (10.0f32).powf(db / 20.0) }
 fn soft_clip(x: f32) -> f32 { (x.tanh()).clamp(-1.0, 1.0) }
+
+#[inline]
+fn wrap_unit(mut x: f32) -> f32 {
+  if x >= 1.0 || x < 0.0 {
+    x = x % 1.0;
+    if x < 0.0 { x += 1.0; }
+  }
+  x
+}
 
 pub struct EngineGraph {
   pub parts: Vec<Part>,
@@ -2813,14 +2825,27 @@ impl EngineGraph {
     self.preview_playing = false;
   }
   
-  pub fn render_frame(&mut self, params: &ParamStore) -> (f32, f32) { 
-    // advance beat phase based on current bpm and sample rate (seconds per sample = 1/sr)
-    let spb = 60.0f32 / self.bpm.max(1.0);
-    // beats per sample
-    let bps = (1.0 / self.sr) / spb;
-    self.beat_phase = (self.beat_phase + bps).fract();
+  pub fn tempo(&self) -> f32 { self.bpm }
 
-    let mut result = self.mixer.mix(&mut self.parts, params, self.beat_phase);
+  pub fn render_frame(&mut self, params: &ParamStore, external_beat_phase: f32) -> (f32, f32) {
+    // Advance local transport to keep tempo stable even if external phase jitters
+    let spb = 60.0_f32 / self.bpm.max(1.0);
+    let bps = (1.0 / self.sr) / spb; // beats-per-sample
+    let mut internal_phase = wrap_unit(self.beat_phase + bps);
+
+    if external_beat_phase.is_finite() {
+      let mut diff = external_beat_phase - internal_phase;
+      if diff > 0.5 { diff -= 1.0; }
+      if diff < -0.5 { diff += 1.0; }
+      if diff.abs() > 0.02 {
+        // Nudge toward external phase to avoid long-term drift without sudden jumps
+        internal_phase = wrap_unit(internal_phase + diff * 0.25);
+      }
+    }
+
+    self.beat_phase = internal_phase;
+
+  let mut result = self.mixer.mix(&mut self.parts, params, self.beat_phase);
 
     // Update playhead states for any parts using sampler module (kind == 4)
     for (i, part) in self.parts.iter().enumerate() {
