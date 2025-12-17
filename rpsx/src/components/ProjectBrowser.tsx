@@ -91,7 +91,7 @@ export default function ProjectBrowser() {
       {state.level === 'pattern' && state.modulePickerOpen && (
         <div className="overlay-box fade-in" style={{ top: 48, maxHeight: '60%', display:'flex', flexDirection:'column', minHeight: 0 }}>
           <div ref={modScrollRef} style={{ flex:'1 1 auto', overflowY:'auto', minHeight: 0 }}>
-            {['Electricity', 'Acid 303', 'String Theory', 'Mushrooms', 'Sampler', 'Drubbles'].map((name, i) => {
+            {['Electricity', 'Acid 303', 'String Theory', 'Mushrooms', 'Sampler', 'Drubbles', 'Korus'].map((name, i) => {
               const sel = i === state.modulePickerIndex;
               return (
                 <div ref={sel ? modSelRef : undefined} key={name} className={`picker-item ${sel ? 'selected' : ''}`}>{name}</div>

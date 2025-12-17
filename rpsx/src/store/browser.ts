@@ -32,7 +32,7 @@ export interface BrowserState {
   fxSelect: 0 | 1 | 2 | 3; // 0..3 for fx1..fx4
   eqGroup: 0 | 1; // 0=bands 1..4, 1=bands 5..8
   modulePickerOpen: boolean;
-  modulePickerIndex: number; // 0: Synth, 1: Acid, 2: KarplusStrong, 3: ResonatorBank, 4: Sampler, 5: Drum
+  modulePickerIndex: number; // 0: Synth, 1: Acid, 2: KarplusStrong, 3: ResonatorBank, 4: Sampler, 5: Drum, 6: Korus
   // Sample browser state
   sampleBrowserOpen: boolean;
   sampleBrowserItems: string[];
@@ -114,7 +114,7 @@ export interface BrowserState {
   scheduleSavePreset?: (preset: any) => void;
   serializeCurrentPreset?: () => any;
   // per-sound module kind hint (UI-only). 'acid' constrains pages to 4.
-  moduleKindById?: Record<string, 'acid' | 'analog' | 'karplus' | 'resonator' | 'sampler' | 'drum'>;
+  moduleKindById?: Record<string, 'acid' | 'analog' | 'karplus' | 'resonator' | 'sampler' | 'drum' | 'korus'>;
   // recompute pages when conditions change (e.g., sampler playback type toggles LOOP availability)
   refreshSynthPages?: () => void;
   setActiveView?: (view: ViewName) => void;
@@ -377,6 +377,8 @@ async function refreshPatternItems() {
       moduleKindById[s.id] = 'sampler';
     } else if (name.startsWith('drum') || name.startsWith('drubbles') || name.startsWith('drum sampler')) {
       moduleKindById[s.id] = 'drum';
+    } else if (name.startsWith('korus')) {
+      moduleKindById[s.id] = 'korus';
     }
   });
   set({ moduleKindById: { ...moduleKindById } });
@@ -534,7 +536,7 @@ state.moveUp = () => {
     return;
   }
   if (state.level === "pattern" && state.modulePickerOpen) {
-    const next = Math.max(0, Math.min(5, state.modulePickerIndex - 1));
+    const next = Math.max(0, Math.min(6, state.modulePickerIndex - 1));
     set({ modulePickerIndex: next });
     return;
   }
@@ -561,7 +563,7 @@ state.moveDown = () => {
     return;
   }
   if (state.level === "pattern" && state.modulePickerOpen) {
-    const next = Math.max(0, Math.min(5, state.modulePickerIndex + 1));
+    const next = Math.max(0, Math.min(6, state.modulePickerIndex + 1));
     set({ modulePickerIndex: next });
     return;
   }
@@ -610,8 +612,8 @@ state.add = async () => {
       return;
     }
     // Confirm create
-  const types = ["synth", "acid", "karplus", "resonator", "sampler", "drum"] as const; // last is drum sampler
-    const t = types[Math.max(0, Math.min(5, state.modulePickerIndex))];
+  const types = ["synth", "acid", "karplus", "resonator", "sampler", "drum", "korus"] as const;
+    const t = types[Math.max(0, Math.min(6, state.modulePickerIndex))];
     const pn = state.projectName!;
     try {
       const created = await fsClient.createSound(pn, t);
@@ -632,6 +634,10 @@ state.add = async () => {
         const map = state.moduleKindById || {};
         map[created.id] = 'sampler';
         set({ moduleKindById: { ...map } });
+      } else if (t === 'korus') {
+        const map = state.moduleKindById || {};
+        map[created.id] = 'korus';
+        set({ moduleKindById: { ...map } });
       }
       set({ modulePickerOpen: false });
       await state.loadLevel();
@@ -641,7 +647,7 @@ state.add = async () => {
       if (idx >= 0) {
         set({ selected: idx, selectedSoundId: created.id, selectedSoundPart: (created as any).part_index ?? 0 });
         // Default preset for synth: Osc B level = 0; if Acid, also set module_kind
-        if (t === "synth" || t === "acid" || t === "karplus" || t === "resonator" || t === "sampler") {
+        if (t === "synth" || t === "acid" || t === "karplus" || t === "resonator" || t === "sampler" || t === "korus") {
           const part = (created as any).part_index ?? 0;
           // Build and save default preset immediately, then replay
           const ui = defaultSynthUI();
@@ -962,6 +968,7 @@ function getCurrentModuleKind(): number {
   if (map[id] === 'resonator') return 3;
   if (map[id] === 'sampler') return 4;
   if (map[id] === 'drum') return 5;
+  if (map[id] === 'korus') return 6;
   const label = state.selectedSoundName || '';
   const l = label.toLowerCase();
   if (l.startsWith('acid 303')) return 1;
@@ -969,6 +976,7 @@ function getCurrentModuleKind(): number {
   if (l.startsWith('resonator bank') || l.startsWith('mushrooms')) return 3;
   if (l.startsWith('sampler')) return 4;
   if (l.startsWith('drum') || l.startsWith('drum sampler') || l.startsWith('drubbles')) return 5;
+  if (l.startsWith('korus')) return 6;
   return 0;
 }
 
@@ -1016,6 +1024,8 @@ function computeSynthPagesForCurrent(): readonly string[] {
     }
   } else if (moduleKind === 5) { // Drubbles (formerly Drum Sampler)
     return ["DRUBBLES","MIXER","FX","EQ"] as const;
+  } else if (moduleKind === 6) { // Korus (6-voice Juno clone)
+    return ["KORUS","FX","MIXER","EQ"] as const;
   }
   // Electricity (formerly Analog synth) – default
   return ["OSC","ENV","FILTER","LFO","MOD","FX","MIXER","EQ"] as const;
@@ -1187,6 +1197,24 @@ export type SynthUI = {
     sustain: number;
     release: number;
   };
+  korus?: {
+    wave: number;      // 0=saw, 1=pulse crossfade
+    pwm: number;       // pulse width 0-1
+    sub: number;       // sub osc level 0-1
+    noise: number;     // noise level 0-1
+    cutoff: number;    // filter cutoff 0-1
+    reso: number;      // resonance 0-1
+    env_amt: number;   // env->filter amount 0-1
+    lfo_filter: number;// lfo->filter amount 0-1
+    attack: number;    // ADSR attack
+    decay: number;     // ADSR decay
+    sustain: number;   // ADSR sustain
+    release: number;   // ADSR release
+    lfo_rate: number;  // LFO rate 0-1
+    lfo_pwm: number;   // LFO->PWM amount 0-1
+    chorus: number;    // BBD chorus depth 0-1
+    chorus_rate: number; // chorus rate 0-1
+  };
 };
 
 function defaultSynthUI(): SynthUI {
@@ -1265,6 +1293,25 @@ function defaultSynthUI(): SynthUI {
       sustain: 1.0,
   release: 0.0,
     },
+    // Add default Korus (Juno clone) parameters
+    korus: {
+      wave: 0.5,       // mid between saw/pulse
+      pwm: 0.5,        // center pulse width
+      sub: 0.0,        // sub off
+      noise: 0.0,      // noise off
+      cutoff: 0.7,     // filter open
+      reso: 0.0,       // no resonance
+      env_amt: 0.3,    // some env modulation
+      lfo_filter: 0.0, // no LFO->filter
+      attack: 0.01,    // fast attack
+      decay: 0.2,      // medium decay
+      sustain: 0.8,    // high sustain
+      release: 0.3,    // medium release
+      lfo_rate: 0.3,   // moderate LFO
+      lfo_pwm: 0.0,    // no PWM mod
+      chorus: 0.5,     // half chorus
+      chorus_rate: 0.3,// moderate rate
+    },
   };
 }
 
@@ -1299,6 +1346,7 @@ state.getSynthUI = () => {
     if (kind !== 1) delete (base as any).acid;
     if (kind !== 2) delete (base as any).karplus;
     if (kind !== 3) delete (base as any).resonator;
+    if (kind !== 6) delete (base as any).korus;
     ui = base as any;
     map[id] = ui;
     set({ synthUIById: { ...map } });
@@ -1313,6 +1361,8 @@ state.getSynthUI = () => {
       (ui as any).karplus = { ...(defaultSynthUI() as any).karplus };
     } else if (kind === 3 && !(ui as any).resonator) {
       (ui as any).resonator = { ...(defaultSynthUI() as any).resonator };
+    } else if (kind === 6 && !(ui as any).korus) {
+      (ui as any).korus = { ...(defaultSynthUI() as any).korus };
     }
   }
   return ui;
@@ -1449,6 +1499,25 @@ function uiToSchema(ui: SynthUI) {
   release: envTimeMsFromNorm((ui as any).sampler.release ?? 0.0),
         gain: (ui as any).sampler.gain ?? 0.8,
       } : undefined,
+      // Persist Korus (Juno clone) macros
+      korus: (ui as any).korus ? {
+        wave: (ui as any).korus.wave ?? 0.5,
+        pwm: (ui as any).korus.pwm ?? 0.5,
+        sub: (ui as any).korus.sub ?? 0.0,
+        noise: (ui as any).korus.noise ?? 0.0,
+        cutoff: (ui as any).korus.cutoff ?? 0.7,
+        reso: (ui as any).korus.reso ?? 0.0,
+        env_amt: (ui as any).korus.env_amt ?? 0.3,
+        lfo_filter: (ui as any).korus.lfo_filter ?? 0.0,
+        attack: (ui as any).korus.attack ?? 0.01,
+        decay: (ui as any).korus.decay ?? 0.2,
+        sustain: (ui as any).korus.sustain ?? 0.8,
+        release: (ui as any).korus.release ?? 0.3,
+        lfo_rate: (ui as any).korus.lfo_rate ?? 0.3,
+        lfo_pwm: (ui as any).korus.lfo_pwm ?? 0.0,
+        chorus: (ui as any).korus.chorus ?? 0.5,
+        chorus_rate: (ui as any).korus.chorus_rate ?? 0.3,
+      } : undefined,
     }
   };
 }
@@ -1580,6 +1649,25 @@ async function applyPreset(preset: any) {
   release: invMapTimeMs(p.sampler?.release ?? 1.0),
       gain: p.sampler?.gain ?? 0.8,
     },
+    // Korus UI mirror
+    korus: {
+      wave: p.korus?.wave ?? 0.5,
+      pwm: p.korus?.pwm ?? 0.5,
+      sub: p.korus?.sub ?? 0.0,
+      noise: p.korus?.noise ?? 0.0,
+      cutoff: p.korus?.cutoff ?? 0.7,
+      reso: p.korus?.reso ?? 0.0,
+      env_amt: p.korus?.env_amt ?? 0.3,
+      lfo_filter: p.korus?.lfo_filter ?? 0.0,
+      attack: p.korus?.attack ?? 0.01,
+      decay: p.korus?.decay ?? 0.2,
+      sustain: p.korus?.sustain ?? 0.8,
+      release: p.korus?.release ?? 0.3,
+      lfo_rate: p.korus?.lfo_rate ?? 0.3,
+      lfo_pwm: p.korus?.lfo_pwm ?? 0.0,
+      chorus: p.korus?.chorus ?? 0.5,
+      chorus_rate: p.korus?.chorus_rate ?? 0.3,
+    },
   }));
   // Pages may depend on sampler playback_mode (hide/show LOOP)
   try { state.refreshSynthPages?.(); } catch {}
@@ -1613,6 +1701,8 @@ async function applyPreset(preset: any) {
         map[soundId] = 'resonator';
       } else if (p.module_kind === 4) {
         map[soundId] = 'sampler';
+      } else if (p.module_kind === 6) {
+        map[soundId] = 'korus';
       } else {
         delete map[soundId]; // Remove hint for analog (default)
       }
@@ -1748,6 +1838,25 @@ async function applyPreset(preset: any) {
     send(`sampler/sustain`, { F32: p.sampler.sustain ?? 1.0 });
   send(`sampler/release`, { F32: p.sampler.release ?? 1.0 });
     send(`sampler/gain`, { F32: p.sampler.gain ?? 0.8 });
+  }
+  // Korus (Juno clone) parameters
+  if (p.korus) {
+    send(`korus/wave`, { F32: p.korus.wave ?? 0.5 });
+    send(`korus/pwm`, { F32: p.korus.pwm ?? 0.5 });
+    send(`korus/sub`, { F32: p.korus.sub ?? 0.0 });
+    send(`korus/noise`, { F32: p.korus.noise ?? 0.0 });
+    send(`korus/cutoff`, { F32: p.korus.cutoff ?? 0.7 });
+    send(`korus/reso`, { F32: p.korus.reso ?? 0.0 });
+    send(`korus/env_amt`, { F32: p.korus.env_amt ?? 0.3 });
+    send(`korus/lfo_filter`, { F32: p.korus.lfo_filter ?? 0.0 });
+    send(`korus/attack`, { F32: p.korus.attack ?? 0.01 });
+    send(`korus/decay`, { F32: p.korus.decay ?? 0.2 });
+    send(`korus/sustain`, { F32: p.korus.sustain ?? 0.8 });
+    send(`korus/release`, { F32: p.korus.release ?? 0.3 });
+    send(`korus/lfo_rate`, { F32: p.korus.lfo_rate ?? 0.3 });
+    send(`korus/lfo_pwm`, { F32: p.korus.lfo_pwm ?? 0.0 });
+    send(`korus/chorus`, { F32: p.korus.chorus ?? 0.5 });
+    send(`korus/chorus_rate`, { F32: p.korus.chorus_rate ?? 0.3 });
   }
   // Throttle slightly to avoid spamming
   for (const c of calls) { try { await c; } catch(e) { console.error('apply preset set_param failed', e); } }
@@ -1921,6 +2030,24 @@ async function preloadAndReplayProjectPresets(project: string) {
     await set(`sampler/sustain`, { F32: p.sampler.sustain ?? 1.0 });
   await set(`sampler/release`, { F32: p.sampler.release ?? 1.0 });
         await set(`sampler/gain`, { F32: p.sampler.gain ?? 0.8 });
+      }
+      if (p.korus) {
+        await set(`korus/wave`, { F32: p.korus.wave ?? 0.5 });
+        await set(`korus/pwm`, { F32: p.korus.pwm ?? 0.5 });
+        await set(`korus/sub`, { F32: p.korus.sub ?? 0.0 });
+        await set(`korus/noise`, { F32: p.korus.noise ?? 0.0 });
+        await set(`korus/cutoff`, { F32: p.korus.cutoff ?? 0.7 });
+        await set(`korus/reso`, { F32: p.korus.reso ?? 0.0 });
+        await set(`korus/env_amt`, { F32: p.korus.env_amt ?? 0.3 });
+        await set(`korus/lfo_filter`, { F32: p.korus.lfo_filter ?? 0.0 });
+        await set(`korus/attack`, { F32: p.korus.attack ?? 0.01 });
+        await set(`korus/decay`, { F32: p.korus.decay ?? 0.2 });
+        await set(`korus/sustain`, { F32: p.korus.sustain ?? 0.8 });
+        await set(`korus/release`, { F32: p.korus.release ?? 0.3 });
+        await set(`korus/lfo_rate`, { F32: p.korus.lfo_rate ?? 0.3 });
+        await set(`korus/lfo_pwm`, { F32: p.korus.lfo_pwm ?? 0.0 });
+        await set(`korus/chorus`, { F32: p.korus.chorus ?? 0.5 });
+        await set(`korus/chorus_rate`, { F32: p.korus.chorus_rate ?? 0.3 });
       }
     } catch (e) { console.error('replay preset failed', e); }
   }

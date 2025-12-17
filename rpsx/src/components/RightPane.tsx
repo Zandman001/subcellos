@@ -16,6 +16,7 @@ import Sampler from "./synth/Sampler";
 import SamplerLoop from "./synth/SamplerLoop";
 import SamplerEnvelope from "./synth/SamplerEnvelope";
 import Drubbles from "./synth/Drubbles";
+import Korus from "./synth/Korus";
 import { MOD_DEST_LIST } from "./synth/ModMatrixTable";
 // WaterDroplets removed
 import SequencerRow from "./SequencerRow";
@@ -98,6 +99,7 @@ function renderSynthPage(label: string): React.ReactNode {
     case 'LOOP': return <SamplerLoop />;
     case 'ENVELOPE': return <SamplerEnvelope />;
   case 'DRUBBLES': return <Drubbles />;
+    case 'KORUS': return <Korus />;
     case 'OSC': return <SynthOSC />;
     case 'ENV': return <SynthENV />;
     case 'FILTER': return <SynthFILTER />;
@@ -401,6 +403,25 @@ function FooterHints({ page }: { page: string }) {
       s.drumPreviewing ? 'On' : '—',
     ] as any;
     norms = [0.5, Math.min(1, (samples.length || 0) / 16), samples.length ? Math.max(0, Math.min(1, sampleSel / Math.max(1, samples.length - 1))) : 0.5, s.drumPreviewing ? 1 : 0.0];
+  } else if (lower === 'korus') {
+    // Korus: 6-voice Juno-style synth - show OSC page params by default
+    const kr = (ui as any)?.korus || {};
+    const mapCutoffKorus = (v: number) => 20 * Math.pow(10, v * Math.log10(18000 / 20));
+    labels = ['Wave', 'Cutoff', 'Chorus', 'LFO Rate'];
+    const waveShape = (v: number) => (v < 0.33 ? 'Saw' : v < 0.66 ? 'Pulse' : 'Square');
+    const mapLfoHz = (v: number) => 0.1 + v * 9.9;
+    values = [
+      waveShape(kr.wave ?? 0.5),
+      `${Math.round(mapCutoffKorus(kr.cutoff ?? 0.7))} Hz`,
+      pct(kr.chorus ?? 0.5),
+      `${mapLfoHz(kr.lfo_rate ?? 0.3).toFixed(2)} Hz`,
+    ] as any;
+    norms = [
+      Math.max(0, Math.min(1, Number(kr.wave) || 0.5)),
+      Math.max(0, Math.min(1, Number(kr.cutoff) || 0.7)),
+      Math.max(0, Math.min(1, Number(kr.chorus) || 0.5)),
+      Math.max(0, Math.min(1, Number(kr.lfo_rate) || 0.3)),
+    ];
   } else if (lower === 'arrangement') {
     // Mirror the Arrangement view’s 4 knobs with live context published by ArrangementView
     labels = ['Position', 'Pattern', 'Length', 'Scroll'];

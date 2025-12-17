@@ -77,3 +77,8 @@ fn fast_hash(s: &str) -> u64 {
 pub fn hash_path(path: &str) -> u64 {
     fast_hash(path)
 }
+
+// Alias for modules that use path_hash naming
+pub fn path_hash(path: &str) -> u64 {
+    fast_hash(path)
+}

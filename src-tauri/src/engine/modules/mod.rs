@@ -1,6 +1,7 @@
 pub mod acid303;
 pub mod drum;
 pub mod karplus_strong;
+pub mod korus;
 pub mod resonator_bank;
 pub mod sampler;
 

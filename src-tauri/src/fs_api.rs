@@ -388,6 +388,7 @@ pub fn create_sound(project_name: String, sound_type: String) -> Result<Sound, S
         "resonator" => ("Synth".to_string(), "mushrooms".to_string()),
         "sampler" => ("Sampler".to_string(), "sampler".to_string()),
         "drum" => ("Drum".to_string(), "drubbles".to_string()),
+        "korus" => ("Synth".to_string(), "korus".to_string()),
         other => {
             // accept Title Case too
             let l = other.to_string();
