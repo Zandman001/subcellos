@@ -214,21 +214,20 @@ body.ark-mode .seq-step { border:1px solid #fff; background:#000; border-radius:
 body.ark-mode .seq-step.is-selected { background: rgba(255,255,255,0.12); border-width:2px; animation: ark-step-select var(--ark-speed-med) steps(2, end); }
 body.ark-mode .seq-step.is-active { background:#fff; color:#000; box-shadow:none; animation: ark-step-active-breath var(--ark-speed-slow) steps(2, end) infinite; }
 
-/* ===== Fixed 16:9 canvas scaling ===== */
+/* ===== Full Viewport Coverage ===== */
 body.ark-mode.ark-fixed .app {
-  width: var(--ark-base-w, 1280px);
-  height: var(--ark-base-h, 720px);
-  /* Auto scale (smooth) as fallback; JS can override --ark-scale to an integer for crispness */
-  --ark-scale-auto: min(calc(100vw / var(--ark-base-w, 1280px)), calc(100vh / var(--ark-base-h, 720px)));
-  transform: translate(var(--ark-left, 0px), var(--ark-top, 0px)) scale(var(--ark-scale, var(--ark-scale-auto)));
-  transform-origin: top left;
+  width: 100vw;
+  height: 100vh;
+  transform: none;
   overflow: hidden;
 }
 body.ark-mode .ark-fixed-frame {
   position: fixed;
   inset: 0;
-  background: #000; /* letterbox */
-  overflow: hidden; /* clamp any overshoot */
+  background: #000;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
 }
 /* Clamp page scroll to viewport at all times to prevent window growth */
 html, body { height: 100%; overflow: hidden; }

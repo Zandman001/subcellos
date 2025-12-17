@@ -285,23 +285,12 @@ export default function Shell() {
     const root = document.documentElement
     document.body.classList.add('ark-fixed')
     const apply = () => {
-      const { w: BASE_W, h: BASE_H } = basePresets[baseIdx]
-      root.style.setProperty('--ark-base-w', BASE_W + 'px')
-      root.style.setProperty('--ark-base-h', BASE_H + 'px')
-      const ww = window.innerWidth
-      const wh = window.innerHeight
-      const sx = ww / BASE_W
-      const sy = wh / BASE_H
-      const raw = Math.min(sx, sy)
-      // If we have room, snap to an integer for crisp pixels; otherwise allow fractional fit
-      const s = raw >= 1 ? Math.floor(raw) : Math.max(0.1, raw)
-      const usedW = BASE_W * s
-      const usedH = BASE_H * s
-      const left = Math.floor((ww - usedW) / 2)
-      const top = Math.floor((wh - usedH) / 2)
-      root.style.setProperty('--ark-scale', String(s))
-      root.style.setProperty('--ark-left', left + 'px')
-      root.style.setProperty('--ark-top', top + 'px')
+      // Fullscreen mode: just use viewport dimensions directly
+      root.style.setProperty('--ark-base-w', window.innerWidth + 'px')
+      root.style.setProperty('--ark-base-h', window.innerHeight + 'px')
+      root.style.setProperty('--ark-scale', '1')
+      root.style.setProperty('--ark-left', '0px')
+      root.style.setProperty('--ark-top', '0px')
     }
     apply()
     window.addEventListener('resize', apply)
